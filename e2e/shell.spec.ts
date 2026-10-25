@@ -1,0 +1,158 @@
+import { expect, test } from "@playwright/test";
+
+const APP_ROUTES = [
+  "/home",
+  "/add",
+  "/add/text",
+  "/add/voice",
+  "/transactions",
+  "/transactions/new",
+  "/categories",
+  "/recurring",
+  "/insights",
+  "/insights/leaks",
+  "/budgets",
+  "/goals",
+  "/safe-to-spend",
+  "/survival",
+  "/reports",
+  "/rewards",
+  "/reminders",
+  "/settings",
+  "/settings/privacy",
+  "/settings/sync",
+  "/settings/data",
+];
+
+const PUBLIC_ROUTES = [
+  "/welcome",
+  "/login",
+  "/register",
+  "/forgot-password",
+  "/reset-password",
+  "/onboarding",
+];
+
+test("root sends signed-out visitors to welcome", async ({ page }) => {
+  await page.goto("/");
+  await expect(page).toHaveURL(/\/welcome$/);
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("₹10");
+});
+
+for (const route of [...APP_ROUTES, ...PUBLIC_ROUTES]) {
+  test(`${route} renders with a heading, no horizontal overflow and no console errors`, async ({
+    page,
+  }) => {
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    page.on("console", (message) => {
+      if (message.type() === "error") errors.push(message.text());
+    });
+
+    const response = await page.goto(route);
+    expect(response?.status()).toBe(200);
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await expect(page.locator("body")).not.toContainText(/coming soon/i);
+
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
+    expect(errors).toEqual([]);
+  });
+}
+
+test("unknown transaction ids show the in-app not-found state", async ({ page }) => {
+  // The (app) loading boundary streams the response, so Next.js sends 200 before notFound()
+  // runs and marks the page noindex instead of sending a 404 status.
+  await page.goto("/transactions/does-not-exist");
+  await expect(page.getByRole("heading", { name: "We couldn’t find that" })).toBeVisible();
+  expect(await page.locator('meta[name="robots"][content*="noindex"]').count()).toBeGreaterThan(0);
+  await expect(
+    page
+      .getByRole("navigation", { name: "Primary" })
+      .or(page.getByRole("complementary", { name: "Main navigation" })),
+  ).toBeVisible();
+});
+
+test("navigation: sidebar on desktop, bottom tabs + section sheet on mobile", async ({
+  page,
+  isMobile,
+}) => {
+  await page.goto("/home");
+  const sidebar = page.getByRole("complementary", { name: "Main navigation" });
+  const tabs = page.getByRole("navigation", { name: "Primary" });
+
+  if (isMobile) {
+    await expect(sidebar).toBeHidden();
+    await expect(tabs).toBeVisible();
+    await tabs.getByRole("link", { name: "Plan" }).click();
+    await expect(page).toHaveURL(/\/budgets$/);
+    await expect(tabs.getByRole("link", { name: "Plan" })).toHaveAttribute("aria-current", "page");
+
+    await page.getByRole("button", { name: "Open all sections" }).click();
+    await page.getByRole("dialog").getByRole("link", { name: "Money leaks" }).click();
+    await expect(page).toHaveURL(/\/insights\/leaks$/);
+    await expect(page.getByRole("dialog")).toBeHidden();
+
+    await page.getByRole("link", { name: "Add expense" }).click();
+    await expect(page).toHaveURL(/\/add$/);
+  } else {
+    await expect(sidebar).toBeVisible();
+    await expect(tabs).toBeHidden();
+    await sidebar.getByRole("link", { name: "Savings goals" }).click();
+    await expect(page).toHaveURL(/\/goals$/);
+    await expect(sidebar.getByRole("link", { name: "Savings goals" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  }
+});
+
+test("theme defaults to midnight and the choice persists across reloads", async ({ page }) => {
+  await page.goto("/settings");
+  await expect(page.locator("html")).toHaveClass(/dark/);
+
+  await page
+    .getByRole("radiogroup", { name: "Theme" })
+    .getByRole("radio", { name: "Light" })
+    .click();
+  await expect(page.locator("html")).toHaveClass(/light/);
+
+  await page.reload();
+  await expect(page.locator("html")).toHaveClass(/light/);
+  const background = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  expect(background).not.toBe("rgba(0, 0, 0, 0)");
+});
+
+test("reduced-motion preference applies before paint after reload", async ({ page }) => {
+  await page.goto("/settings");
+  await page
+    .getByRole("radiogroup", { name: "Motion" })
+    .getByRole("radio", { name: "Reduced" })
+    .click();
+  await expect(page.locator("html")).toHaveAttribute("data-motion", "reduce");
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-motion", "reduce");
+});
+
+test.describe("with OS reduced motion", () => {
+  test.use({ reducedMotion: "reduce" });
+
+  test("CSS transitions are effectively disabled", async ({ page }) => {
+    await page.goto("/home");
+    const duration = await page
+      .getByRole("link", { name: "Quick add" })
+      .first()
+      .evaluate((element) => getComputedStyle(element).transitionDuration);
+    expect(parseFloat(duration)).toBeLessThan(0.001);
+  });
+});
+
+test("offline banner reflects connectivity", async ({ page, context }) => {
+  await page.goto("/home");
+  await context.setOffline(true);
+  await expect(page.getByRole("status").filter({ hasText: "You’re offline" })).toBeVisible();
+  await context.setOffline(false);
+  await expect(page.getByText("You’re offline")).toBeHidden();
+});
