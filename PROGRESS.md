@@ -124,7 +124,7 @@ Note: because of the `(app)` loading boundary, Next.js streams `notFound()` page
 
 - `.env.local` exists with what look like real Supabase credentials (format checked only; values never printed). It is gitignored. No connection to the project has been tested yet (Phase 3).
 - npm's allow-scripts warns that `unrs-resolver`'s postinstall hasn't run; lint works without it (it ships prebuilt binaries).
-- Git: `main` tracks `origin` (https://github.com/KIRITHIKJI/PocketPulse.git). Work is committed and pushed at the end of every phase; Phase 1 = `93ff182`.
+- Git: `main` tracks `origin` (https://github.com/KIRITHIKJI/PocketPulse.git). Work is committed and pushed at the end of every phase; Phase 1 = `93ff182`, Phase 2 = `08288e7`.
 
 ## Next concrete tasks (Phase 3)
 
