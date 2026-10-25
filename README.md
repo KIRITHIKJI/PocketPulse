@@ -70,7 +70,9 @@ src/
     preferences/  theme + motion controls
     providers/    theme and motion providers
   lib/            navigation config, env detection, preferences, utilities
-tests/            Vitest tests
+  domain/         pure financial domain layer: paise money, IST periods, ledger, balances,
+                  aggregation, budgets, savings, safe-to-spend (used by every screen/report)
+tests/            Vitest tests (tests/unit/domain: financial invariants)
 e2e/              Playwright tests
 ```
 

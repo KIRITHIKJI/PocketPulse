@@ -26,6 +26,32 @@ const config = [
       "no-console": ["warn", { allow: ["warn", "error"] }],
     },
   },
+  {
+    // The financial domain layer stays pure: no UI, framework or database imports, no floats for money.
+    files: ["src/domain/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["react", "react-*", "next", "next/*", "@supabase/*", "@/*"],
+              message: "src/domain must stay framework- and database-independent.",
+            },
+          ],
+        },
+      ],
+      "no-restricted-globals": [
+        "error",
+        { name: "parseFloat", message: "Parse money with parseAmountInput." },
+      ],
+      "no-restricted-properties": [
+        "error",
+        { object: "Number", property: "parseFloat", message: "Parse money with parseAmountInput." },
+        { property: "toFixed", message: "Format money with formatMoney / paiseToDecimalString." },
+      ],
+    },
+  },
 ];
 
 export default config;
