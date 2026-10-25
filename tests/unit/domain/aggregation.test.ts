@@ -5,6 +5,7 @@ import {
   comparePeriods,
   previousPeriod,
   resolvePeriod,
+  spendingDisplay,
   spendingTrend,
 } from "@/domain";
 
@@ -133,6 +134,71 @@ describe("categoryBreakdown", () => {
     );
     expect(onlyRefund.netPaise).toBe(-1000);
     expect(onlyRefund.categories[0]!.shareBp).toBeNull();
+  });
+});
+
+describe("refund in a later period than its purchase", () => {
+  // Shoes bought last week (₹800), ₹500 refunded this week; this week also ₹150 of snacks.
+  const shoes = expense(80_000, {
+    categoryId: FOOD,
+    subcategoryId: SNACKS,
+    occurredAt: ist("2026-10-07"),
+  });
+  const ledger = [
+    shoes,
+    refund(50_000, shoes.id, { occurredAt: ist("2026-10-13") }),
+    expense(15_000, { categoryId: FOOD, subcategoryId: SNACKS, occurredAt: ist("2026-10-14") }),
+    expense(20_000, { categoryId: TRANSPORT, subcategoryId: BUS, occurredAt: ist("2026-10-14") }),
+  ];
+
+  it("counts the refund in its own period, where the category's net can go below zero", () => {
+    const thisWeek = categoryBreakdown(ledger, week);
+    const food = thisWeek.categories.find((c) => c.key === FOOD)!;
+    expect(food).toMatchObject({
+      grossPaise: 15_000,
+      refundsPaise: 50_000,
+      netPaise: -35_000,
+      earlierPurchaseRefundsPaise: 50_000,
+      count: 1,
+      refundCount: 1,
+      shareBp: null, // no negative shares
+    });
+    // Period totals stay exact: 150 + 200 − 500 = −150.
+    expect(thisWeek.netPaise).toBe(-15_000);
+    expect(thisWeek.categories.find((c) => c.key === TRANSPORT)!.shareBp).toBeNull();
+    // The earlier week keeps the full purchase; nothing is rewritten retroactively.
+    const earlier = categoryBreakdown(ledger, lastWeek);
+    expect(earlier.categories.find((c) => c.key === FOOD)!.netPaise).toBe(80_000);
+    // Across both weeks the refund simply offsets the purchase.
+    const both = categoryBreakdown(
+      ledger,
+      resolvePeriod({ kind: "custom", from: "2026-10-05", to: "2026-10-18" }, NOW),
+    );
+    expect(both.categories.find((c) => c.key === FOOD)).toMatchObject({
+      netPaise: 45_000,
+      earlierPurchaseRefundsPaise: 0,
+    });
+  });
+
+  it("charts draw a zero bar with an explanation instead of a negative bar", () => {
+    const food = categoryBreakdown(ledger, week).categories.find((c) => c.key === FOOD)!;
+    expect(spendingDisplay(food)).toEqual({
+      chartPaise: 0,
+      netRefundPaise: 35_000,
+      note: "Refunds exceeded purchases here by ₹350 (₹500 of it refunds purchases from an earlier period).",
+    });
+    const transport = categoryBreakdown(ledger, week).categories.find((c) => c.key === TRANSPORT)!;
+    expect(spendingDisplay(transport)).toEqual({
+      chartPaise: 20_000,
+      netRefundPaise: 0,
+      note: null,
+    });
+  });
+
+  it("trend buckets and budgets agree with the breakdown", () => {
+    const days = spendingTrend(ledger, week, "day");
+    expect(days.find((d) => d.startDate === "2026-10-13")!.netPaise).toBe(-50_000);
+    expect(days.reduce((s, d) => s + d.netPaise, 0)).toBe(categoryBreakdown(ledger, week).netPaise);
   });
 });
 

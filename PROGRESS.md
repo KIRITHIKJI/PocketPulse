@@ -3,7 +3,7 @@
 Durable project state. Update before a context reset or at the end of each work session.
 Source of truth for requirements: `PROJECT_SPEC.md`. Working rules: `CLAUDE.md`.
 
-_Last updated: 2026-10-26 — end of Phase 2._
+_Last updated: 2026-10-26 — end of Phase 3._
 
 ## Build stages
 
@@ -13,8 +13,8 @@ One integrated product. Stages are an internal build order only; nothing is defe
 | --- | --- | --- |
 | 1 | Foundation: tooling, design system, app shell, every route, shared states | ✅ Done |
 | 2 | Financial domain core: paise math, INR formatting, Asia/Kolkata period boundaries, ledger/balance invariants (income, expense, refund, transfer, allocation, release), opening/closing balances, aggregation, budgets, savings, safe-to-spend — pure + unit-tested (`src/domain/`) | ✅ Done |
-| 3 | Supabase: schema + migrations, RLS on every private table, cross-user denial tests, server data access, auth (register, login, logout, recovery) and route protection | ⬜ Next |
-| 4 | Onboarding (balance + effective date, wallets, currency/timezone, allowance, budgets, goals, prefs), accounts, categories/subcategories management, profile/preferences sync | ⬜ |
+| 3 | Supabase: schema + migrations, RLS on every private table, cross-user denial tests, server data access, auth (register, login, logout, recovery) and route protection | ✅ Done — migrations, RLS, RPCs and DB tests verified on local PostgreSQL 18; **not yet applied to the hosted project** (needs your approval, see blockers) |
+| 4 | Onboarding (balance + effective date, wallets, currency/timezone, allowance, budgets, goals, prefs), accounts, categories/subcategories management, profile/preferences sync | ⬜ Next |
 | 5 | Transactions: quick-add tiles, full form, repeat/frequent, history with search/filters, detail/edit/delete/undo (real `notFound()` + re-check 404 status, see Checks note), idempotency keys | ⬜ |
 | 6 | Natural-language parser + voice entry with draft review and atomic batch confirm | ⬜ |
 | 7 | Insights + charts with drill-down, sparse-data honesty, Money Leak Detector with what-ifs | ⬜ |
@@ -26,13 +26,13 @@ One integrated product. Stages are an internal build order only; nothing is defe
 
 Status key: ⬜ not started · 🟨 partial (detail given) · ✅ done and verified.
 
-- ⬜ Registration, login and recovery work with real configured auth. — Routes exist (`/register`, `/login`, `/forgot-password`, `/reset-password`); they currently report Supabase configuration state, no forms. A real `.env.local` with a Supabase project is present. Logout will be an account-menu action (Phase 3).
-- ⬜ All user data is private and protected by tested access rules.
+- 🟨 Registration, login and recovery work with real configured auth. — Real forms + server actions for register, login, logout (account menu), forgot/reset password, `/auth/confirm` (PKCE `code` and `token_hash`), and `src/proxy.ts` route protection. Validation, redirects and invalid-link handling are e2e-tested. **Not yet verified against the hosted project:** no account has been created or signed in, because that needs migrations applied and your approval.
+- 🟨 All user data is private and protected by tested access rules. — RLS on all 20 public tables, owner-only. `tests/db/rls.test.ts` proves cross-user read/write/re-own denial, anon denial, no hard deletes, no client writes to rewards — on PostgreSQL 18 with a Supabase auth shim. Still to verify on the hosted project after `db push`.
 - ⬜ Adding income and expense updates correct balance immediately.
 - ⬜ Quick-add presets/custom amounts work.
 - ⬜ Text and voice routes create reviewable drafts and confirm before save. — Routes `/add/text`, `/add/voice` exist.
 - ⬜ History, search, filters, editing, deletion and undo work. — Routes exist; `/transactions/[id]` and `/edit` return a genuine 404 until the ledger exists.
-- 🟨 Category/subcategory totals reconcile with transactions. — Domain `categoryBreakdown` is tested to reconcile category → subcategory → period total (refunds included); screens wire it in Phases 5/7.
+- 🟨 Category/subcategory totals reconcile with transactions. — Domain `categoryBreakdown` is tested to reconcile category → subcategory → period total (refunds included, including refunds landing in a later period); screens wire it in Phases 5/7.
 - ⬜ Insights point to real supporting records and handle sparse data honestly.
 - ⬜ Money Leak Detector groups and totals correctly.
 - 🟨 Budgets/alerts recalculate on changes. — Domain `evaluateBudget` (spent/remaining/%/pace/thresholds) and `newlyReachedThresholds` are tested, including edits/deletes; UI and alert delivery in Phase 8.
@@ -46,8 +46,8 @@ Status key: ⬜ not started · 🟨 partial (detail given) · ✅ done and verif
 - ⬜ Offline entries persist and sync without loss or duplication. — Only an online/offline banner exists; it truthfully says changes can't be saved offline.
 - 🟨 Loading, empty, error, permission-denied and offline states are handled. — Shared `StatePanel` (empty/error/offline/denied), `PageSkeleton`, route `loading.tsx`, `error.tsx`, in-shell and global `not-found.tsx`, `global-error.tsx`, offline banner. Each feature must still wire these to its real data states.
 - ⬜ No required action is a placeholder or fake success. — Phase 1 has no fake actions: every button/link navigates or changes a real preference. Feature screens are empty states until built.
-- 🟨 Lint/typecheck/tests/production build are run and failures are addressed. — All pass for Phase 1 (see Checks).
-- 🟨 Setup documentation accurately describes what needs a real Supabase project/credentials. — README covers env vars and current state; Supabase schema/migration steps added in Phase 3.
+- 🟨 Lint/typecheck/tests/production build are run and failures are addressed. — All pass for Phase 3 (see Checks).
+- 🟨 Setup documentation accurately describes what needs a real Supabase project/credentials. — README › Setup covers project creation, env vars, auth URL configuration and email templates, migrations (`supabase db push`), DB tests and signed-in e2e. To be re-checked once the hosted project is set up.
 
 ## Routes (spec §5)
 
@@ -55,8 +55,8 @@ Every screen has a route; feature screens show a real empty state until their st
 
 | Screen | Route(s) | State |
 | --- | --- | --- |
-| Welcome / onboarding | `/welcome`, `/onboarding` | Welcome complete; onboarding lists steps, requires sign-in |
-| Register, login, recovery | `/register`, `/login`, `/forgot-password`, `/reset-password` | Config-status panel (Phase 3) |
+| Welcome / onboarding | `/welcome`, `/onboarding` | Welcome complete; onboarding (signed-in only) lists steps + "Go to Home"; wizard in Phase 4 |
+| Register, login, recovery | `/register`, `/login`, `/forgot-password`, `/reset-password`, `/auth/confirm` | Real forms (Phase 3); config panel only when Supabase env is missing |
 | Home | `/home` | Empty state + links to add flows (Phase 5/7) |
 | Quick add / type / voice / full form | `/add`, `/add/text`, `/add/voice`, `/transactions/new` | Empty state (Phases 5–6) |
 | History, detail, edit | `/transactions`, `/transactions/[id]`, `/transactions/[id]/edit` | Empty / 404 (Phase 5) |
@@ -69,7 +69,7 @@ Every screen has a route; feature screens show a real empty state until their st
 | Settings: preferences/theme | `/settings` | Theme + motion controls work (device-local); profile prefs Phase 4 |
 | Privacy, sync, data export/deletion | `/settings/privacy`, `/settings/sync`, `/settings/data` | Empty state (Phases 9–10) |
 
-`/` redirects to `/welcome`. Phase 3 adds middleware: signed-in → `/home`, signed-out app routes → `/login`.
+`src/proxy.ts` (Next 16's name for middleware): `/` → `/home` (signed in) or `/welcome`; signed-out app routes and `/onboarding` → `/login?next=<path>`; signed-in visits to login/register/forgot → `/home`; `/reset-password` and `/auth/*` are always reachable. Without Supabase env, app routes → `/login`, which explains the missing configuration.
 
 ## Architecture decisions
 
@@ -93,6 +93,55 @@ Every screen has a route; feature screens show a real empty state until their st
 - **Savings:** earmarked = allocations − releases per goal, including paused/completed/archived goals until the money is released. Buying the goal item = a real expense + a release sized by `releaseForGoalPurchase`.
 - **Safe-to-spend:** balance now − all earmarks − unpaid, uncancelled commitments due on or before the horizon (default: next income date) − optional reserve. A commitment counts as paid only while its `paidTransactionId` points at an active transaction. A missing or past next-income date → `not_enough_info`, with null daily/weekly limits. Recent pace = average daily net spending over up to 14 complete days, never before tracking started. Every result returns `inputs`, `explanation[]` and `warnings[]`.
 - **Mutations:** `applyMutation` (create/update/delete/restore) is idempotent. A replayed create is `duplicate`; the same id with different content, or a stale `expectedUpdatedAt`, is `conflict`, never a silent overwrite. Phase 5 server actions and Phase 10 sync use the same rules.
+- **Negative category spending (refund in a later period):** a category's net spending for a period can go below zero when it holds a refund for a purchase made earlier. Totals stay exact and signed (the earlier period is never rewritten). Charts and reports use `spendingDisplay(group)`: the bar or ring is drawn at **zero**, never negative, with a note like "Refunds exceeded purchases here by ₹350 (₹500 of it refunds purchases from an earlier period)". The refund also stays visible as its own line. Shares (`shareBp`) are `null` for a negative group or a non-positive total.
+
+### Database (Phase 3, `supabase/migrations/`)
+
+- **Files:** `…0100_schema` (tables, constraints, indexes), `…0200_integrity` (triggers mirroring domain rules), `…0300_rls`, `…0400_rpc`, `…0500_seed_defaults`.
+- **Tables (20):** `profiles`, `accounts`, `categories` (one level of subcategories), `category_rules`, `savings_goals`, `recurring_templates`, `transactions` (the single ledger, including allocations/releases, i.e. the goal allocation ledger), `commitments`, `budgets`, `quick_add_presets`, `notification_preferences`, `notifications`, `achievements` + `quests` (read-only catalogs), `xp_events`, `user_achievements`, `user_quests`, `streak_state`, `sync_operations`, `sync_devices`. Money is `bigint` paise; the `currency_code` domain matches `SUPPORTED_CURRENCIES`.
+- **Same-owner references:** every link between private rows is a composite `(owner_id, id)` foreign key, so a row can only point at the same user's account, category, goal, template or expense. This is enforced by the database even for the service role.
+- **No silent cascades over history:** accounts, categories, goals and templates referenced by the ledger are `ON DELETE RESTRICT` (archive them instead). Clients can't hard-delete transactions (no grant, no policy); deletion is `deleted_at`. Only deleting the auth user (explicit account deletion, Phase 9) cascades that user's data.
+- **Domain rules in the database** (`transactions_guard` trigger, every write path):
+  - `amount_paise > 0` (≤ ₹9,99,99,99,999.99).
+  - A per-type shape check: e.g. a transfer needs two different accounts and no category.
+  - Currency matches every account involved, the goal, and the refunded expense.
+  - Categories must be the right kind (expense vs income), top-level, and the subcategory must belong to its category.
+  - A refund must link to an active expense of the same user, can't predate it, and the active refunds can't exceed it. The expense row is locked, so concurrent refunds serialise.
+  - An expense with refunds can't be deleted, shrunk below them, moved after them, or change currency.
+  - Per-goal earmark (allocations − releases) never drops below zero. The goal row is locked.
+  - Immutable after insert: `id`, `owner_id`, `type`, `idempotency_key`, `batch_id`, `created_at`. `version` bumps on every update.
+  - Errors use SQLSTATE `P0001` with a machine-readable message (`refund_exceeds_expense`, `currency_mismatch`, …) and a human detail.
+- **Idempotency:** the client UUID `id`, plus `idempotency_key` unique per user (defaulting to the id), plus `(recurring_template_id, recurring_occurrence)` unique. Replays return `duplicate`; same id or key with different content returns `conflict`.
+- **RPCs** (`SECURITY INVOKER`: RLS and triggers apply; the owner is always `auth.uid()`; a payload `owner_id` is ignored): `create_transaction`, `log_transactions_batch` (1–50 income/expense entries, all-or-nothing), `create_transfer`, `move_goal_money` (allocation/release), `record_goal_purchase` (expense + release in one transaction), `pay_commitment` (expense + link), `update_transaction` (optimistic concurrency on `version`), `set_transaction_deleted` (soft delete/undo). Each returns `{status: applied | duplicate | conflict | not_found, …}`.
+- **RLS:** enabled on all 20 tables. Owner-only CRUD on ordinary tables. Ledger: select/insert/update only. Rewards state and profile/notification preferences can't be inserted by clients. Catalogs are read-only. `anon` has no table or RPC access. Helper functions callable from triggers are granted to `authenticated`; seeding is `SECURITY DEFINER` and not callable by clients (`ensure_my_defaults()` seeds only the caller).
+- **Per-user defaults:** the `on_auth_user_created` trigger creates the profile (display name from sign-up metadata), notification preferences (quiet by default; only in-app budget alerts on), streak state, the spec §9 hierarchy (8 expense categories / 39 subcategories) + 5 income categories, and 12 quick-add tiles. **Tiles are seeded without amounts**: the app never invents prices, and a tile remembers the amount the user saves (Phase 5). No wallet is seeded (see Phase 4 notes).
+- **Auth app side:**
+  - `src/lib/supabase/server.ts` (cookie-based, `getCurrentUser()` via verified `getClaims()`), `client.ts` (browser, publishable key) and `admin.ts` (`server-only`; secret key read at call time; not imported anywhere yet).
+  - Server actions in `src/lib/auth/actions.ts`, with Zod form schemas, mapped error copy (never confirms whether an email has an account), `safeNextPath` open-redirect protection, and `/auth/confirm` for email links.
+  - `NEXT_PUBLIC_SITE_URL` builds email-link URLs, falling back to the request host.
+- **Row → domain mapping:** `src/lib/data/mappers.ts` converts DB rows (PostgREST numbers or node-postgres int8 strings) into Zod-validated domain records. All math stays in `@/domain`. The DB tests feed real rows through it into `consolidatedBalanceAt` / `totalEarmarked`.
+
+### Phase 4 notes (recorded from the Phase 2 review)
+
+- Onboarding must **auto-create a default "Cash" wallet** (`accounts.is_default = true`, one per user, enforced by a unique index) together with the opening balance and its effective date. It is pre-selected in every form that needs an account (quick add, full form, batch, recurring, commitments).
+- When a user logs a transaction dated **before an account's opening balance date**, the UI must explain why the balance didn't change: it is treated as already included in the opening balance. The domain's `validateLedger` reports it as `before_opening_date`; the database deliberately allows it, so history can still be recorded.
+- After sign-up the user lands on `/onboarding`. Today it shows the steps and "Go to Home"; Phase 4 replaces it with the real wizard.
+
+## Checks run (Phase 3, 2026-10-26)
+
+| Command | Result |
+| --- | --- |
+| `npm install --save-exact @supabase/supabase-js@2.117.3 @supabase/ssr@0.12.7 server-only@0.0.1` + dev `pg@8.23.1 @types/pg@8.23.1` | OK |
+| `npm audit` | Flagged zod 4.6.5 (GHSA-mrhx-c7xc-m3w5, memory exhaustion on oversized collections), so zod was upgraded to **4.6.7**. Now 0 vulnerabilities |
+| Migrations on PostgreSQL 18.3 (throwaway local cluster, no Docker) | All 5 apply cleanly. Signup trigger seeds profile + 52 categories + 12 tiles |
+| `npm run test:db` (`POCKETPULSE_TEST_DB_URL` → local PG 18) | Pass, 2 files / 29 tests: RLS (enabled on every table, anon denied everywhere, cross-user read/insert/update/delete/re-own denied, cross-user FK links rejected, payload owner ignored, foreign ids not revealed, no hard deletes, no client reward writes, seeding private), idempotent create/batch/transfer/goal-purchase/commitment replays, batch rollback on invalid or conflicting entry, transfer rollback (foreign account, currency mismatch, same account), refund/currency/category/goal rules, optimistic-concurrency edits, soft delete/restore, DB rows → domain balance |
+| Mutation check of the DB tests | Temporarily disabling the refund-limit check and one RLS policy made 6 tests fail; files restored |
+| `npm run lint` | Pass |
+| `npm run typecheck` | Pass |
+| `npm test` | Pass, 12 files / 241 tests (adds the later-period refund tests, auth routes/schemas/errors, row mappers) |
+| `npm run build` | Pass. 32 routes + `ƒ Proxy (Middleware)` |
+| Secret-key bundle search | The `SUPABASE_SECRET_KEY` value, `sb_secret_` and the variable name occur **0 times** in `.next/static`, and the value 0 times anywhere in `.next`. (The admin client isn't imported yet; `server-only` makes a client import a build error.) |
+| `npm run test:e2e` | Pass: **70 passed, 58 skipped**. Signed-out suite × desktop Chrome + Pixel 7: `/` → `/welcome`; all 22 app routes (incl. onboarding) → `/login?next=…`; public pages render with no console errors or overflow; server-side validation on sign-in/register/forgot; reset page without a recovery session; invalid email link → explained error; `next=//evil.example` neutralised; theme persists. The signed-in shell suite (29 tests × 2) is **skipped**: no `E2E_EMAIL`/`E2E_PASSWORD`, and the project has no migrations yet. The first run failed 2 tests because a test locator also matched Next's route announcer; fixed the locator, not the app |
 
 ## Checks run (Phase 2, 2026-10-26)
 
@@ -122,14 +171,19 @@ Note: because of the `(app)` loading boundary, Next.js streams `notFound()` page
 
 ## Known blockers / notes
 
-- `.env.local` exists with what look like real Supabase credentials (format checked only; values never printed). It is gitignored. No connection to the project has been tested yet (Phase 3).
+- **Hosted Supabase not yet set up (needs your approval).** `.env.local` has the URL, publishable key and secret key (values never printed). The migrations have **not** been applied to that project, and no account has been created there. Next steps, each run only after you approve: `npx supabase@2.120.0 init`, `login`, `link --project-ref <ref>`, `db push`. Then set Auth → URL Configuration and, optionally, the token-hash email templates (README › Setup). Then sign up once, and run the signed-in e2e suite with `E2E_EMAIL`/`E2E_PASSWORD`.
+- Docker isn't installed, so `supabase start` (local stack) isn't available. DB tests ran on a local PostgreSQL 18 with `tests/db/supabase-shim.sql` standing in for Supabase's `auth` schema and roles. Hosted-Supabase specifics the shim can't prove (GoTrue, PostgREST, Supabase default grants): verify with a real sign-up after `db push`.
+- The e2e "invalid email link" test sends one bogus `verifyOtp` request to the configured project (it fails by design and creates nothing).
 - npm's allow-scripts warns that `unrs-resolver`'s postinstall hasn't run; lint works without it (it ships prebuilt binaries).
 - Git: `main` tracks `origin` (https://github.com/KIRITHIKJI/PocketPulse.git). Work is committed and pushed at the end of every phase; Phase 1 = `93ff182`, Phase 2 = `08288e7`.
 
-## Next concrete tasks (Phase 3)
+## Next concrete tasks
 
-1. Add `@supabase/supabase-js` + `@supabase/ssr` (pinned, compatibility-checked), with server and browser clients. `SUPABASE_SECRET_KEY` is only ever imported from server-only modules.
-2. SQL migrations mirroring `src/domain/schemas.ts`: profiles/preferences, accounts (opening balance + date), categories/subcategories, transactions (`amount_paise int8 check > 0`, type enum, per-type check constraints for account/transfer/goal/refund links, `deleted_at`, `voided_at`, client UUID primary key for idempotency), budgets, savings goals, commitments, recurring templates, notification prefs, gamification tables. FKs, indexes, and `owner_id` on every row.
-3. RLS on every private table (`owner_id = auth.uid()`), plus tests proving cross-user reads and writes are denied.
-4. Auth: real register, login, logout (account menu) and forgot/reset password forms; middleware route protection (signed-in → `/home`, signed-out app routes → `/login`).
-5. A server data-access layer that parses rows with the domain Zod schemas and feeds the domain functions. No money math in queries or components.
+Before Phase 4 (needs the user): approve and run the hosted Supabase setup listed under blockers, then do one real sign-up, sign-in, sign-out and password reset.
+
+Phase 4:
+
+1. Onboarding wizard at `/onboarding`: default "Cash" wallet + opening balance + effective date, optional extra wallets, currency/timezone, allowance frequency + next income date, initial budgets, savings goals, theme/reminder/privacy preferences. Every step skippable; writes go through server actions using the RLS client.
+2. Accounts management (create, rename, archive, set default; the opening-date explanation), categories/subcategories management (create, rename, reorder, icons/colours, merge, archive, uncategorised queue), and profile/preferences sync (theme/motion move from localStorage to `profiles`).
+3. Data-access helpers that load rows → `rowToAccount`/`rowToTransaction` → domain functions. Handle the empty, loading, error and permission-denied states.
+4. Run the signed-in e2e suite against the configured project at desktop and mobile sizes.

@@ -1,45 +1,20 @@
 import { expect, test } from "@playwright/test";
 
-const APP_ROUTES = [
-  "/home",
-  "/add",
-  "/add/text",
-  "/add/voice",
-  "/transactions",
-  "/transactions/new",
-  "/categories",
-  "/recurring",
-  "/insights",
-  "/insights/leaks",
-  "/budgets",
-  "/goals",
-  "/safe-to-spend",
-  "/survival",
-  "/reports",
-  "/rewards",
-  "/reminders",
-  "/settings",
-  "/settings/privacy",
-  "/settings/sync",
-  "/settings/data",
-];
+import { APP_ROUTES, E2E_EMAIL, E2E_PASSWORD, SIGNED_IN_SKIP_REASON } from "./routes";
 
-const PUBLIC_ROUTES = [
-  "/welcome",
-  "/login",
-  "/register",
-  "/forgot-password",
-  "/reset-password",
-  "/onboarding",
-];
+// Signed-in shell tests. They sign in through the real form with a real account, so they only
+// run when E2E_EMAIL / E2E_PASSWORD are set (there is no fake session).
+test.skip(!E2E_EMAIL || !E2E_PASSWORD, SIGNED_IN_SKIP_REASON);
 
-test("root sends signed-out visitors to welcome", async ({ page }) => {
-  await page.goto("/");
-  await expect(page).toHaveURL(/\/welcome$/);
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("₹10");
+test.beforeEach(async ({ page }) => {
+  await page.goto("/login");
+  await page.getByLabel("Email").fill(E2E_EMAIL!);
+  await page.getByLabel("Password").fill(E2E_PASSWORD!);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/home$/);
 });
 
-for (const route of [...APP_ROUTES, ...PUBLIC_ROUTES]) {
+for (const route of APP_ROUTES) {
   test(`${route} renders with a heading, no horizontal overflow and no console errors`, async ({
     page,
   }) => {
@@ -61,6 +36,16 @@ for (const route of [...APP_ROUTES, ...PUBLIC_ROUTES]) {
     expect(errors).toEqual([]);
   });
 }
+
+test("signed-in users skip the sign-in page and can sign out", async ({ page }) => {
+  await page.goto("/login");
+  await expect(page).toHaveURL(/\/home$/);
+  await page.getByTestId("account-menu").click();
+  await page.getByRole("menuitem", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await page.goto("/home");
+  await expect(page).toHaveURL(/\/login\?next=%2Fhome$/);
+});
 
 test("unknown transaction ids show the in-app not-found state", async ({ page }) => {
   // The (app) loading boundary streams the response, so Next.js sends 200 before notFound()
