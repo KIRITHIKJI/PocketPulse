@@ -1,6 +1,7 @@
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 
+import { ensureDefaults } from "@/lib/auth/defaults";
 import { safeNextPath } from "@/lib/auth/routes";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -38,5 +39,7 @@ export async function GET(request: NextRequest) {
   } else if (tokenHash && type && OTP_TYPES.includes(type)) {
     ok = !(await supabase.auth.verifyOtp({ token_hash: tokenHash, type })).error;
   }
-  return ok ? NextResponse.redirect(new URL(next, request.url)) : fail();
+  if (!ok) return fail();
+  await ensureDefaults(supabase);
+  return NextResponse.redirect(new URL(next, request.url));
 }

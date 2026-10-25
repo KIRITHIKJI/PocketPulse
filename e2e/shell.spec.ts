@@ -1,18 +1,11 @@
 import { expect, test } from "@playwright/test";
 
-import { APP_ROUTES, E2E_EMAIL, E2E_PASSWORD, SIGNED_IN_SKIP_REASON } from "./routes";
+import { APP_ROUTES, AUTH_FILE, E2E_EMAIL, E2E_PASSWORD, SIGNED_IN_SKIP_REASON } from "./routes";
 
-// Signed-in shell tests. They sign in through the real form with a real account, so they only
-// run when E2E_EMAIL / E2E_PASSWORD are set (there is no fake session).
+// Signed-in shell tests, using the session saved by auth.setup.ts (a real account; there is no
+// fake session). They only run when E2E_EMAIL / E2E_PASSWORD are set.
 test.skip(!E2E_EMAIL || !E2E_PASSWORD, SIGNED_IN_SKIP_REASON);
-
-test.beforeEach(async ({ page }) => {
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(E2E_EMAIL!);
-  await page.getByLabel("Password").fill(E2E_PASSWORD!);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page).toHaveURL(/\/home$/);
-});
+test.use({ storageState: AUTH_FILE });
 
 for (const route of APP_ROUTES) {
   test(`${route} renders with a heading, no horizontal overflow and no console errors`, async ({
@@ -37,14 +30,24 @@ for (const route of APP_ROUTES) {
   });
 }
 
-test("signed-in users skip the sign-in page and can sign out", async ({ page }) => {
-  await page.goto("/login");
-  await expect(page).toHaveURL(/\/home$/);
-  await page.getByTestId("account-menu").click();
-  await page.getByRole("menuitem", { name: "Sign out" }).click();
-  await expect(page).toHaveURL(/\/login$/);
-  await page.goto("/home");
-  await expect(page).toHaveURL(/\/login\?next=%2Fhome$/);
+test.describe("sign-out", () => {
+  // A fresh sign-in of its own, so signing out doesn't end the shared session other tests use.
+  test.use({ storageState: { cookies: [], origins: [] } });
+
+  test("signed-in users skip the sign-in page and can sign out", async ({ page }) => {
+    await page.goto("/login");
+    await page.getByLabel("Email").fill(E2E_EMAIL!);
+    await page.getByLabel("Password").fill(E2E_PASSWORD!);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await expect(page).toHaveURL(/\/home$/);
+    await page.goto("/login");
+    await expect(page).toHaveURL(/\/home$/);
+    await page.getByTestId("account-menu").click();
+    await page.getByRole("menuitem", { name: "Sign out" }).click();
+    await expect(page).toHaveURL(/\/login$/);
+    await page.goto("/home");
+    await expect(page).toHaveURL(/\/login\?next=%2Fhome$/);
+  });
 });
 
 test("unknown transaction ids show the in-app not-found state", async ({ page }) => {

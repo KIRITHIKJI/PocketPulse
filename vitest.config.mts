@@ -12,7 +12,7 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./tests/setup.ts"],
     include: ["tests/**/*.test.{ts,tsx}", "src/**/*.test.{ts,tsx}"],
-    exclude: ["e2e/**", "node_modules/**", "tests/db/**"],
+    exclude: ["e2e/**", "node_modules/**", "tests/db/**", "tests/live/**"],
     css: false,
   },
 });

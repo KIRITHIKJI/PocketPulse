@@ -36,3 +36,6 @@ export const E2E_EMAIL = process.env.E2E_EMAIL;
 export const E2E_PASSWORD = process.env.E2E_PASSWORD;
 export const SIGNED_IN_SKIP_REASON =
   "Set E2E_EMAIL and E2E_PASSWORD (a test account in your Supabase project) to run signed-in shell tests.";
+
+/** Saved signed-in session (gitignored), written by auth.setup.ts. */
+export const AUTH_FILE = "e2e/.auth/user.json";

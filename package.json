@@ -18,7 +18,8 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "check": "npm run lint && npm run typecheck && npm run test && npm run build",
-    "test:db": "vitest run --config vitest.db.config.mts"
+    "test:db": "vitest run --config vitest.db.config.mts",
+    "test:live": "vitest run --config vitest.live.config.mts"
   },
   "dependencies": {
     "@supabase/ssr": "0.12.7",

@@ -38,3 +38,6 @@ npm-debug.log*
 /.pgtest.log
 supabase/.temp/
 supabase/.branches/
+
+# Playwright signed-in session (contains auth cookies)
+/e2e/.auth/
