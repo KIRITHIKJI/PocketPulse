@@ -7,7 +7,9 @@
 --   point at rows owned by the same user — enforced by the database, not the UI.
 -- * Money is bigint paise (> 0 for amounts). Currency codes match src/domain/money.ts.
 -- * Records that history depends on (accounts, categories, goals, templates) are archived, not
---   deleted: their foreign keys are ON DELETE RESTRICT.
+--   deleted: their foreign keys are ON DELETE NO ACTION, so deleting a referenced row fails.
+--   (NO ACTION rather than RESTRICT: it is checked at the end of the statement, so deleting the
+--   auth user can cascade through all of that user's rows regardless of cascade order.)
 -- * Mirrors src/domain/schemas.ts; the domain layer stays the single source of the math.
 
 create domain public.currency_code as text
@@ -82,9 +84,9 @@ create table public.categories (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (owner_id, id),
-  foreign key (owner_id, parent_id) references public.categories (owner_id, id) on delete restrict,
+  foreign key (owner_id, parent_id) references public.categories (owner_id, id) on delete no action,
   foreign key (owner_id, merged_into_id) references public.categories (owner_id, id)
-    on delete restrict,
+    on delete no action,
   check (parent_id is null or parent_id <> id),
   check (merged_into_id is null or merged_into_id <> id)
 );
@@ -157,11 +159,11 @@ create table public.recurring_templates (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (owner_id, id),
-  foreign key (owner_id, account_id) references public.accounts (owner_id, id) on delete restrict,
+  foreign key (owner_id, account_id) references public.accounts (owner_id, id) on delete no action,
   foreign key (owner_id, category_id) references public.categories (owner_id, id)
-    on delete restrict,
+    on delete no action,
   foreign key (owner_id, subcategory_id) references public.categories (owner_id, id)
-    on delete restrict,
+    on delete no action,
   check (subcategory_id is null or category_id is not null),
   check (end_date is null or end_date >= anchor_date)
 );
@@ -241,21 +243,21 @@ create table public.transactions (
   constraint transactions_recurring_pair
     check ((recurring_template_id is null) = (recurring_occurrence is null)),
 
-  foreign key (owner_id, account_id) references public.accounts (owner_id, id) on delete restrict,
+  foreign key (owner_id, account_id) references public.accounts (owner_id, id) on delete no action,
   foreign key (owner_id, from_account_id) references public.accounts (owner_id, id)
-    on delete restrict,
+    on delete no action,
   foreign key (owner_id, to_account_id) references public.accounts (owner_id, id)
-    on delete restrict,
+    on delete no action,
   foreign key (owner_id, goal_id) references public.savings_goals (owner_id, id)
-    on delete restrict,
+    on delete no action,
   foreign key (owner_id, refund_of_id) references public.transactions (owner_id, id)
-    on delete restrict,
+    on delete no action,
   foreign key (owner_id, category_id) references public.categories (owner_id, id)
-    on delete restrict,
+    on delete no action,
   foreign key (owner_id, subcategory_id) references public.categories (owner_id, id)
-    on delete restrict,
+    on delete no action,
   foreign key (owner_id, recurring_template_id) references public.recurring_templates (owner_id, id)
-    on delete restrict
+    on delete no action
 );
 create index transactions_owner_time on public.transactions (owner_id, occurred_at desc)
   where deleted_at is null;
@@ -296,14 +298,14 @@ create table public.commitments (
   check (subcategory_id is null or category_id is not null),
   check ((recurring_template_id is null) = (recurring_occurrence is null)),
   foreign key (owner_id, category_id) references public.categories (owner_id, id)
-    on delete restrict,
+    on delete no action,
   foreign key (owner_id, subcategory_id) references public.categories (owner_id, id)
-    on delete restrict,
-  foreign key (owner_id, account_id) references public.accounts (owner_id, id) on delete restrict,
+    on delete no action,
+  foreign key (owner_id, account_id) references public.accounts (owner_id, id) on delete no action,
   foreign key (owner_id, recurring_template_id) references public.recurring_templates (owner_id, id)
-    on delete restrict,
+    on delete no action,
   foreign key (owner_id, paid_transaction_id) references public.transactions (owner_id, id)
-    on delete restrict
+    on delete no action
 );
 create index commitments_due on public.commitments (owner_id, due_date) where cancelled_at is null;
 
@@ -328,7 +330,7 @@ create table public.budgets (
   check (period <> 'custom' or (custom_from is not null and custom_to is not null)),
   check (custom_from is null or custom_to is null or custom_from <= custom_to),
   foreign key (owner_id, category_id) references public.categories (owner_id, id)
-    on delete restrict
+    on delete no action
 );
 create unique index budgets_one_active_per_scope
   on public.budgets (owner_id, coalesce(category_id, '00000000-0000-0000-0000-000000000000'), period)
@@ -353,10 +355,10 @@ create table public.quick_add_presets (
   updated_at timestamptz not null default now(),
   check (subcategory_id is null or category_id is not null),
   foreign key (owner_id, category_id) references public.categories (owner_id, id)
-    on delete restrict,
+    on delete no action,
   foreign key (owner_id, subcategory_id) references public.categories (owner_id, id)
-    on delete restrict,
-  foreign key (owner_id, account_id) references public.accounts (owner_id, id) on delete restrict
+    on delete no action,
+  foreign key (owner_id, account_id) references public.accounts (owner_id, id) on delete no action
 );
 create index quick_add_presets_owner on public.quick_add_presets (owner_id, sort_order);
 
@@ -435,13 +437,13 @@ create table public.xp_events (
   created_at timestamptz not null default now(),
   unique (owner_id, source_key),
   foreign key (owner_id, transaction_id) references public.transactions (owner_id, id)
-    on delete restrict
+    on delete no action
 );
 create index xp_events_owner on public.xp_events (owner_id, created_at);
 
 create table public.user_achievements (
   owner_id uuid not null references auth.users (id) on delete cascade,
-  achievement_code text not null references public.achievements (code) on delete restrict,
+  achievement_code text not null references public.achievements (code) on delete no action,
   unlocked_at timestamptz not null default now(),
   primary key (owner_id, achievement_code)
 );
@@ -449,7 +451,7 @@ create table public.user_achievements (
 create table public.user_quests (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid not null references auth.users (id) on delete cascade,
-  quest_code text not null references public.quests (code) on delete restrict,
+  quest_code text not null references public.quests (code) on delete no action,
   period_key text not null check (char_length(period_key) between 1 and 20), -- '2026-10-26', '2026-W43', 'once'
   progress integer not null default 0 check (progress >= 0),
   completed_at timestamptz,

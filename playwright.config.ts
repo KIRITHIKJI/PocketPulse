@@ -1,4 +1,9 @@
+import { existsSync } from "node:fs";
+
 import { defineConfig, devices } from "@playwright/test";
+
+// Signed-in e2e credentials (E2E_EMAIL, E2E_PASSWORD) live in this gitignored file.
+if (existsSync(".env.e2e.local")) process.loadEnvFile(".env.e2e.local");
 
 const PORT = Number(process.env.PORT ?? 3100);
 const baseURL = `http://localhost:${PORT}`;
