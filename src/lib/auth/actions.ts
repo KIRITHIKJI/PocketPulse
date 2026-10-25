@@ -3,6 +3,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { ensureDefaults } from "@/lib/auth/defaults";
 import { authErrorMessage } from "@/lib/auth/errors";
 import { HOME_PATH, safeNextPath } from "@/lib/auth/routes";
 import {
@@ -52,6 +53,7 @@ export async function signIn(_prev: AuthFormState, formData: FormData): Promise<
   if (!supabase) return NOT_CONFIGURED;
   const { error } = await supabase.auth.signInWithPassword(parsed.data);
   if (error) return { status: "error", message: authErrorMessage(error), email };
+  await ensureDefaults(supabase);
   redirect(safeNextPath(formData.get("next")));
 }
 
@@ -133,6 +135,7 @@ export async function updatePassword(
 
 export async function signOut() {
   const supabase = await createSupabaseServerClient();
-  if (supabase) await supabase.auth.signOut();
+  // Ends this device's session only; other signed-in devices stay signed in.
+  if (supabase) await supabase.auth.signOut({ scope: "local" });
   redirect("/login");
 }
