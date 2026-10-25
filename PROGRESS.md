@@ -3,7 +3,7 @@
 Durable project state. Update before a context reset or at the end of each work session.
 Source of truth for requirements: `PROJECT_SPEC.md`. Working rules: `CLAUDE.md`.
 
-_Last updated: 2026-10-25 — end of Phase 1._
+_Last updated: 2026-10-26 — end of Phase 2._
 
 ## Build stages
 
@@ -12,8 +12,8 @@ One integrated product. Stages are an internal build order only; nothing is defe
 | # | Stage | Status |
 | --- | --- | --- |
 | 1 | Foundation: tooling, design system, app shell, every route, shared states | ✅ Done |
-| 2 | Financial domain core: paise math, INR formatting, Asia/Kolkata period boundaries, ledger/balance invariants (income, expense, refund, transfer, allocation, release), opening/closing balances — pure + unit-tested | ⬜ Next |
-| 3 | Supabase: schema + migrations, RLS on every private table, cross-user denial tests, server data access, auth (register, login, logout, recovery) and route protection | ⬜ |
+| 2 | Financial domain core: paise math, INR formatting, Asia/Kolkata period boundaries, ledger/balance invariants (income, expense, refund, transfer, allocation, release), opening/closing balances, aggregation, budgets, savings, safe-to-spend — pure + unit-tested (`src/domain/`) | ✅ Done |
+| 3 | Supabase: schema + migrations, RLS on every private table, cross-user denial tests, server data access, auth (register, login, logout, recovery) and route protection | ⬜ Next |
 | 4 | Onboarding (balance + effective date, wallets, currency/timezone, allowance, budgets, goals, prefs), accounts, categories/subcategories management, profile/preferences sync | ⬜ |
 | 5 | Transactions: quick-add tiles, full form, repeat/frequent, history with search/filters, detail/edit/delete/undo (real `notFound()` + re-check 404 status, see Checks note), idempotency keys | ⬜ |
 | 6 | Natural-language parser + voice entry with draft review and atomic batch confirm | ⬜ |
@@ -32,14 +32,14 @@ Status key: ⬜ not started · 🟨 partial (detail given) · ✅ done and verif
 - ⬜ Quick-add presets/custom amounts work.
 - ⬜ Text and voice routes create reviewable drafts and confirm before save. — Routes `/add/text`, `/add/voice` exist.
 - ⬜ History, search, filters, editing, deletion and undo work. — Routes exist; `/transactions/[id]` and `/edit` return a genuine 404 until the ledger exists.
-- ⬜ Category/subcategory totals reconcile with transactions.
+- 🟨 Category/subcategory totals reconcile with transactions. — Domain `categoryBreakdown` is tested to reconcile category → subcategory → period total (refunds included); screens wire it in Phases 5/7.
 - ⬜ Insights point to real supporting records and handle sparse data honestly.
 - ⬜ Money Leak Detector groups and totals correctly.
-- ⬜ Budgets/alerts recalculate on changes.
-- ⬜ Savings allocations do not count as purchases or reduce consolidated total balance.
-- ⬜ Transfers between owned accounts do not inflate consolidated income/expense.
-- ⬜ Safe-to-spend and allowance predictions avoid double counting.
-- ⬜ Parent report balances and totals reconcile for the selected historical period.
+- 🟨 Budgets/alerts recalculate on changes. — Domain `evaluateBudget` (spent/remaining/%/pace/thresholds) and `newlyReachedThresholds` are tested, including edits/deletes; UI and alert delivery in Phase 8.
+- 🟨 Savings allocations do not count as purchases or reduce consolidated total balance. — Proven in domain tests (invariant 4); end-to-end in Phase 8.
+- 🟨 Transfers between owned accounts do not inflate consolidated income/expense. — Proven in domain tests (invariants 2–3); end-to-end in Phases 4–5.
+- 🟨 Safe-to-spend and allowance predictions avoid double counting. — Domain `calculateSafeToSpend` tested (invariant 5, paid-commitment linkage, goal purchase + release); UI in Phase 8.
+- 🟨 Parent report balances and totals reconcile for the selected historical period. — Domain `summarizePeriod` rebuilds opening/closing from the ledger and is tested to reconcile (invariant 10); report UI/exports in Phase 9.
 - ⬜ PDF/CSV exports are real and contain correct data.
 - ⬜ XP, streaks, quests and achievements work consistently.
 - 🟨 PWA works on supported devices; responsive app works on laptop/mobile. — Responsive shell done (sidebar ≥1024px; header + 5-tab bottom nav + "All sections" sheet + add FAB on mobile), Playwright runs at desktop and Pixel 7 sizes. No PWA manifest/service worker yet (Phase 10).
@@ -83,7 +83,27 @@ Every screen has a route; feature screens show a real empty state until their st
 - **Navigation:** one config (`src/lib/navigation.ts`) drives the sidebar, bottom tabs, "All sections" sheet and section tabs. Longest-prefix matching on segment boundaries picks the active item. Mobile tabs: Home, Activity (`/transactions`), Insights, Plan (`/budgets` + goals/safe-to-spend/survival), Reports.
 - **Server/client boundary:** server pages pass serialisable keys (e.g. `SectionTabs section="plan"`), not icon components, to client components.
 - **Supabase keys:** the new key scheme — `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (`sb_publishable_…`) and server-only `SUPABASE_SECRET_KEY` (`sb_secret_…`), matching the user's `.env.local`. The legacy anon key works as a fallback. `src/lib/env.ts` reads only public values.
-- **Money (decided for Phase 2):** integer paise everywhere, `bigint`/`int8` in Postgres, positive amounts with direction from transaction type, one domain module used by all screens and reports.
+- **Money:** integer paise everywhere (`int8` in Postgres; JS `number` limited to safe integers, checked on every add/subtract). Amounts are positive; the transaction type gives direction. Division only goes through `divRound` (BigInt, explicit half-up/floor/ceil). Percentages are integer basis points. Formatting is string arithmetic on the integer (Indian grouping for INR), never `Intl` on a float. Amount input with more than 2 decimals is **rejected**, not rounded. Max single amount ₹9,99,99,99,999.99.
+- **Domain layer (`src/domain/`, Phase 2):** pure TypeScript + Zod, no React/Next/Supabase imports. ESLint enforces this for `src/domain/**` (no framework or `@/` imports, no `parseFloat`, no `toFixed`). Modules: `money`, `time`, `schemas`, `ledger`, `balances`, `aggregation`, `budgets`, `savings`, `safe-to-spend`, re-exported from `@/domain`. **Every later screen, chart, budget, goal, forecast and report must call these functions; none may reimplement the math.**
+- **Time:** instants are epoch ms; calendar days are `LocalDate` "YYYY-MM-DD" in the user's timezone (default Asia/Kolkata; any IANA zone works, DST-safe). All periods are half-open `[start, end)` and built by `resolvePeriod` (today, yesterday, this/previous week, this/previous month, custom, all-time). Weeks start Monday by default (configurable). `previousPeriod` gives the comparable earlier period.
+- **Transactions:** `income`, `expense`, `refund`, `transfer`, `allocation`, `allocation_release` (Zod discriminated union). The client-generated UUID `id` is the idempotency key. `deletedAt` (soft delete; undo = restore) and `voidedAt` (audit) both exclude a row from every calculation. Income, expense and refund need an `accountId`: onboarding will create a default wallet and preselect it, so picking an account stays optional for the user while balances stay well-defined.
+- **Refund convention (the only one):** a refund is a separate `refund` transaction with a positive amount, linked to the original expense by `refundOfId`. It adds to the account balance. It is **never income** and never a negative expense row. Net spending = expenses − refunds. The refund reduces spending in the original expense's category/subcategory (unless it names its own), and counts in the period of the refund's own date. Refunds for one expense may not exceed it or predate it (`validateLedger`). Reports show refunds as their own line.
+- **Opening balance:** per account, at local midnight of `openingBalanceDate`. Ledger rows dated earlier count as already included, so balances ignore them (`validateLedger` flags them). For dates before an account's tracking started, historical balances list it as untracked instead of guessing. Period summaries report `newlyTrackedOpeningPaise`, so closing = opening + newly tracked + income + refunds − expenses always reconciles.
+- **Budgets** are targets, not reserved cash. Spent = net spending. Pace projection waits until 10 % of the period has passed. Suggested limit = median of up to 3 complete previous months, rounded up to ₹50; no suggestion without a full month of history.
+- **Savings:** earmarked = allocations − releases per goal, including paused/completed/archived goals until the money is released. Buying the goal item = a real expense + a release sized by `releaseForGoalPurchase`.
+- **Safe-to-spend:** balance now − all earmarks − unpaid, uncancelled commitments due on or before the horizon (default: next income date) − optional reserve. A commitment counts as paid only while its `paidTransactionId` points at an active transaction. A missing or past next-income date → `not_enough_info`, with null daily/weekly limits. Recent pace = average daily net spending over up to 14 complete days, never before tracking started. Every result returns `inputs`, `explanation[]` and `warnings[]`.
+- **Mutations:** `applyMutation` (create/update/delete/restore) is idempotent. A replayed create is `duplicate`; the same id with different content, or a stale `expectedUpdatedAt`, is `conflict`, never a silent overwrite. Phase 5 server actions and Phase 10 sync use the same rules.
+
+## Checks run (Phase 2, 2026-10-26)
+
+| Command | Result |
+| --- | --- |
+| `npm install --save-exact zod@4.6.5` | OK (only new dependency) |
+| `npm run lint` | Pass, 0 problems. Domain guard verified on a probe file: a `react` import, `parseFloat` and `toFixed` are each reported as errors |
+| `npm run typecheck` | Pass |
+| `npm test` | Pass, 10 files / 216 tests (152 new in `tests/unit/domain/`: money, time, ledger/balances, aggregation, budgets, savings/safe-to-spend, plus `invariants.test.ts` with one block per spec §7 invariant) |
+| `npm run build` | Pass, same 30 routes |
+| `npm run test:e2e` | Not re-run: Phase 2 changes no UI or routes |
 
 ## Checks run (Phase 1, 2026-10-25)
 
@@ -106,10 +126,10 @@ Note: because of the `(app)` loading boundary, Next.js streams `notFound()` page
 - npm's allow-scripts warns that `unrs-resolver`'s postinstall hasn't run; lint works without it (it ships prebuilt binaries).
 - Git: `main` tracks `origin` (https://github.com/KIRITHIKJI/PocketPulse.git). Work is committed and pushed at the end of every phase; Phase 1 = `93ff182`.
 
-## Next concrete tasks (Phase 2)
+## Next concrete tasks (Phase 3)
 
-1. `src/domain/money.ts`: paise type, parse "₹1,25,000.50" / "40" → paise, safe add/sub/sum, `formatINR` with Indian grouping (`Intl.NumberFormat("en-IN")`), compact form; boundary tests (0, 1 paisa, ₹99,99,999.99, negative display, rounding of user input to whole paise).
-2. `src/domain/time.ts`: Asia/Kolkata period boundaries (today, week, month, previous, custom, all-time) as half-open UTC instants; DST-free but timezone-configurable; tests around midnight IST and month ends.
-3. `src/domain/ledger.ts`: transaction model (income, expense, refund linked to an expense, transfer, allocation, allocation_release; voided state), per-account and consolidated balances, period income/spending/refunds/net, historical opening/closing balance from opening balance + effective date. Invariant tests from spec §7.
-4. `src/domain/savings.ts` + `safe-to-spend.ts` skeleton calculations with no double subtraction of paid commitments; tests.
-5. Write down the refund convention (refunds reduce net spending in their category, shown as distinct lines) in this file.
+1. Add `@supabase/supabase-js` + `@supabase/ssr` (pinned, compatibility-checked), with server and browser clients. `SUPABASE_SECRET_KEY` is only ever imported from server-only modules.
+2. SQL migrations mirroring `src/domain/schemas.ts`: profiles/preferences, accounts (opening balance + date), categories/subcategories, transactions (`amount_paise int8 check > 0`, type enum, per-type check constraints for account/transfer/goal/refund links, `deleted_at`, `voided_at`, client UUID primary key for idempotency), budgets, savings goals, commitments, recurring templates, notification prefs, gamification tables. FKs, indexes, and `owner_id` on every row.
+3. RLS on every private table (`owner_id = auth.uid()`), plus tests proving cross-user reads and writes are denied.
+4. Auth: real register, login, logout (account menu) and forgot/reset password forms; middleware route protection (signed-in → `/home`, signed-out app routes → `/login`).
+5. A server data-access layer that parses rows with the domain Zod schemas and feeds the domain functions. No money math in queries or components.
