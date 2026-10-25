@@ -3,7 +3,7 @@
 Durable project state. Update before a context reset or at the end of each work session.
 Source of truth for requirements: `PROJECT_SPEC.md`. Working rules: `CLAUDE.md`.
 
-_Last updated: 2026-10-26 — end of Phase 3._
+_Last updated: 2026-10-26 — end of Phase 3a (hosted project verified live)._
 
 ## Build stages
 
@@ -13,7 +13,7 @@ One integrated product. Stages are an internal build order only; nothing is defe
 | --- | --- | --- |
 | 1 | Foundation: tooling, design system, app shell, every route, shared states | ✅ Done |
 | 2 | Financial domain core: paise math, INR formatting, Asia/Kolkata period boundaries, ledger/balance invariants (income, expense, refund, transfer, allocation, release), opening/closing balances, aggregation, budgets, savings, safe-to-spend — pure + unit-tested (`src/domain/`) | ✅ Done |
-| 3 | Supabase: schema + migrations, RLS on every private table, cross-user denial tests, server data access, auth (register, login, logout, recovery) and route protection | ✅ Done — migrations, RLS, RPCs and DB tests verified on local PostgreSQL 18; **not yet applied to the hosted project** (needs your approval, see blockers) |
+| 3 | Supabase: schema + migrations, RLS on every private table, cross-user denial tests, server data access, auth (register, login, logout, recovery) and route protection | ✅ Done — applied to the hosted project (`qzmqvytrekenzciasvph`) and verified live in Phase 3a: registration, login, logout, defaults, signed-in e2e, cross-user RLS, account-deletion cascade. The live password-reset email is still pending (see blockers) |
 | 4 | Onboarding (balance + effective date, wallets, currency/timezone, allowance, budgets, goals, prefs), accounts, categories/subcategories management, profile/preferences sync | ⬜ Next |
 | 5 | Transactions: quick-add tiles, full form, repeat/frequent, history with search/filters, detail/edit/delete/undo (real `notFound()` + re-check 404 status, see Checks note), idempotency keys | ⬜ |
 | 6 | Natural-language parser + voice entry with draft review and atomic batch confirm | ⬜ |
@@ -26,8 +26,8 @@ One integrated product. Stages are an internal build order only; nothing is defe
 
 Status key: ⬜ not started · 🟨 partial (detail given) · ✅ done and verified.
 
-- 🟨 Registration, login and recovery work with real configured auth. — Real forms + server actions for register, login, logout (account menu), forgot/reset password, `/auth/confirm` (PKCE `code` and `token_hash`), and `src/proxy.ts` route protection. Validation, redirects and invalid-link handling are e2e-tested. **Not yet verified against the hosted project:** no account has been created or signed in, because that needs migrations applied and your approval.
-- 🟨 All user data is private and protected by tested access rules. — RLS on all 20 public tables, owner-only. `tests/db/rls.test.ts` proves cross-user read/write/re-own denial, anon denial, no hard deletes, no client writes to rewards — on PostgreSQL 18 with a Supabase auth shim. Still to verify on the hosted project after `db push`.
+- 🟨 Registration, login and recovery work with real configured auth. — **Live:** registration through `/register` (2 new accounts, signed in straight to `/onboarding`), login, the signed-in redirect away from `/login`, and logout via the account menu (signed-in e2e, 129 passed). **Recovery:** the forgot/reset forms, `/auth/confirm` (PKCE `code` + `token_hash`), invalid-link handling and the no-session reset page are built and e2e-tested, but the **live reset email is not yet tested** (see blockers). Live sign-up ran with "Confirm email" temporarily off, so the confirmation-email path is built and tested locally only.
+- ✅ All user data is private and protected by tested access rules. — RLS on all 20 tables, owner-only. Proven locally (`tests/db`, 34 tests on PostgreSQL 18) **and live** (`npm run test:live`, publishable key only, 6/6): user B can't read, update, re-own, delete, soft-delete, link to or reuse the ids of user A's rows, and anonymous callers get `42501` on tables and RPCs.
 - ⬜ Adding income and expense updates correct balance immediately.
 - ⬜ Quick-add presets/custom amounts work.
 - ⬜ Text and voice routes create reviewable drafts and confirm before save. — Routes `/add/text`, `/add/voice` exist.
@@ -47,7 +47,7 @@ Status key: ⬜ not started · 🟨 partial (detail given) · ✅ done and verif
 - 🟨 Loading, empty, error, permission-denied and offline states are handled. — Shared `StatePanel` (empty/error/offline/denied), `PageSkeleton`, route `loading.tsx`, `error.tsx`, in-shell and global `not-found.tsx`, `global-error.tsx`, offline banner. Each feature must still wire these to its real data states.
 - ⬜ No required action is a placeholder or fake success. — Phase 1 has no fake actions: every button/link navigates or changes a real preference. Feature screens are empty states until built.
 - 🟨 Lint/typecheck/tests/production build are run and failures are addressed. — All pass for Phase 3 (see Checks).
-- 🟨 Setup documentation accurately describes what needs a real Supabase project/credentials. — README › Setup covers project creation, env vars, auth URL configuration and email templates, migrations (`supabase db push`), DB tests and signed-in e2e. To be re-checked once the hosted project is set up.
+- 🟨 Setup documentation accurately describes what needs a real Supabase project/credentials. — README › Setup was followed for the hosted project: init/login/link/db push (login/link/db push must run in an interactive terminal), URL configuration, token-hash email templates, `.env.e2e.local`. Re-check at final delivery.
 
 ## Routes (spec §5)
 
@@ -121,11 +121,55 @@ Every screen has a route; feature screens show a real empty state until their st
   - `NEXT_PUBLIC_SITE_URL` builds email-link URLs, falling back to the request host.
 - **Row → domain mapping:** `src/lib/data/mappers.ts` converts DB rows (PostgREST numbers or node-postgres int8 strings) into Zod-validated domain records. All math stays in `@/domain`. The DB tests feed real rows through it into `consolidatedBalanceAt` / `totalEarmarked`.
 
+### Phase 9 notes: account deletion (recorded in Phase 3a)
+
+Clients can't hard-delete transactions (no grant or policy), so account deletion runs **server-side**:
+
+1. `/settings/data` → "Delete account" shows the consequences (all records, permanently) and offers the data export first. The user types a confirmation phrase and re-enters their password, which the server checks with `signInWithPassword`, so a stolen session alone can't delete the account.
+2. A server action (never client code) calls `createSupabaseAdminClient().auth.admin.deleteUser(userId)` from `src/lib/supabase/admin.ts` (secret key, `server-only`). `userId` comes from the verified session (`getCurrentUser()`), never from the form. Hard delete, not `shouldSoftDelete`.
+3. Postgres removes everything in that one statement: every `owner_id` FK is `ON DELETE CASCADE` to `auth.users`, and the same-owner links are `NO ACTION` (checked at end of statement), so the refunds → expenses → accounts graph cascades in any order. Verified locally (`tests/db/account-deletion.test.ts`) and live (pp-a/pp-b, 2026-10-26).
+4. Then sign out locally and clear cookies. Existing access tokens stay valid until they expire (≤ 1 h), but the user's rows and refresh tokens are gone.
+5. If goal images are stored in Supabase Storage (Phase 8), delete the user's objects **before** `deleteUser`; Storage isn't covered by the database cascade.
+6. Log only that a deletion happened, never the user's data or email.
+
 ### Phase 4 notes (recorded from the Phase 2 review)
 
 - Onboarding must **auto-create a default "Cash" wallet** (`accounts.is_default = true`, one per user, enforced by a unique index) together with the opening balance and its effective date. It is pre-selected in every form that needs an account (quick add, full form, batch, recurring, commitments).
 - When a user logs a transaction dated **before an account's opening balance date**, the UI must explain why the balance didn't change: it is treated as already included in the opening balance. The domain's `validateLedger` reports it as `before_opening_date`; the database deliberately allows it, so history can still be recorded.
 - After sign-up the user lands on `/onboarding`. Today it shows the steps and "Go to Home"; Phase 4 replaces it with the real wizard.
+
+## Verification status: live vs local (Phase 3a, 2026-10-26)
+
+Hosted project `qzmqvytrekenzciasvph`. Live checks use the publishable key only, except the account-deletion cleanup, which used the secret key from a local server-side script.
+
+| Area | Live (hosted project) | Locally only |
+| --- | --- | --- |
+| Migrations 0100–0500 | ✅ applied by `supabase db push` (your terminal) | ✅ PG 18 |
+| Migration 0600 (backfill defaults) | ❓ **push output not received**: the message contained the literal `<paste output here>`. Confirm with `npx supabase@2.120.0 migration list` | ✅ PG 18 (`tests/db/defaults.test.ts`) |
+| Sign-up trigger seeds defaults | ✅ 2 new accounts via `/register`: profile with display name, 52 categories (8 expense top-level), 12 tiles without amounts | ✅ |
+| Defaults for users created before the trigger | ✅ dashboard test user went from 0 rows to profile + 52 categories + 12 tiles + prefs + streak, via the sign-in safety net (`ensure_my_defaults()`) | ✅ migration 0600 + RPC |
+| Login, signed-in redirect, logout | ✅ signed-in e2e, desktop + Pixel 7 | ✅ |
+| All 22 signed-in routes render (no console errors / overflow) | ✅ 129 passed, 0 skipped | — |
+| Cross-user RLS, anon denial | ✅ `npm run test:live` 6/6 | ✅ `tests/db/rls.test.ts` |
+| Idempotent RPC replay | ✅ `create_transaction` replay → `duplicate` | ✅ all RPCs |
+| Account deletion cascade | ✅ `auth.admin.deleteUser` on pp-a/pp-b: every owned table → 0 rows (incl. pp-a's soft-deleted expense, which clients can't hard-delete); sign-in then fails; dashboard user unchanged | ✅ `tests/db/account-deletion.test.ts` |
+| Sign-up with "Confirm email" ON (email → `/auth/confirm`) | ⏳ not tested live (built-in email quota was exhausted) | ✅ code path + invalid-link e2e |
+| Forgot / reset password email | ⏳ **pending**: the dashboard test user's address belongs to someone else, so no reset email was sent | ✅ forms, validation, no-session page, invalid link |
+| Transfers, refunds, goal money, batch rollback | — (no UI yet) | ✅ PG 18 |
+
+## Checks run (Phase 3a, 2026-10-26)
+
+| Command / action | Result |
+| --- | --- |
+| `npx supabase@2.120.0 init` (agent) | OK: `supabase/config.toml`, `supabase/.gitignore` |
+| `npx supabase@2.120.0 login` (agent) | Failed: `LoginMissingTokenError`, the CLI needs an interactive terminal. You ran `login`, `link` and `db push` yourself; the push applied 0100–0500 |
+| Pre-push fix | Same-owner FKs `ON DELETE RESTRICT` → `NO ACTION`, so deleting an auth user cascades regardless of trigger order. Deleting a referenced account/category/goal is still refused (`23503`) |
+| `npm run test:db` (local PG 18) | Pass, 4 files / 34 tests (adds account deletion + backfill) |
+| `npm test` / `npm run lint` / typecheck / format / `npm run build` | Pass (241 unit tests) |
+| `npm run test:e2e` against the hosted project | **129 passed, 0 skipped** (1 setup sign-in + 64 × desktop + 64 × Pixel 7) |
+| Registration via `/register` (production build, port 3000) | 2 accounts (`test2+pp-a@gmail.com`, `test2+pp-b@gmail.com`) → `/onboarding`. "Confirm email" was off; no email sent |
+| `npm run test:live` | 6 passed. The first run had 1 failure from a wrong expectation: reusing A's id returns `conflict/id_in_use` with nothing written, not an FK error. Fixed the test |
+| Cleanup | pp-a and pp-b **deleted** with `auth.admin.deleteUser` (secret key, local script). Rows verified 0; their credentials removed from `.env.e2e.local` |
 
 ## Checks run (Phase 3, 2026-10-26)
 
@@ -171,15 +215,20 @@ Note: because of the `(app)` loading boundary, Next.js streams `notFound()` page
 
 ## Known blockers / notes
 
-- **Hosted Supabase not yet set up (needs your approval).** `.env.local` has the URL, publishable key and secret key (values never printed). The migrations have **not** been applied to that project, and no account has been created there. Next steps, each run only after you approve: `npx supabase@2.120.0 init`, `login`, `link --project-ref <ref>`, `db push`. Then set Auth → URL Configuration and, optionally, the token-hash email templates (README › Setup). Then sign up once, and run the signed-in e2e suite with `E2E_EMAIL`/`E2E_PASSWORD`.
-- Docker isn't installed, so `supabase start` (local stack) isn't available. DB tests ran on a local PostgreSQL 18 with `tests/db/supabase-shim.sql` standing in for Supabase's `auth` schema and roles. Hosted-Supabase specifics the shim can't prove (GoTrue, PostgREST, Supabase default grants): verify with a real sign-up after `db push`.
+- ⚠️ **Turn "Confirm email" back ON** (Authentication → Sign In / Providers → Email → Save). It was turned off temporarily for the live registration test on 2026-10-26.
+- ⚠️ **Migration 0600 push unconfirmed.** Run `npx supabase@2.120.0 migration list` (or `db push`, which applies it if it's missing) in your terminal. The sign-in safety net already repaired the only legacy user, so nothing is broken meanwhile.
+- ⚠️ **The dashboard test user's address isn't yours** (`E2E_EMAIL` belongs to someone else). Any auth email to it (confirmation, reset, email change) would reach a stranger. Before turning "Confirm email" back on or testing reset, replace it with a user on an address you control, and update `.env.e2e.local`.
+- ⏳ **Remind at the start of Phase 9: verify the live password-reset email.** Status: built and tested locally; live email test pending. Needs a test user whose address you can open and that Supabase's built-in email will deliver to (a team member's address, or custom SMTP), plus available hourly email quota.
+- Supabase's built-in email service only delivers to team-member addresses and allows a few emails per hour. Configure custom SMTP (Authentication → Emails → SMTP) before real users sign up.
+- The Supabase CLI's `login`, `link` and `db push` need an interactive terminal (or `SUPABASE_ACCESS_TOKEN` + `SUPABASE_DB_PASSWORD`), so they run in your terminal, not the agent's.
+- Docker isn't installed, so `supabase start` isn't available. DB tests run on local PostgreSQL 18 with `tests/db/supabase-shim.sql`; hosted-project behaviour is covered by the live checks above.
 - The e2e "invalid email link" test sends one bogus `verifyOtp` request to the configured project (it fails by design and creates nothing).
 - npm's allow-scripts warns that `unrs-resolver`'s postinstall hasn't run; lint works without it (it ships prebuilt binaries).
 - Git: `main` tracks `origin` (https://github.com/KIRITHIKJI/PocketPulse.git). Work is committed and pushed at the end of every phase; Phase 1 = `93ff182`, Phase 2 = `08288e7`.
 
 ## Next concrete tasks
 
-Before Phase 4 (needs the user): approve and run the hosted Supabase setup listed under blockers, then do one real sign-up, sign-in, sign-out and password reset.
+Before Phase 4 (needs the user): turn "Confirm email" back on, confirm migration 0600 with `migration list`, and replace the dashboard test user with an address you control.
 
 Phase 4:
 

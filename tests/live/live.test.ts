@@ -214,7 +214,8 @@ describe.skipIf(!ready)("live Supabase project", () => {
         account_id: accountId,
       },
     });
-    expect(reuseId.error?.code).toBe("23503");
+    expect(reuseId.error).toBeNull();
+    expect(reuseId.data).toEqual({ status: "conflict", reason: "id_in_use" }); // nothing written, nothing revealed
 
     // A's row is unchanged.
     const mine = await a.sb

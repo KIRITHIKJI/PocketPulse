@@ -102,11 +102,22 @@ POCKETPULSE_TEST_DB_URL=postgres://postgres:postgres@127.0.0.1:54322/postgres np
 
 Without `POCKETPULSE_TEST_DB_URL` the database tests are reported as skipped, not passed.
 
+### Live project checks
+
+`npm run test:live` checks the configured project with the **publishable key only**: that each
+of two real accounts got its defaults at sign-up, and that RLS stops one from reading or changing
+the other's rows. It needs `E2E_USER_A_EMAIL`, `E2E_USER_A_PASSWORD`, `E2E_USER_B_EMAIL` and
+`E2E_USER_B_PASSWORD` in the gitignored `.env.e2e.local`. It writes a test wallet and one
+soft-deleted expense to user A per run, so use throwaway accounts. Without them it is skipped.
+
 ### Signed-in browser tests
 
 `npm run test:e2e` always runs the signed-out suite (redirects, auth forms, validation). The
-signed-in shell suite needs a real test account in a project with the migrations applied:
-`E2E_EMAIL=… E2E_PASSWORD=… npm run test:e2e`. Without them it is skipped.
+signed-in shell suite needs a real test account in a project with the migrations applied. Put
+`E2E_EMAIL=…` and `E2E_PASSWORD=…` (plain values, no quotes or brackets) in `.env.e2e.local`;
+the Playwright config loads it. The suite signs in once and reuses the session
+(`e2e/.auth/`, gitignored) to stay under Supabase's sign-in rate limits. Without the
+credentials it is skipped.
 
 ## Scripts
 
@@ -118,6 +129,7 @@ signed-in shell suite needs a real test account in a project with the migrations
 | `npm run typecheck` | Generates Next route types, then `tsc --noEmit` |
 | `npm test` | Vitest unit/integration tests (jsdom) |
 | `npm run test:db` | Schema/RLS/RPC tests on a real Postgres (needs `POCKETPULSE_TEST_DB_URL`) |
+| `npm run test:live` | Defaults + cross-user RLS against the configured Supabase project (needs two test accounts) |
 | `npm run test:e2e` | Playwright on desktop Chrome + Pixel 7 viewports (builds and serves on port 3100) |
 | `npm run format` | Prettier (with Tailwind class sorting) |
 | `npm run check` | lint + typecheck + test + build |
