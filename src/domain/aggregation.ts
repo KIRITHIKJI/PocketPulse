@@ -4,7 +4,15 @@
  * in schemas.ts: they reduce net spending in the original expense's category, in the period
  * the refund happened. Every group carries the ids of the transactions behind it (drill-down).
  */
-import { addPaise, divRound, ratioBasisPoints, subtractPaise, sumPaise, type Paise } from "./money";
+import {
+  addPaise,
+  divRound,
+  formatINR,
+  ratioBasisPoints,
+  subtractPaise,
+  sumPaise,
+  type Paise,
+} from "./money";
 import { indexById, isActive, occurredAtMs, refundCategory } from "./ledger";
 import type { ExpenseTransaction, RefundTransaction, Transaction } from "./schemas";
 import {
@@ -35,6 +43,8 @@ export interface SpendingEntry {
   subcategoryId: string | null;
   /** +amount for an expense, −amount for a refund. */
   signedPaise: Paise;
+  /** A refund whose original purchase happened before this period started. */
+  refundOfEarlierPurchase: boolean;
 }
 
 /** Active expenses and refunds in the period, each resolved to the category it affects. */
@@ -48,9 +58,19 @@ export function spendingEntries(ledger: readonly Transaction[], period: Period):
         categoryId: tx.categoryId,
         subcategoryId: tx.subcategoryId,
         signedPaise: tx.amountPaise,
+        refundOfEarlierPurchase: false,
       });
     } else if (tx.type === "refund") {
-      entries.push({ tx, ...refundCategory(tx, byId), signedPaise: -tx.amountPaise });
+      const original = byId.get(tx.refundOfId);
+      entries.push({
+        tx,
+        ...refundCategory(tx, byId),
+        signedPaise: -tx.amountPaise,
+        refundOfEarlierPurchase:
+          original !== undefined &&
+          period.startMs !== null &&
+          occurredAtMs(original) < period.startMs,
+      });
     }
   }
   return entries;
@@ -99,14 +119,23 @@ export interface SpendingGroup {
   key: string;
   grossPaise: Paise;
   refundsPaise: Paise;
+  /**
+   * gross − refunds. Can be negative when refunds in this period are for purchases made in an
+   * earlier period (see `earlierPurchaseRefundsPaise` and `spendingDisplay`).
+   */
   netPaise: Paise;
+  /** Part of `refundsPaise` refunding purchases made before this period. */
+  earlierPurchaseRefundsPaise: Paise;
   /** Number of expenses (refunds aren't purchases). */
   count: number;
   refundCount: number;
   /** Average/median purchase, from expense amounts. */
   averagePaise: Paise | null;
   medianPaise: Paise | null;
-  /** Share of total net spending in basis points; null if total net spending isn't positive. */
+  /**
+   * Share of total net spending in basis points; null if the total isn't positive or this
+   * group's net is negative (a negative share is meaningless).
+   */
   shareBp: number | null;
   transactionIds: string[];
 }
@@ -130,21 +159,52 @@ function buildGroup(
   totalNet: Paise,
 ): SpendingGroup {
   const purchases = entries.filter((e) => e.tx.type === "expense").map((e) => e.signedPaise);
-  const refunds = entries.filter((e) => e.tx.type === "refund").map((e) => -e.signedPaise);
+  const refundEntries = entries.filter((e) => e.tx.type === "refund");
   const stats = amountStats(purchases);
-  const refundsPaise = sumPaise(refunds);
+  const refundsPaise = sumPaise(refundEntries.map((e) => -e.signedPaise));
   const netPaise = subtractPaise(stats.totalPaise, refundsPaise);
   return {
     key,
     grossPaise: stats.totalPaise,
     refundsPaise,
     netPaise,
+    earlierPurchaseRefundsPaise: sumPaise(
+      refundEntries.filter((e) => e.refundOfEarlierPurchase).map((e) => -e.signedPaise),
+    ),
     count: stats.count,
-    refundCount: refunds.length,
+    refundCount: refundEntries.length,
     averagePaise: stats.averagePaise,
     medianPaise: stats.medianPaise,
-    shareBp: ratioBasisPoints(netPaise, totalNet),
+    shareBp: netPaise < 0 ? null : ratioBasisPoints(netPaise, totalNet),
     transactionIds: entries.map((e) => e.tx.id),
+  };
+}
+
+export interface SpendingDisplay {
+  /** Value for bars/rings: net spending floored at zero — charts never draw a negative bar. */
+  chartPaise: Paise;
+  /** When net is negative: the amount by which refunds exceeded this period's purchases. */
+  netRefundPaise: Paise;
+  /** Plain-language note to show beside the zero bar; null when net spending isn't negative. */
+  note: string | null;
+}
+
+/**
+ * How charts and reports show a group's spending. Net spending below zero happens when a refund
+ * lands in a later period than its purchase; it is drawn as a zero bar with an explicit note,
+ * and the refund stays visible as its own line — never a silent negative bar.
+ */
+export function spendingDisplay(group: SpendingGroup): SpendingDisplay {
+  if (group.netPaise >= 0) return { chartPaise: group.netPaise, netRefundPaise: 0, note: null };
+  const netRefundPaise = -group.netPaise;
+  const fromEarlier =
+    group.earlierPurchaseRefundsPaise > 0
+      ? ` (${formatINR(group.earlierPurchaseRefundsPaise)} of it refunds purchases from an earlier period)`
+      : "";
+  return {
+    chartPaise: 0,
+    netRefundPaise,
+    note: `Refunds exceeded purchases here by ${formatINR(netRefundPaise)}${fromEarlier}.`,
   };
 }
 

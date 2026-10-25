@@ -36,13 +36,12 @@ export default function OnboardingPage() {
         ))}
       </ol>
       <StatePanel
-        variant="denied"
         icon={ListChecks}
-        title="Sign in to start setup"
-        description="Your answers are saved to your account, so setup begins after you sign in."
+        title="Your account is ready"
+        description="Default categories and quick-add tiles are already set up for you. PocketPulse only reports what you record — nothing is pre-filled."
         actions={
           <Button asChild>
-            <Link href="/login">Sign in</Link>
+            <Link href="/home">Go to Home</Link>
           </Button>
         }
       />

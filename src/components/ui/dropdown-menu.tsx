@@ -65,6 +65,21 @@ function DropdownMenuRadioItem({
   );
 }
 
+function DropdownMenuItem({
+  className,
+  ...props
+}: React.ComponentProps<typeof DropdownMenuPrimitive.Item>) {
+  return (
+    <DropdownMenuPrimitive.Item
+      className={cn(
+        "relative flex min-h-10 cursor-default items-center gap-2 rounded-lg px-2 py-1.5 text-sm outline-none select-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
 function DropdownMenuSeparator({
   className,
   ...props
@@ -81,6 +96,7 @@ export {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
