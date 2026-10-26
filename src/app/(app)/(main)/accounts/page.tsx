@@ -24,6 +24,7 @@ import {
 } from "@/lib/data/queries";
 import { requestNow, requireSession } from "@/lib/data/session";
 import { formatLocalDate } from "@/lib/format";
+import { entriesBeforeOpeningText } from "@/lib/opening-note";
 import { ACCOUNT_KIND_LABELS } from "@/lib/validation/accounts";
 
 export const metadata: Metadata = { title: "Wallets" };
@@ -161,10 +162,7 @@ function AccountCard({
         {beforeOpening > 0 && (
           <p className="flex gap-2 rounded-lg bg-warning/10 p-2.5 text-xs text-foreground">
             <Info className="mt-0.5 size-3.5 shrink-0 text-warning" aria-hidden="true" />
-            {beforeOpening} {beforeOpening === 1 ? "entry is" : "entries are"} dated before the
-            opening date, so {beforeOpening === 1 ? "it’s" : "they’re"} treated as already included
-            in the opening balance and {beforeOpening === 1 ? "doesn’t" : "don’t"} change it. Move
-            the opening date earlier if you want {beforeOpening === 1 ? "it" : "them"} counted.
+            {entriesBeforeOpeningText(beforeOpening)}
           </p>
         )}
         <div className="mt-auto flex flex-wrap items-center gap-1 border-t pt-2">

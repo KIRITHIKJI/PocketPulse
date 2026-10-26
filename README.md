@@ -121,6 +121,14 @@ workers for the same reason. Tests that change the test profile (theme, motion, 
 wallets) run on the desktop project only and restore defaults; runs leave archived "E2E …"
 wallets/categories in the test account. Without the credentials it is skipped.
 
+`e2e/transactions.spec.ts` records real money entries and asserts exact balance changes, so it
+runs in its own projects (`ledger-desktop`, then `ledger-mobile`), never in parallel with each
+other. Every entry it creates is undone or deleted again (soft delete, like a user delete), so
+the account's totals end where they started. Wallets created by the Phase 4 test start tracking
+tomorrow, so they never shift today's totals. The cross-user 404 check also needs a second account:
+add `E2E_USER_B_EMAIL` / `E2E_USER_B_PASSWORD` (the same variables `test:live` uses); without
+them that one test is skipped.
+
 ## Scripts
 
 | Command | What it does |

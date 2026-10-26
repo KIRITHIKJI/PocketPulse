@@ -4,11 +4,9 @@ import * as React from "react";
 
 import { SelectField } from "@/components/forms/form-parts";
 
-export type PickerNode = {
-  id: string;
-  name: string;
-  subcategories: { id: string; name: string }[];
-};
+import type { PickerNode } from "@/lib/picker-tree";
+
+export type { PickerNode };
 
 const encode = (categoryId: string, subcategoryId: string | null) =>
   `${categoryId}|${subcategoryId ?? ""}`;
@@ -27,6 +25,7 @@ export function CategoryPicker({
   hint,
   placeholder = "Choose a category",
   onChange,
+  value: controlled,
 }: {
   id: string;
   label: string;
@@ -37,10 +36,18 @@ export function CategoryPicker({
   hint?: React.ReactNode;
   placeholder?: string;
   onChange?: (choice: { categoryId: string; subcategoryId: string | null } | null) => void;
+  /** Pass to control the choice from outside (e.g. to apply a suggestion); null = none. */
+  value?: { categoryId: string; subcategoryId: string | null } | null;
 }) {
-  const [value, setValue] = React.useState(
+  const [internal, setValue] = React.useState(
     defaultCategoryId ? encode(defaultCategoryId, defaultSubcategoryId ?? null) : "",
   );
+  const value =
+    controlled === undefined
+      ? internal
+      : controlled
+        ? encode(controlled.categoryId, controlled.subcategoryId)
+        : "";
   const [categoryId = "", subcategoryId = ""] = value.split("|");
 
   return (

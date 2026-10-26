@@ -26,6 +26,9 @@ for (const route of APP_ROUTES) {
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
     expect(overflow).toBeLessThanOrEqual(0);
+    // Phones widen the layout viewport to fit overflowing content (which makes the check above
+    // read 0), so also compare it with the device width.
+    expect(await page.evaluate(() => window.innerWidth)).toBe(page.viewportSize()!.width);
     expect(errors).toEqual([]);
   });
 }
@@ -50,17 +53,24 @@ test.describe("sign-out", () => {
   });
 });
 
-test("unknown transaction ids show the in-app not-found state", async ({ page }) => {
-  // The (app) loading boundary streams the response, so Next.js sends 200 before notFound()
-  // runs and marks the page noindex instead of sending a 404 status.
-  await page.goto("/transactions/does-not-exist");
-  await expect(page.getByRole("heading", { name: "We couldn’t find that" })).toBeVisible();
-  expect(await page.locator('meta[name="robots"][content*="noindex"]').count()).toBeGreaterThan(0);
-  await expect(
-    page
-      .getByRole("navigation", { name: "Primary" })
-      .or(page.getByRole("complementary", { name: "Main navigation" })),
-  ).toBeVisible();
+test("unknown transaction ids get a real 404 with the in-app not-found state", async ({ page }) => {
+  // The entry is looked up in transactions/[id]/layout.tsx, outside the streaming loading
+  // boundary, so the status is decided before the response starts.
+  const randomId = crypto.randomUUID();
+  for (const path of [
+    "/transactions/does-not-exist",
+    `/transactions/${randomId}`,
+    `/transactions/${randomId}/edit`,
+  ]) {
+    const response = await page.goto(path);
+    expect(response?.status(), path).toBe(404);
+    await expect(page.getByRole("heading", { name: "We couldn’t find that" })).toBeVisible();
+    await expect(
+      page
+        .getByRole("navigation", { name: "Primary" })
+        .or(page.getByRole("complementary", { name: "Main navigation" })),
+    ).toBeVisible();
+  }
 });
 
 test("navigation: sidebar on desktop, bottom tabs + section sheet on mobile", async ({
@@ -174,8 +184,10 @@ test.describe("with OS reduced motion", () => {
 
   test("CSS transitions are effectively disabled", async ({ page }) => {
     await page.goto("/home");
+    // A quick-add tile: it has a press/hover transition on every viewport.
     const duration = await page
-      .getByRole("link", { name: "Quick add" })
+      .getByRole("list", { name: "Quick-add tiles" })
+      .getByRole("button")
       .first()
       .evaluate((element) => getComputedStyle(element).transitionDuration);
     expect(parseFloat(duration)).toBeLessThan(0.001);

@@ -44,9 +44,12 @@ test.describe("onboarding and wallets", () => {
     await expect(page.getByTestId("finish-setup")).toBeHidden();
 
     await page.goto("/accounts");
-    const wallet = page.locator('[data-testid^="wallet-"]').filter({ hasText: "Default" });
+    // Scoped to <main>: while a page streams in, React briefly holds a hidden copy outside it.
+    const wallet = page.locator('#main [data-testid^="wallet-"]').filter({ hasText: "Default" });
     await expect(wallet).toContainText("₹1,234.50");
-    await expect(page.getByText("Tracked total across wallets · now")).toBeVisible();
+    await expect(
+      page.locator("#main").getByText("Tracked total across wallets · now"),
+    ).toBeVisible();
   });
 
   test("a wallet can be added, edited and archived", async ({ page }) => {
@@ -57,6 +60,12 @@ test.describe("onboarding and wallets", () => {
     await dialog.getByLabel("Name").fill(name);
     await dialog.getByLabel("Type").selectOption("upi_wallet");
     await dialog.getByLabel("Opening balance").fill("-25");
+    // Tracking starts tomorrow, so this test wallet never changes today's totals (the ledger
+    // tests assert exact balance changes on the same account).
+    const tomorrow = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(
+      Date.now() + 86_400_000,
+    );
+    await dialog.getByLabel("Opening date").fill(tomorrow);
     await dialog.getByRole("button", { name: "Add wallet" }).click();
     await expect(dialog).toBeHidden();
 

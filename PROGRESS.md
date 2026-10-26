@@ -3,7 +3,7 @@
 Durable project state. Update before a context reset or at the end of each work session.
 Source of truth for requirements: `PROJECT_SPEC.md`. Working rules: `CLAUDE.md`.
 
-_Last updated: 2026-10-26 — end of Phase 4 (built and tested locally; migration 0700 waits for `db push`)._
+_Last updated: 2026-10-26 — end of Phase 5 (transactions). Migrations 0100–0700 are applied on the hosted project; Phase 5 adds no migration._
 
 ## Build stages
 
@@ -14,8 +14,8 @@ One integrated product. Stages are an internal build order only; nothing is defe
 | 1 | Foundation: tooling, design system, app shell, every route, shared states | ✅ Done |
 | 2 | Financial domain core: paise math, INR formatting, Asia/Kolkata period boundaries, ledger/balance invariants (income, expense, refund, transfer, allocation, release), opening/closing balances, aggregation, budgets, savings, safe-to-spend — pure + unit-tested (`src/domain/`) | ✅ Done |
 | 3 | Supabase: schema + migrations, RLS on every private table, cross-user denial tests, server data access, auth (register, login, logout, recovery) and route protection | ✅ Done — applied to the hosted project (`qzmqvytrekenzciasvph`) and verified live in Phase 3a: registration, login, logout, defaults, signed-in e2e, cross-user RLS, account-deletion cascade. The live password-reset email is still pending (see blockers) |
-| 4 | Onboarding (balance + effective date, wallets, currency/timezone, allowance, budgets, goals, prefs), accounts, categories/subcategories management, profile/preferences sync | 🟨 Built; DB + unit tests pass locally; live e2e of `/onboarding` and `/accounts` waits for migration 0700 to be pushed (see blockers) |
-| 5 | Transactions (⬜ Next): quick-add tiles, full form, repeat/frequent, history with search/filters, detail/edit/delete/undo (real `notFound()` + re-check 404 status, see Checks note), idempotency keys | ⬜ |
+| 4 | Onboarding (balance + effective date, wallets, currency/timezone, allowance, budgets, goals, prefs), accounts, categories/subcategories management, profile/preferences sync | ✅ Done — 0700 confirmed applied (`migration list`); `/onboarding` and `/accounts` e2e pass live |
+| 5 | Transactions: one mutation layer (commands + idempotency keys), quick-add tiles, full form, repeat/frequent, history with search/filters, detail/edit/delete/undo with real 404s, Home dashboard | ✅ Done — unit, DB and live e2e (desktop + Pixel 7) pass |
 | 6 | Natural-language parser + voice entry with draft review and atomic batch confirm | ⬜ |
 | 7 | Insights + charts with drill-down, sparse-data honesty, Money Leak Detector with what-ifs | ⬜ |
 | 8 | Budgets (alerts, pace, suggestions), savings goals + allocation ledger, safe-to-spend, survival mode, recurring templates + commitments | ⬜ |
@@ -28,16 +28,16 @@ Status key: ⬜ not started · 🟨 partial (detail given) · ✅ done and verif
 
 - 🟨 Registration, login and recovery work with real configured auth. — **Live:** registration through `/register` (2 new accounts, signed in straight to `/onboarding`), login, the signed-in redirect away from `/login`, and logout via the account menu (signed-in e2e, 129 passed). **Recovery:** the forgot/reset forms, `/auth/confirm` (PKCE `code` + `token_hash`), invalid-link handling and the no-session reset page are built and e2e-tested, but the **live reset email is not yet tested** (see blockers). Live sign-up ran with "Confirm email" temporarily off, so the confirmation-email path is built and tested locally only.
 - ✅ All user data is private and protected by tested access rules. — RLS on all 20 tables, owner-only. Proven locally (`tests/db`, 34 tests on PostgreSQL 18) **and live** (`npm run test:live`, publishable key only, 6/6): user B can't read, update, re-own, delete, soft-delete, link to or reuse the ids of user A's rows, and anonymous callers get `42501` on tables and RPCs.
-- ⬜ Adding income and expense updates correct balance immediately.
-- ⬜ Quick-add presets/custom amounts work.
+- ✅ Adding income and expense updates correct balance immediately. — DB tests (income/expense direction, consolidated and per wallet) and live e2e Journey A (Home balance and today's spending change by exactly the amount, and return on Undo), desktop + Pixel 7.
+- ✅ Quick-add presets/custom amounts work. — 12 seeded tiles (no invented amounts); editable label, usual amount, category and icon; add/hide/restore; custom tile with a description and a suggested category; opt-in "remember as usual amount"; repeat-last and frequent shortcuts.
 - ⬜ Text and voice routes create reviewable drafts and confirm before save. — Routes `/add/text`, `/add/voice` exist.
-- ⬜ History, search, filters, editing, deletion and undo work. — Routes exist; `/transactions/[id]` and `/edit` return a genuine 404 until the ledger exists.
+- ✅ History, search, filters, editing, deletion and undo work. — Day-grouped history (cards on phones, table from 1024 px), search, type/category/wallet/date/amount filters in the URL, detail, edit (version-checked), delete with confirmation, Undo for create/edit/delete. Missing, malformed, deleted and other-user ids return HTTP 404. The live cross-user check needs a second account (see blockers); cross-user denial is proven in the DB tests.
 - 🟨 Category/subcategory totals reconcile with transactions. — Domain `categoryBreakdown` is tested to reconcile category → subcategory → period total (refunds included, including refunds landing in a later period); screens wire it in Phases 5/7.
 - ⬜ Insights point to real supporting records and handle sparse data honestly.
 - ⬜ Money Leak Detector groups and totals correctly.
 - 🟨 Budgets/alerts recalculate on changes. — Domain `evaluateBudget` (spent/remaining/%/pace/thresholds) and `newlyReachedThresholds` are tested, including edits/deletes; UI and alert delivery in Phase 8.
 - 🟨 Savings allocations do not count as purchases or reduce consolidated total balance. — Proven in domain tests (invariant 4); end-to-end in Phase 8.
-- 🟨 Transfers between owned accounts do not inflate consolidated income/expense. — Proven in domain tests (invariants 2–3); end-to-end in Phases 4–5.
+- ✅ Transfers between owned accounts do not inflate consolidated income/expense. — Domain invariants 2–3, plus a DB test through the app's mutation layer: a transfer (and an edit of it) moves money between wallets and leaves the consolidated balance unchanged. Transfers are entered from the full form.
 - 🟨 Safe-to-spend and allowance predictions avoid double counting. — Domain `calculateSafeToSpend` tested (invariant 5, paid-commitment linkage, goal purchase + release); UI in Phase 8.
 - 🟨 Parent report balances and totals reconcile for the selected historical period. — Domain `summarizePeriod` rebuilds opening/closing from the ledger and is tested to reconcile (invariant 10); report UI/exports in Phase 9.
 - ⬜ PDF/CSV exports are real and contain correct data.
@@ -45,7 +45,7 @@ Status key: ⬜ not started · 🟨 partial (detail given) · ✅ done and verif
 - 🟨 PWA works on supported devices; responsive app works on laptop/mobile. — Responsive shell done (sidebar ≥1024px; header + 5-tab bottom nav + "All sections" sheet + add FAB on mobile), Playwright runs at desktop and Pixel 7 sizes. No PWA manifest/service worker yet (Phase 10).
 - ⬜ Offline entries persist and sync without loss or duplication. — Only an online/offline banner exists; it truthfully says changes can't be saved offline.
 - 🟨 Loading, empty, error, permission-denied and offline states are handled. — Shared `StatePanel` (empty/error/offline/denied), `PageSkeleton`, route `loading.tsx`, `error.tsx`, in-shell and global `not-found.tsx`, `global-error.tsx`, offline banner. Each feature must still wire these to its real data states.
-- ⬜ No required action is a placeholder or fake success. — Phase 1 has no fake actions: every button/link navigates or changes a real preference. Feature screens are empty states until built.
+- 🟨 No required action is a placeholder or fake success. — Every Phase 1–5 action is real: saves go through RPCs, and success shows only after the database answers. Screens for Phases 6–10 are still honest empty states.
 - 🟨 Lint/typecheck/tests/production build are run and failures are addressed. — All pass for Phase 3 (see Checks).
 - 🟨 Setup documentation accurately describes what needs a real Supabase project/credentials. — README › Setup was followed for the hosted project: init/login/link/db push (login/link/db push must run in an interactive terminal), URL configuration, token-hash email templates, `.env.e2e.local`. Re-check at final delivery.
 
@@ -57,9 +57,9 @@ Every screen has a route; feature screens show a real empty state until their st
 | --- | --- | --- |
 | Welcome / onboarding | `/welcome`, `/onboarding?step=…` | 6-step wizard (region, balance, income, budgets, goal, preferences); every step skippable; "Skip setup" |
 | Register, login, recovery | `/register`, `/login`, `/forgot-password`, `/reset-password`, `/auth/confirm` | Real forms (Phase 3); config panel only when Supabase env is missing |
-| Home | `/home` | Empty state + links to add flows (Phase 5/7) |
-| Quick add / type / voice / full form | `/add`, `/add/text`, `/add/voice`, `/transactions/new` | Empty state (Phases 5–6) |
-| History, detail, edit | `/transactions`, `/transactions/[id]`, `/transactions/[id]/edit` | Empty / 404 (Phase 5) |
+| Home | `/home` | Labelled tracked balance (animated), spent today / this month, quick-add row + log-again shortcuts, 5 most recent entries, monthly budget and goal snapshots (real data, or empty states linking to the onboarding steps) |
+| Quick add / type / voice / full form | `/add`, `/add/text`, `/add/voice`, `/transactions/new` | Quick add + tile editor; full form (expense/income/refund/transfer). Text and voice: empty state (Phase 6) |
+| History, detail, edit | `/transactions`, `/transactions/[id]`, `/transactions/[id]/edit` | History with search and filters; detail (refund links, before-opening note, repeat, record a refund, delete); edit. Real 404s |
 | Wallets | `/accounts` | Create, edit (name/type/opening balance + date), default, archive/restore, balances now |
 | Categories | `/categories?tab=…` | Hierarchy, create/edit/icon/colour, reorder, archive/restore, merge, rules + live tester, Uncategorized queue |
 | Insights, Money leaks | `/insights`, `/insights/leaks` | Empty state (Phase 7) |
@@ -135,6 +135,37 @@ Every screen has a route; feature screens show a real empty state until their st
 - **Per request:** one JWT verification (`optionalSession`/`requireSession`, cached), one profile read, one `requestNow()`. Loaders page past PostgREST's 1000-row cap.
 - **E2E:** at most 4 workers (2 on CI) — more parallel browsers hit Supabase Auth rate limits and timed out. Tests that write the shared test profile run on desktop only and restore defaults.
 
+### Phase 5 decisions
+
+- **One mutation layer** (`src/lib/ledger/`):
+  - Every financial write is a serialisable `LedgerCommand` (`create | update | delete | restore`), validated by Zod (`commands.ts`).
+  - Each command has a client-generated `opId`. A create also carries the client-generated transaction `id` and sends `opId` as the row's `idempotency_key`.
+  - `toRpcCall` maps a command to exactly one RPC: `create_transaction`, `update_transaction` (with `expectedVersion`) or `set_transaction_deleted`.
+  - `executor.ts` runs the command through a two-method port (read a row, call an RPC). It maps `applied | duplicate | conflict | not_found` and database rule errors to user copy, and builds the **undo** command: create → delete, delete ↔ restore, edit → edit back to the replaced values (quoting the new version).
+  - `execute.ts` is the server-only Supabase adapter. The DB tests drive the same executor through a Postgres port.
+  - **Phase 10:** queue `LedgerCommand`s in IndexedDB and replay them through `runLedgerCommandWith`. Replays are already safe (`duplicate`), and conflicts come back as `conflict` with the server row.
+- **Entry points:**
+  - `runLedgerCommand`: quick add, repeat, delete, undo.
+  - `saveQuickAdd`: an entry, plus an optional "usual amount" tile update that runs only after the entry is saved.
+  - `saveEntryForm`: full-form create/edit via `commandFromForm`.
+  - All three call `revalidatePath("/", "layout")`, so balance, history, category totals and every other ledger view re-render in the same response.
+- **Double submit:** ids stay fixed until a save succeeds (quick-add sheet, full form, repeat). A second tap while one is in flight is ignored on the client. A retry after that gets `duplicate` (toast: "Already saved — no duplicate was added."). Reusing an id or `opId` for different content is a `conflict`, never an overwrite.
+- **Every create, transfers included, uses `create_transaction`.** The transfer RPC can't take a description, tags or an idempotency key. The app leaves archived wallets out of pickers, and the database still checks ownership, currency and shape.
+- **Dates:** the form takes a local date and time in the profile timezone (IST by default). `instantFromLocalDateTime` / `toLocalTime` in `src/domain/time.ts` are DST-safe. Past dates are allowed; anything more than 5 minutes in the future is refused ("plan it in Income & recurring").
+- **Required fields:** the amount, plus a category for expenses and income. Refunds inherit the original expense's category unless one is picked; transfers have none. The wallet is always prefilled with the default wallet (`ensureDefaultAccount()`). Quick add shows a wallet picker only when there's more than one active wallet.
+- **Suggestions** run on the client: the domain's `suggestCategory` over the user's categories, rules and last 400 categorised entries. They prefill the picker with a reason ("Suggested: Matched the word “lunch”") until the user picks a category.
+- **Opening-date note:** one wording (`src/lib/opening-note.ts`) on /accounts, in the form (live, via `isBeforeOpeningDate`) and on the saved entry's detail page.
+- **Real 404:**
+  - Every page except `transactions/[id]` moved into a `(main)` route group, which owns `loading.tsx`. URLs are unchanged.
+  - `transactions/[id]/layout.tsx` looks the row up before anything streams. The lookup is RLS-scoped, excludes deleted rows and checks the UUID format.
+  - Missing, malformed, deleted and other-user ids therefore get HTTP 404 with the in-shell not-found screen (verified with real HTTP statuses).
+- **Delete** is soft (`deleted_at`) and confirmed in a dialog that repeats the entry. An expense with refunds can't be deleted: the dialog explains why, and the database enforces it too. Allocation and release rows show in history but are edited from goals (Phase 8).
+- **Undo toast** lives in the `(app)` layout: 8 s, pauses on hover/focus, survives navigation, `role=status`.
+- **Motion:** the row just recorded gets a 1.6 s violet wash (`.pp-new-entry`). Home figures count up to new values over 600 ms, in whole paise, ending on the exact value. Both are switched off under reduced motion, and `data-paise` always holds the exact value.
+- **Home scopes are labelled:** "Tracked balance · all wallets · now", "Spent today · <date>" and "Spent this month · <month>" (net of refunds), plus income received this month. The budget and goal snapshots use `evaluateBudget` / `goalProgress` on real rows, or show empty states linking to the onboarding budget/goal steps.
+- **Tiles never invent prices.** A tile without an amount opens with an empty amount and offers "Make ₹X the usual amount", checked by default only in that case. The seeded "plus" icon is drawn as `circle-plus`.
+- **E2E isolation:** the ledger spec runs as `ledger-desktop` then `ledger-mobile`, never in parallel, because it asserts exact balance changes. The Phase 4 wallet test now starts tracking tomorrow, so it can't shift today's totals. Page-content locators are scoped to `#main` because React 19 briefly keeps a hidden copy of streamed content.
+
 ### Phase 9 notes: account deletion (recorded in Phase 3a)
 
 Clients can't hard-delete transactions (no grant or policy), so account deletion runs **server-side**:
@@ -170,6 +201,39 @@ Hosted project `qzmqvytrekenzciasvph`. Live checks use the publishable key only,
 | Sign-up with "Confirm email" ON (email → `/auth/confirm`) | ⏳ not tested live (built-in email quota was exhausted) | ✅ code path + invalid-link e2e |
 | Forgot / reset password email | ⏳ **pending**: the dashboard test user's address belongs to someone else, so no reset email was sent | ✅ forms, validation, no-session page, invalid link |
 | Transfers, refunds, goal money, batch rollback | — (no UI yet) | ✅ PG 18 |
+
+## Checks run (Phase 5, 2026-10-26)
+
+| Command / action | Result |
+| --- | --- |
+| `npx supabase@2.120.0 migration list` (agent) | 0100–0700 applied remotely (0700 confirmed). Phase 5 adds no migration |
+| `npm run lint` / `typecheck` / `format:check` | Pass |
+| `npm test` | Pass, 15 files / 311 tests. 21 are new in `tests/unit/phase5.test.ts`: command validation, RPC mapping and undo; the full-form schema (IST time, no future dates); history filters, search and day grouping across IST midnight; entry signs; repeat/frequent; tiles; the opening-date wording; DST-safe local time |
+| `npm run test:db` (local PostgreSQL 18, throwaway cluster) | Pass, 6 files / 56 tests, plus 6 "URL not set" placeholders that run only when no DB is configured. 7 new tests in `tests/db/phase5.test.ts` go through the real executor: income/expense direction; a double submit or retry → `duplicate`, one row; a reused id/opId with other content → `conflict`; an edit recalculates balance and category totals, a stale edit → `conflict`, undo restores and replays harmlessly; delete, restore and undo-of-create recalculate; a transfer keeps the consolidated balance; refund limits; another user can't edit, delete, restore or use foreign categories |
+| Mutation check | Dropping `idempotency_key` from the create mapping, and building undo from the *new* values, each made DB tests fail. Restored |
+| `npm run build` | Pass (32 routes; `/transactions/[id]` and `/edit` are dynamic) |
+| HTTP status check (production build, signed in) | `/transactions/does-not-exist`, a random UUID and its `/edit` → **404** with the in-app not-found screen. `/home`, `/transactions`, `/add`, `/transactions/new` → 200 |
+| `npm run test:e2e` (hosted project) | **142 passed, 9 skipped, 0 failed**, twice in a row. See below |
+| Visual check (screenshots, 1440 px + Pixel 7) | Home, quick-add sheet, history (cards and table), full form, detail. See below |
+| Test data | Every e2e and screenshot entry was undone or soft-deleted. The test account ends with no active entries, as it started |
+
+New e2e coverage:
+
+- Journey A at desktop and Pixel 7: tea tile → amount → save → toast → Home balance, today's spending and recent list update exactly → Undo restores them.
+- A double tap saves once; delete asks for confirmation, and Undo restores the entry.
+- Full form → suggestion → history search and filters → detail → edit → undo edit → delete → 404 while deleted → undo → cleanup.
+- 404 status for unknown ids.
+
+The 9 skips:
+
+- 4 Phase 4 tests that write the shared profile or categories, and 2 synced-appearance tests, skip on mobile by design, so the two viewports never write the shared profile at once.
+- The long full-form journey runs once, on desktop.
+- The cross-user 404 test skips on both ledger projects: there's no second test account in `.env.e2e.local`.
+
+Fixed after the visual check:
+
+- On phones the Recent and budget cards overflowed the screen: the grid items lacked `min-w-0`. The overflow widened the layout viewport, so the old overflow check read 0. The route test now also asserts `innerWidth` equals the device width.
+- "Spent today · Today" now shows the date.
 
 ## Checks run (Phase 4, 2026-10-26)
 
@@ -244,7 +308,8 @@ Note: because of the `(app)` loading boundary, Next.js streams `notFound()` page
 
 ## Known blockers / notes
 
-- ⚠️ **Push migration 0700:** run `npx supabase@2.120.0 db push` in your terminal (it applies only `…0700_onboarding_accounts_categories.sql`), then `npm run test:e2e`. Until then `/onboarding` and `/accounts` show the error state on the hosted project.
+- ✅ Migration 0700 is applied (confirmed by `migration list`); Phase 4 e2e passes live.
+- ⏳ **Cross-user 404 e2e** needs a second test account: add `E2E_USER_B_EMAIL` / `E2E_USER_B_PASSWORD` to `.env.e2e.local`. Until then that test is skipped. Cross-user denial is proven in the DB tests and by the RLS-scoped lookup.
 - ✅ "Confirm email" is back on, 0600 is applied, and the e2e user is on an address you control (your report; 0600 and the user's defaults verified by the agent).
 - ⏳ **Remind at the start of Phase 9: verify the live password-reset email.** Status: built and tested locally; live email test pending. Needs a test user whose address you can open and that Supabase's built-in email will deliver to (a team member's address, or custom SMTP), plus available hourly email quota.
 - Supabase's built-in email service only delivers to team-member addresses and allows a few emails per hour. Configure custom SMTP (Authentication → Emails → SMTP) before real users sign up.
@@ -256,11 +321,8 @@ Note: because of the `(app)` loading boundary, Next.js streams `notFound()` page
 
 ## Next concrete tasks
 
-Before Phase 5 (needs you): `npx supabase@2.120.0 db push`, then `npm run test:e2e` — the 5 Phase 4 failures above should pass.
+Phase 6 (natural-language + voice entry), not started:
 
-Phase 5 (transactions):
-
-1. Quick-add tiles, full form, repeat/frequent. Every form preselects `ensureDefaultAccount()` and pre-fills `suggestCategory(...)` with its reason; the user can override.
-2. When the chosen date is before the wallet's opening date, show the `isBeforeOpeningDate` explanation in the form and on the saved entry.
-3. History with search/filters, detail/edit/delete/undo via the existing RPCs (see the `notFound()` follow-up); the Uncategorized queue then fills from real entries.
-4. The budgets and goal created in onboarding become editable on the Phase 8 screens.
+1. Deterministic parser (`tea 15, bus 20, snacks 35`, `₹40 lunch and ₹15 tea yesterday`) → drafts with `suggestCategory`, marked unassigned when unsure → review screen → confirm all through `log_transactions_batch`. Add a `batch` command kind to `src/lib/ledger/commands.ts` so the executor and undo stay the single write path.
+2. Voice: browser speech recognition with a permission explanation, an editable transcript and a text fallback. No audio upload.
+3. Later: the Phase 8 goal screens add allocation/release commands (extend `LedgerCommand`); Phase 10 queues `LedgerCommand`s offline and replays them through `runLedgerCommandWith`.

@@ -13,3 +13,4 @@ export * from "./budgets";
 export * from "./savings";
 export * from "./safe-to-spend";
 export * from "./categorize";
+export * from "./shortcuts";

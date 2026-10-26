@@ -181,6 +181,36 @@ export function startOfLocalDate(date: LocalDate, timeZone = DEFAULT_TIMEZONE): 
   return second;
 }
 
+const LOCAL_TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+/** "HH:MM" on a 24-hour clock. */
+export function isLocalTime(value: string): boolean {
+  return LOCAL_TIME_PATTERN.test(value);
+}
+
+/**
+ * The instant of a wall-clock time ("HH:MM") on `date` in `timeZone`. Same two-pass offset
+ * correction as `startOfLocalDate`, so it stays right across DST changes.
+ */
+export function instantFromLocalDateTime(
+  date: LocalDate,
+  time: string,
+  timeZone = DEFAULT_TIMEZONE,
+): Instant {
+  const m = LOCAL_TIME_PATTERN.exec(time);
+  if (!m) throw new TimeError(`Invalid time: ${time}`);
+  const { year, month, day } = parseLocalDate(date);
+  const guess = Date.UTC(year, month - 1, day, Number(m[1]), Number(m[2]));
+  const first = guess - offsetMs(guess, timeZone);
+  return guess - offsetMs(first, timeZone);
+}
+
+/** Wall-clock "HH:MM" of an instant in `timeZone`. */
+export function toLocalTime(instant: Instant, timeZone = DEFAULT_TIMEZONE): string {
+  const p = zonedParts(instant, timeZone);
+  return `${String(p.hour).padStart(2, "0")}:${String(p.minute).padStart(2, "0")}`;
+}
+
 export function parseInstant(iso: string): Instant {
   const ms = Date.parse(iso);
   if (Number.isNaN(ms)) throw new TimeError(`Invalid timestamp: ${iso}`);

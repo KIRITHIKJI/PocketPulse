@@ -219,3 +219,19 @@ html[data-motion="reduce"] *::after {
   transition-duration: 0.01ms !important;
   scroll-behavior: auto !important;
 }
+
+/* New-entry feedback: a brief violet wash on the row that was just recorded (no full-screen effects). */
+@keyframes pp-new-entry {
+  from {
+    background-color: var(--primary-soft);
+    box-shadow: inset 3px 0 0 var(--primary);
+  }
+  to {
+    background-color: transparent;
+    box-shadow: inset 3px 0 0 transparent;
+  }
+}
+
+.pp-new-entry {
+  animation: pp-new-entry 1.6s ease-out;
+}
