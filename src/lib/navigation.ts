@@ -17,6 +17,7 @@ import {
   Tags,
   Target,
   Trophy,
+  Wallet,
   Zap,
   type LucideIcon,
 } from "lucide-react";
@@ -50,6 +51,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     label: "Money",
     items: [
       { href: "/transactions", label: "Transactions", icon: Receipt },
+      { href: "/accounts", label: "Wallets", icon: Wallet },
       { href: "/categories", label: "Categories", icon: Tags },
       { href: "/recurring", label: "Income & recurring", icon: Repeat },
     ],
@@ -91,7 +93,7 @@ export const MOBILE_TABS: readonly NavItem[] = [
     href: "/transactions",
     label: "Activity",
     icon: Receipt,
-    also: ["/categories", "/recurring"],
+    also: ["/accounts", "/categories", "/recurring"],
   },
   { href: "/insights", label: "Insights", icon: ChartPie },
   {

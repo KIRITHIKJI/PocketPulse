@@ -12,8 +12,13 @@ export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
+  // Every signed-in page verifies the session and reads the hosted project; more parallel
+  // browsers than this run into Supabase Auth rate limits and time out.
+  workers: process.env.CI ? 2 : 4,
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? "github" : "list",
+  // Saves round-trip to the hosted Supabase project; allow for that under parallel load.
+  expect: { timeout: 10_000 },
   use: {
     baseURL,
     trace: "on-first-retry",

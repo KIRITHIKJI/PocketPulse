@@ -5,7 +5,12 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
+    alias: {
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
+      // jsdom unit tests render client components that reference server actions; the real
+      // "server-only" guard still applies to the Next.js build.
+      "server-only": fileURLToPath(new URL("./tests/stubs/server-only.ts", import.meta.url)),
+    },
   },
   test: {
     environment: "jsdom",

@@ -5,9 +5,11 @@ import { useTheme } from "next-themes";
 
 import { THEME_OPTIONS } from "@/components/preferences/theme-switcher";
 import { useMotionPreference } from "@/components/providers/motion-provider";
+import { usePersistPreferences } from "@/components/providers/preference-sync";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { useHydrated } from "@/hooks/use-hydrated";
 import type { MotionPreference } from "@/lib/motion-preference";
+import type { ThemePreference } from "@/lib/validation/settings";
 
 const MOTION_OPTIONS = [
   { value: "system", label: "Match device", icon: Monitor },
@@ -18,6 +20,7 @@ const MOTION_OPTIONS = [
 export function AppearanceSettings() {
   const { theme, setTheme } = useTheme();
   const { preference, setPreference } = useMotionPreference();
+  const persist = usePersistPreferences();
   const hydrated = useHydrated();
 
   return (
@@ -29,7 +32,10 @@ export function AppearanceSettings() {
         <SegmentedControl
           aria-label="Theme"
           value={hydrated ? ((theme ?? "dark") as (typeof THEME_OPTIONS)[number]["value"]) : "dark"}
-          onValueChange={setTheme}
+          onValueChange={(value: ThemePreference) => {
+            setTheme(value);
+            persist?.({ theme: value });
+          }}
           options={THEME_OPTIONS}
         />
       </div>
@@ -38,7 +44,10 @@ export function AppearanceSettings() {
         <SegmentedControl
           aria-label="Motion"
           value={hydrated ? preference : "system"}
-          onValueChange={setPreference}
+          onValueChange={(value) => {
+            setPreference(value);
+            persist?.({ motion: value });
+          }}
           options={MOTION_OPTIONS}
         />
         <p className="text-sm text-muted-foreground">

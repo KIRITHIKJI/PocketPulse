@@ -59,7 +59,7 @@ Find the keys in Supabase Dashboard → Project Settings → API Keys. `.env.loc
 ### 3. Apply the database migrations
 
 Migrations live in `supabase/migrations/`: schema, integrity triggers, RLS policies, RPCs and
-per-user defaults. Apply them with the Supabase CLI (no global install needed):
+per-user defaults, the defaults backfill, and the onboarding/wallet/category RPCs. Apply them with the Supabase CLI (no global install needed):
 
 ```bash
 npx supabase@2.120.0 init          # once: creates supabase/config.toml, keeps the migrations
@@ -116,8 +116,10 @@ soft-deleted expense to user A per run, so use throwaway accounts. Without them 
 signed-in shell suite needs a real test account in a project with the migrations applied. Put
 `E2E_EMAIL=…` and `E2E_PASSWORD=…` (plain values, no quotes or brackets) in `.env.e2e.local`;
 the Playwright config loads it. The suite signs in once and reuses the session
-(`e2e/.auth/`, gitignored) to stay under Supabase's sign-in rate limits. Without the
-credentials it is skipped.
+(`e2e/.auth/`, gitignored) to stay under Supabase's sign-in rate limits, and runs at most 4
+workers for the same reason. Tests that change the test profile (theme, motion, onboarding,
+wallets) run on the desktop project only and restore defaults; runs leave archived "E2E …"
+wallets/categories in the test account. Without the credentials it is skipped.
 
 ## Scripts
 

@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 
-import { Field, FormMessage, INITIAL_STATE, SubmitButton } from "@/components/auth/form-parts";
+import { Field, FormMessage, INITIAL_STATE, SubmitButton } from "@/components/forms/form-parts";
 import { requestPasswordReset, signIn, signUp, updatePassword } from "@/lib/auth/actions";
 
 export function LoginForm({ next }: { next?: string | undefined }) {

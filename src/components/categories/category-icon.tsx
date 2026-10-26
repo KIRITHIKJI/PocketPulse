@@ -1,0 +1,162 @@
+import {
+  Apple,
+  Award,
+  Banknote,
+  Bike,
+  BookOpen,
+  Briefcase,
+  Bus,
+  Car,
+  CarTaxiFront,
+  CircleEllipsis,
+  CircleParking,
+  CirclePlus,
+  Clapperboard,
+  Coffee,
+  Coins,
+  Cookie,
+  Cpu,
+  CupSoda,
+  Dumbbell,
+  EggFried,
+  Film,
+  Fuel,
+  Gamepad2,
+  Gift,
+  GraduationCap,
+  HandCoins,
+  Heart,
+  HeartPulse,
+  House,
+  IceCreamCone,
+  Landmark,
+  Laptop,
+  Music,
+  Palette,
+  PartyPopper,
+  PawPrint,
+  PenLine,
+  PiggyBank,
+  Pill,
+  Pizza,
+  Plane,
+  Printer,
+  Receipt,
+  Sandwich,
+  Scissors,
+  Shirt,
+  ShoppingBag,
+  ShoppingBasket,
+  Smartphone,
+  Soup,
+  Sparkles,
+  Stethoscope,
+  Tag,
+  Ticket,
+  TrainFront,
+  Tv,
+  Utensils,
+  Wallet,
+  Wifi,
+  Zap,
+  type LucideIcon,
+} from "lucide-react";
+
+import {
+  type CategoryIconName,
+  DEFAULT_CATEGORY_COLOR,
+  DEFAULT_CATEGORY_ICON,
+} from "@/lib/category-style";
+import { cn } from "@/lib/utils";
+
+export const CATEGORY_ICONS: Record<CategoryIconName, LucideIcon> = {
+  utensils: Utensils,
+  coffee: Coffee,
+  "cup-soda": CupSoda,
+  cookie: Cookie,
+  pizza: Pizza,
+  sandwich: Sandwich,
+  soup: Soup,
+  "egg-fried": EggFried,
+  "ice-cream-cone": IceCreamCone,
+  apple: Apple,
+  "shopping-basket": ShoppingBasket,
+  "graduation-cap": GraduationCap,
+  "book-open": BookOpen,
+  "pen-line": PenLine,
+  printer: Printer,
+  cpu: Cpu,
+  laptop: Laptop,
+  "party-popper": PartyPopper,
+  bus: Bus,
+  "train-front": TrainFront,
+  "car-taxi-front": CarTaxiFront,
+  car: Car,
+  bike: Bike,
+  fuel: Fuel,
+  "circle-parking": CircleParking,
+  plane: Plane,
+  shirt: Shirt,
+  scissors: Scissors,
+  sparkles: Sparkles,
+  "shopping-bag": ShoppingBag,
+  clapperboard: Clapperboard,
+  film: Film,
+  "gamepad-2": Gamepad2,
+  ticket: Ticket,
+  music: Music,
+  palette: Palette,
+  receipt: Receipt,
+  smartphone: Smartphone,
+  wifi: Wifi,
+  tv: Tv,
+  "heart-pulse": HeartPulse,
+  pill: Pill,
+  stethoscope: Stethoscope,
+  dumbbell: Dumbbell,
+  house: House,
+  zap: Zap,
+  "paw-print": PawPrint,
+  gift: Gift,
+  heart: Heart,
+  wallet: Wallet,
+  briefcase: Briefcase,
+  award: Award,
+  banknote: Banknote,
+  coins: Coins,
+  "hand-coins": HandCoins,
+  landmark: Landmark,
+  "piggy-bank": PiggyBank,
+  "circle-plus": CirclePlus,
+  "circle-ellipsis": CircleEllipsis,
+  tag: Tag,
+};
+
+/** Category glyph on a tinted tile. Subcategories inherit their parent's icon/colour if unset. */
+export function CategoryBadge({
+  icon,
+  color,
+  size = "md",
+  className,
+}: {
+  icon: string | null | undefined;
+  color: string | null | undefined;
+  size?: "sm" | "md";
+  className?: string;
+}) {
+  const Icon = CATEGORY_ICONS[(icon ?? DEFAULT_CATEGORY_ICON) as CategoryIconName] ?? Tag;
+  const tint = color ?? DEFAULT_CATEGORY_COLOR;
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "flex shrink-0 items-center justify-center rounded-xl",
+        size === "md" ? "size-10" : "size-8 rounded-lg",
+        className,
+      )}
+      style={{ backgroundColor: `${tint}26`, color: tint }}
+    >
+      <Icon className={size === "md" ? "size-5" : "size-4"} />
+    </span>
+  );
+}
