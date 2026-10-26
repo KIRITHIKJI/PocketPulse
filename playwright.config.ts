@@ -7,6 +7,7 @@ if (existsSync(".env.e2e.local")) process.loadEnvFile(".env.e2e.local");
 
 const PORT = Number(process.env.PORT ?? 3100);
 const baseURL = `http://localhost:${PORT}`;
+const LEDGER_SPEC = /transactions\.spec\.ts/;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -25,8 +26,32 @@ export default defineConfig({
   },
   projects: [
     { name: "setup", testMatch: /auth\.setup\.ts/ },
-    { name: "desktop", use: { ...devices["Desktop Chrome"] }, dependencies: ["setup"] },
-    { name: "mobile", use: { ...devices["Pixel 7"] }, dependencies: ["setup"] },
+    {
+      name: "desktop",
+      use: { ...devices["Desktop Chrome"] },
+      dependencies: ["setup"],
+      testIgnore: LEDGER_SPEC,
+    },
+    {
+      name: "mobile",
+      use: { ...devices["Pixel 7"] },
+      dependencies: ["setup"],
+      testIgnore: LEDGER_SPEC,
+    },
+    // Tests that record money assert exact balance changes on the shared test account, so the
+    // two viewports run them one after the other instead of in parallel.
+    {
+      name: "ledger-desktop",
+      use: { ...devices["Desktop Chrome"] },
+      dependencies: ["setup"],
+      testMatch: LEDGER_SPEC,
+    },
+    {
+      name: "ledger-mobile",
+      use: { ...devices["Pixel 7"] },
+      dependencies: ["ledger-desktop"],
+      testMatch: LEDGER_SPEC,
+    },
   ],
   webServer: {
     command: `npm run build && npx next start -p ${PORT}`,

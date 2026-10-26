@@ -21,6 +21,17 @@ const RULES: Record<string, string> = {
   category_not_top_level: "Choose a main category, then optionally a subcategory.",
   subcategory_mismatch: "That subcategory belongs to a different category.",
   not_authenticated: "Your session ended. Sign in again.",
+  currency_mismatch: "That entry’s currency doesn’t match the wallet’s currency.",
+  refund_without_expense: "Choose the expense this refund is for.",
+  refund_of_inactive_expense: "That expense was deleted, so it can’t be refunded.",
+  refund_before_expense: "A refund can’t be dated before the purchase it refunds.",
+  refund_exceeds_expense: "Refunds can’t add up to more than the original expense.",
+  expense_has_refunds: "This expense has refunds. Delete the refunds first.",
+  expense_below_refunds: "The expense can’t be smaller than what was already refunded.",
+  transaction_field_immutable:
+    "That part of an entry can’t be changed. Delete it and add a new one.",
+  invalid_payload: "Something in that entry isn’t valid. Check it and try again.",
+  missing_id: "Something in that entry isn’t valid. Check it and try again.",
 };
 
 export interface DbError {
@@ -33,6 +44,8 @@ export function dbErrorMessage(error: DbError | null | undefined, uniqueMessage?
   if (error.code === "P0001" && error.message && RULES[error.message]) return RULES[error.message]!;
   if (error.code === "23505") return uniqueMessage ?? "That name is already in use.";
   if (error.code === "42501") return "You don’t have access to that.";
+  if (error.code === "23503")
+    return "A wallet, category or expense it uses doesn’t exist any more. Reload and try again.";
   if (error.code === "23514")
     return "One of the values isn’t allowed. Check the form and try again.";
   return "Something went wrong saving that. Try again.";

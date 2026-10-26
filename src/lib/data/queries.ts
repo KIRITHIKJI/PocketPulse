@@ -9,9 +9,11 @@ import {
   rowToAccount,
   rowToCategory,
   rowToCategoryRule,
+  rowToLedgerRecord,
   rowToTransaction,
 } from "@/lib/data/mappers";
 import { type Session, requireSession } from "@/lib/data/session";
+import type { LedgerRecord } from "@/lib/ledger/commands";
 import type { MotionPreference } from "@/lib/motion-preference";
 import type {
   IncomeFrequency,
@@ -237,4 +239,54 @@ export const getActiveGoals = cache(async (): Promise<GoalRecord[]> => {
     targetPaise: Number(r.target_paise),
     targetDate: (r.target_date as string | null) ?? null,
   }));
+});
+
+export interface QuickAddPreset {
+  id: string;
+  label: string;
+  icon: string | null;
+  /** null = ask every time (tiles start without amounts; the app never invents prices). */
+  amountPaise: number | null;
+  categoryId: string | null;
+  subcategoryId: string | null;
+  archived: boolean;
+}
+
+/** Quick-add tiles in display order, hidden ones included (the editor can restore them). */
+export const getQuickAddPresets = cache(async (): Promise<QuickAddPreset[]> => {
+  const { supabase } = await requireSession();
+  const { data, error } = await supabase
+    .from("quick_add_presets")
+    .select("id, label, icon, amount_paise, category_id, subcategory_id, archived_at")
+    .order("sort_order")
+    .order("created_at");
+  if (error) throw new DataLoadError("your quick-add tiles", error.code);
+  return (data ?? []).map((r) => ({
+    id: r.id as string,
+    label: r.label as string,
+    icon: (r.icon as string | null) ?? null,
+    amountPaise: r.amount_paise === null ? null : Number(r.amount_paise),
+    categoryId: (r.category_id as string | null) ?? null,
+    subcategoryId: (r.subcategory_id as string | null) ?? null,
+    archived: r.archived_at !== null,
+  }));
+});
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * One active (not deleted) ledger row with its version, or null. RLS limits the read to the
+ * signed-in user, so another user's id is indistinguishable from a missing one.
+ */
+export const getLedgerRecord = cache(async (id: string): Promise<LedgerRecord | null> => {
+  if (!UUID_PATTERN.test(id)) return null;
+  const { supabase } = await requireSession();
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("*")
+    .eq("id", id)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (error) throw new DataLoadError("that entry", error.code);
+  return data ? rowToLedgerRecord(data) : null;
 });

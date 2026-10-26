@@ -88,6 +88,15 @@ export function rowToTransaction(row: Row): Transaction {
   }
 }
 
+/** A ledger row with its optimistic-concurrency version (what edits must quote). */
+export function rowToLedgerRecord(row: Row): Transaction & { version: number } {
+  const version = Number(row.version);
+  if (!Number.isSafeInteger(version) || version < 1) {
+    throw new Error(`Expected a row version, got ${String(row.version)}`);
+  }
+  return { ...rowToTransaction(row), version };
+}
+
 export function rowToAccount(row: Row): Account {
   return accountSchema.parse({
     id: row.id,
