@@ -5,6 +5,7 @@ export const APP_ROUTES = [
   "/add/voice",
   "/transactions",
   "/transactions/new",
+  "/accounts",
   "/categories",
   "/recurring",
   "/insights",

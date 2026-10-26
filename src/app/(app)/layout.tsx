@@ -2,9 +2,24 @@ import { AppHeader } from "@/components/layout/app-header";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { OfflineBanner } from "@/components/layout/offline-banner";
+import { PreferenceSync } from "@/components/providers/preference-sync";
+import { type Profile, getProfile } from "@/lib/data/queries";
+import { optionalSession } from "@/lib/data/session";
 
-export default function AppLayout({ children }: { children: React.ReactNode }) {
-  return (
+async function loadProfile(): Promise<Profile | null> {
+  const session = await optionalSession();
+  if (!session) return null;
+  try {
+    return await getProfile();
+  } catch {
+    // The page itself reports a load failure; the shell still renders.
+    return null;
+  }
+}
+
+export default async function AppLayout({ children }: { children: React.ReactNode }) {
+  const profile = await loadProfile();
+  const shell = (
     <div className="flex min-h-dvh">
       <a
         href="#main"
@@ -26,5 +41,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </div>
       <BottomNav />
     </div>
+  );
+  if (!profile) return shell;
+  return (
+    <PreferenceSync theme={profile.theme} motion={profile.motion}>
+      {shell}
+    </PreferenceSync>
   );
 }

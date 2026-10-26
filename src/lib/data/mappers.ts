@@ -6,7 +6,16 @@
  * as ISO strings or Date objects. Both are normalised and then validated by the domain schemas,
  * so a malformed row fails loudly instead of producing a wrong total.
  */
-import { type Account, type Transaction, accountSchema, transactionSchema } from "@/domain";
+import {
+  type Account,
+  type Category,
+  type CategoryRule,
+  type Transaction,
+  accountSchema,
+  categoryRuleSchema,
+  categorySchema,
+  transactionSchema,
+} from "@/domain";
 
 type Row = Record<string, unknown>;
 
@@ -88,6 +97,35 @@ export function rowToAccount(row: Row): Account {
     currency: row.currency,
     openingBalancePaise: paise(row.opening_balance_paise),
     openingBalanceDate: localDate(row.opening_balance_date),
+    isDefault: row.is_default ?? false,
     archivedAt: timestamp(row.archived_at),
+  });
+}
+
+export function rowToCategory(row: Row): Category {
+  return categorySchema.parse({
+    id: row.id,
+    ownerId: row.owner_id,
+    parentId: row.parent_id ?? null,
+    kind: row.kind,
+    name: row.name,
+    icon: row.icon ?? null,
+    color: row.color ?? null,
+    sortOrder: row.sort_order ?? 0,
+    isDefault: row.is_default ?? false,
+    mergedIntoId: row.merged_into_id ?? null,
+    archivedAt: timestamp(row.archived_at),
+  });
+}
+
+export function rowToCategoryRule(row: Row): CategoryRule {
+  return categoryRuleSchema.parse({
+    id: row.id,
+    ownerId: row.owner_id,
+    matchText: row.match_text,
+    matchField: row.match_field,
+    categoryId: row.category_id,
+    subcategoryId: row.subcategory_id ?? null,
+    priority: row.priority ?? 0,
   });
 }

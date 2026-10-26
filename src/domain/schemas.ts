@@ -190,9 +190,51 @@ export const accountSchema = z.object({
    * included in the opening balance and is ignored by balance calculations.
    */
   openingBalanceDate: localDateSchema,
+  /** The wallet preselected in every form that needs an account (exactly one per user). */
+  isDefault: z.boolean().default(false),
   archivedAt: isoDateTimeSchema.nullable().default(null),
 });
 export type Account = z.output<typeof accountSchema>;
+
+// --- Categories ------------------------------------------------------------------
+
+export const CATEGORY_KINDS = ["expense", "income"] as const;
+export type CategoryKind = (typeof CATEGORY_KINDS)[number];
+
+export const categorySchema = z.object({
+  id: z.uuid(),
+  ownerId: z.uuid(),
+  /** null = a main category; otherwise its subcategory (one level of nesting). */
+  parentId: z.uuid().nullable().default(null),
+  kind: z.enum(CATEGORY_KINDS).default("expense"),
+  name: z.string().trim().min(1).max(40),
+  icon: z.string().max(40).nullable().default(null),
+  color: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/)
+    .nullable()
+    .default(null),
+  sortOrder: z.number().int().default(0),
+  isDefault: z.boolean().default(false),
+  /** Set when merged: the category its history moved to. Merged categories are also archived. */
+  mergedIntoId: z.uuid().nullable().default(null),
+  archivedAt: isoDateTimeSchema.nullable().default(null),
+});
+export type Category = z.output<typeof categorySchema>;
+
+export const RULE_FIELDS = ["description", "merchant"] as const;
+
+export const categoryRuleSchema = z.object({
+  id: z.uuid(),
+  ownerId: z.uuid(),
+  matchText: z.string().trim().min(1).max(80),
+  matchField: z.enum(RULE_FIELDS).default("description"),
+  categoryId: z.uuid(),
+  subcategoryId: z.uuid().nullable().default(null),
+  /** Higher runs first. */
+  priority: z.number().int().default(0),
+});
+export type CategoryRule = z.output<typeof categoryRuleSchema>;
 
 // --- Savings goals -------------------------------------------------------------
 

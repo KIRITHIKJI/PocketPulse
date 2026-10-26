@@ -35,6 +35,33 @@ export function trackingStartMs(account: Account, timeZone = DEFAULT_TIMEZONE): 
 }
 
 /**
+ * True when an entry dated `occurredAtMs` is before the account's opening balance date: it is
+ * treated as already included in the opening balance, so it doesn't change the balance. The UI
+ * says so whenever this happens instead of leaving the user wondering.
+ */
+export function isBeforeOpeningDate(
+  account: Account,
+  occurredAtMs: Instant,
+  timeZone = DEFAULT_TIMEZONE,
+): boolean {
+  return occurredAtMs < trackingStartMs(account, timeZone);
+}
+
+/** Active entries on this account dated before its opening balance date (they don't count). */
+export function entriesBeforeOpening(
+  account: Account,
+  ledger: readonly Transaction[],
+  timeZone = DEFAULT_TIMEZONE,
+): Transaction[] {
+  return ledger.filter(
+    (tx) =>
+      isActive(tx) &&
+      accountDelta(tx, account.id) !== 0 &&
+      isBeforeOpeningDate(account, occurredAtMs(tx), timeZone),
+  );
+}
+
+/**
  * Whether a transaction affects balances for this account: active and dated on/after the
  * account's opening balance date (earlier activity is already inside the opening balance).
  */

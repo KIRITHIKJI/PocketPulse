@@ -197,6 +197,19 @@ export function parseAmountInput(
   return { ok: true, paise };
 }
 
+/**
+ * Like `parseAmountInput`, but for balances that may be zero or negative (an opening balance on
+ * an overdrawn account): "-1,500", "−₹40", "₹ -12.50" and "0" are accepted.
+ */
+export function parseSignedAmountInput(input: string): ParseAmountResult {
+  const text = input.normalize("NFKC").trim();
+  const negative = /^(?:₹|rs\.?|inr)?\s*[-−]/i.test(text);
+  const unsigned = negative ? text.replace(/[-−]/, "") : text;
+  const result = parseAmountInput(unsigned, { allowZero: true });
+  if (!result.ok || !negative) return result;
+  return { ok: true, paise: result.paise === 0 ? 0 : -result.paise };
+}
+
 // ---------------------------------------------------------------------------
 // Formatting
 

@@ -3,7 +3,7 @@
 Durable project state. Update before a context reset or at the end of each work session.
 Source of truth for requirements: `PROJECT_SPEC.md`. Working rules: `CLAUDE.md`.
 
-_Last updated: 2026-10-26 — end of Phase 3a (hosted project verified live)._
+_Last updated: 2026-10-26 — end of Phase 4 (built and tested locally; migration 0700 waits for `db push`)._
 
 ## Build stages
 
@@ -14,8 +14,8 @@ One integrated product. Stages are an internal build order only; nothing is defe
 | 1 | Foundation: tooling, design system, app shell, every route, shared states | ✅ Done |
 | 2 | Financial domain core: paise math, INR formatting, Asia/Kolkata period boundaries, ledger/balance invariants (income, expense, refund, transfer, allocation, release), opening/closing balances, aggregation, budgets, savings, safe-to-spend — pure + unit-tested (`src/domain/`) | ✅ Done |
 | 3 | Supabase: schema + migrations, RLS on every private table, cross-user denial tests, server data access, auth (register, login, logout, recovery) and route protection | ✅ Done — applied to the hosted project (`qzmqvytrekenzciasvph`) and verified live in Phase 3a: registration, login, logout, defaults, signed-in e2e, cross-user RLS, account-deletion cascade. The live password-reset email is still pending (see blockers) |
-| 4 | Onboarding (balance + effective date, wallets, currency/timezone, allowance, budgets, goals, prefs), accounts, categories/subcategories management, profile/preferences sync | ⬜ Next |
-| 5 | Transactions: quick-add tiles, full form, repeat/frequent, history with search/filters, detail/edit/delete/undo (real `notFound()` + re-check 404 status, see Checks note), idempotency keys | ⬜ |
+| 4 | Onboarding (balance + effective date, wallets, currency/timezone, allowance, budgets, goals, prefs), accounts, categories/subcategories management, profile/preferences sync | 🟨 Built; DB + unit tests pass locally; live e2e of `/onboarding` and `/accounts` waits for migration 0700 to be pushed (see blockers) |
+| 5 | Transactions (⬜ Next): quick-add tiles, full form, repeat/frequent, history with search/filters, detail/edit/delete/undo (real `notFound()` + re-check 404 status, see Checks note), idempotency keys | ⬜ |
 | 6 | Natural-language parser + voice entry with draft review and atomic batch confirm | ⬜ |
 | 7 | Insights + charts with drill-down, sparse-data honesty, Money Leak Detector with what-ifs | ⬜ |
 | 8 | Budgets (alerts, pace, suggestions), savings goals + allocation ledger, safe-to-spend, survival mode, recurring templates + commitments | ⬜ |
@@ -55,19 +55,20 @@ Every screen has a route; feature screens show a real empty state until their st
 
 | Screen | Route(s) | State |
 | --- | --- | --- |
-| Welcome / onboarding | `/welcome`, `/onboarding` | Welcome complete; onboarding (signed-in only) lists steps + "Go to Home"; wizard in Phase 4 |
+| Welcome / onboarding | `/welcome`, `/onboarding?step=…` | 6-step wizard (region, balance, income, budgets, goal, preferences); every step skippable; "Skip setup" |
 | Register, login, recovery | `/register`, `/login`, `/forgot-password`, `/reset-password`, `/auth/confirm` | Real forms (Phase 3); config panel only when Supabase env is missing |
 | Home | `/home` | Empty state + links to add flows (Phase 5/7) |
 | Quick add / type / voice / full form | `/add`, `/add/text`, `/add/voice`, `/transactions/new` | Empty state (Phases 5–6) |
 | History, detail, edit | `/transactions`, `/transactions/[id]`, `/transactions/[id]/edit` | Empty / 404 (Phase 5) |
-| Categories | `/categories` | Empty state (Phase 4) |
+| Wallets | `/accounts` | Create, edit (name/type/opening balance + date), default, archive/restore, balances now |
+| Categories | `/categories?tab=…` | Hierarchy, create/edit/icon/colour, reorder, archive/restore, merge, rules + live tester, Uncategorized queue |
 | Insights, Money leaks | `/insights`, `/insights/leaks` | Empty state (Phase 7) |
 | Budgets, goals, safe-to-spend, survival | `/budgets`, `/goals`, `/safe-to-spend`, `/survival` | Empty state (Phase 8) |
 | Income & recurring | `/recurring` | Empty state (Phase 8) |
 | Parent report | `/reports` | Empty state (Phase 9) |
 | Rewards, reminders | `/rewards`, `/reminders` | Empty state (Phase 9) |
-| Settings: preferences/theme | `/settings` | Theme + motion controls work (device-local); profile prefs Phase 4 |
-| Privacy, sync, data export/deletion | `/settings/privacy`, `/settings/sync`, `/settings/data` | Empty state (Phases 9–10) |
+| Settings: profile/preferences | `/settings` | Name, theme/motion (synced), currency/timezone/week start, income, small-purchase threshold, reminders, privacy |
+| Privacy, sync, data export/deletion | `/settings/privacy`, `/settings/sync`, `/settings/data` | Privacy: real content + report default. Data: section structure only; export/deletion say "not connected in this build yet" (wired in Phase 9, per your instruction). Sync: Phase 10 |
 
 `src/proxy.ts` (Next 16's name for middleware): `/` → `/home` (signed in) or `/welcome`; signed-out app routes and `/onboarding` → `/login?next=<path>`; signed-in visits to login/register/forgot → `/home`; `/reset-password` and `/auth/*` are always reachable. Without Supabase env, app routes → `/login`, which explains the missing configuration.
 
@@ -121,6 +122,19 @@ Every screen has a route; feature screens show a real empty state until their st
   - `NEXT_PUBLIC_SITE_URL` builds email-link URLs, falling back to the request host.
 - **Row → domain mapping:** `src/lib/data/mappers.ts` converts DB rows (PostgREST numbers or node-postgres int8 strings) into Zod-validated domain records. All math stays in `@/domain`. The DB tests feed real rows through it into `consolidatedBalanceAt` / `totalEarmarked`.
 
+### Phase 4 decisions
+
+- **Migration `…0700_onboarding_accounts_categories`** (SECURITY INVOKER; RLS applies): `ensure_default_account()` (creates "Cash", ₹0 from today in the user's timezone, or promotes an active account named Cash; idempotent and race-safe), `set_default_account`, `save_opening_balances` (default + up to 10 extra wallets, one effective date, client ids so resubmission updates), `change_currency` (all-or-nothing; refused once any transaction exists, deleted ones included), `set_monthly_budgets`, `reorder_categories`, `merge_category` (+ helper `repoint_subcategory`), and a trigger refusing to archive the default wallet.
+- **Default wallet:** created when `/onboarding` loads, by "Finish/Skip setup", and by `/accounts`, so it exists for backfilled users too. Phase 5 forms must call `ensureDefaultAccount()` and preselect it.
+- **One currency per user.** New wallets/goals/budgets take the profile currency; Settings disables other currencies once an entry exists.
+- **Archived wallets still count** in the consolidated balance (their history is real); they only leave the pickers. The Wallets screen explains entries dated before an opening date (`entriesBeforeOpening`). **Phase 5:** the entry form must show the same note when the chosen date is before the wallet's opening date (`isBeforeOpeningDate`).
+- **Category merge rewrites references** (transactions, rules, tiles, templates, commitments, budgets — the target's budget wins) to the target in one transaction; the source stays archived with `merged_into_id` as the record. Merged transactions get a new `version`, so a stale offline edit reports a conflict (Phase 10). Main → main moves subcategories, folding same-named ones; main → sub is refused. Archive (not delete) is the only removal.
+- **Suggestion service** `suggestCategory` (`src/domain/categorize.ts`), deterministic: user rules (priority, longest phrase, id) → exact prior choices (count, then most recent) → similar words → built-in keywords matched by category *name* → null (Uncategorized). Every suggestion has a plain-language `reason`; archived categories are skipped, merged ones resolved. Phases 5–6 call it with `{categories, rules, history: ledger}`.
+- **Theme/motion sync:** stored in `profiles`; `PreferenceSync` applies a profile value only when it changed since this device last synced (`pp-synced-appearance`), so a just-made local choice is never reverted by a save still in flight.
+- **Forms:** `ActionForm` runs `useActionState` actions without React's post-submit reset, so typed values survive server validation errors. Money fields use the domain parsers (`parseAmountInput`, new `parseSignedAmountInput` for opening balances); more than 2 decimals is rejected.
+- **Per request:** one JWT verification (`optionalSession`/`requireSession`, cached), one profile read, one `requestNow()`. Loaders page past PostgREST's 1000-row cap.
+- **E2E:** at most 4 workers (2 on CI) — more parallel browsers hit Supabase Auth rate limits and timed out. Tests that write the shared test profile run on desktop only and restore defaults.
+
 ### Phase 9 notes: account deletion (recorded in Phase 3a)
 
 Clients can't hard-delete transactions (no grant or policy), so account deletion runs **server-side**:
@@ -134,7 +148,7 @@ Clients can't hard-delete transactions (no grant or policy), so account deletion
 
 ### Phase 4 notes (recorded from the Phase 2 review)
 
-- Onboarding must **auto-create a default "Cash" wallet** (`accounts.is_default = true`, one per user, enforced by a unique index) together with the opening balance and its effective date. It is pre-selected in every form that needs an account (quick add, full form, batch, recurring, commitments).
+- ✅ Done in Phase 4 (see decisions above). Onboarding must **auto-create a default "Cash" wallet** (`accounts.is_default = true`, one per user, enforced by a unique index) together with the opening balance and its effective date. It is pre-selected in every form that needs an account (quick add, full form, batch, recurring, commitments).
 - When a user logs a transaction dated **before an account's opening balance date**, the UI must explain why the balance didn't change: it is treated as already included in the opening balance. The domain's `validateLedger` reports it as `before_opening_date`; the database deliberately allows it, so history can still be recorded.
 - After sign-up the user lands on `/onboarding`. Today it shows the steps and "Go to Home"; Phase 4 replaces it with the real wizard.
 
@@ -156,6 +170,21 @@ Hosted project `qzmqvytrekenzciasvph`. Live checks use the publishable key only,
 | Sign-up with "Confirm email" ON (email → `/auth/confirm`) | ⏳ not tested live (built-in email quota was exhausted) | ✅ code path + invalid-link e2e |
 | Forgot / reset password email | ⏳ **pending**: the dashboard test user's address belongs to someone else, so no reset email was sent | ✅ forms, validation, no-session page, invalid link |
 | Transfers, refunds, goal money, batch rollback | — (no UI yet) | ✅ PG 18 |
+
+## Checks run (Phase 4, 2026-10-26)
+
+| Command / action | Result |
+| --- | --- |
+| Signed-in e2e with your new test user, before any Phase 4 change | **129 passed**. The user is email-confirmed and has defaults (profile, 52 categories, 12 tiles, prefs, streak; 0 wallets) |
+| `npx supabase@2.120.0 migration list` (agent) | 0100–0600 applied remotely — **0600 confirmed**. (Your message contained the literal `<paste>` again, so I checked myself.) |
+| `npm run test:db` (local PG 18) | Pass, 5 files / 49 tests. 15 new in `tests/db/phase4.test.ts`: default wallet for trigger *and* backfilled users, promote existing Cash, idempotent and atomic opening balances, cross-user writes refused, default can't be archived, currency lock, budgets, reorder, merges keep history and totals |
+| Mutation check | Disabling the merge's transaction repoint and the default-archive guard made 3 tests fail; restored |
+| `npm test` | Pass, 14 files / 290 tests (48 new: suggestion service, signed amounts, opening-date helpers, every Phase 4 schema, onboarding redirect whitelist) |
+| `npm run lint` / `typecheck` / `format:check` / `build` | Pass. The secret key value and `sb_secret_` occur 0 times in `.next` / `.next/static` |
+| `npx supabase db push --dry-run` | Would push only `…0700` |
+| `npx supabase db push` | **Blocked**: the agent's permission classifier denied writing to the hosted project. Not applied |
+| `npm run test:e2e` (hosted project, without 0700) | **130 passed, 5 failed, 6 skipped**. All 5 failures need 0700: `/accounts` and `/onboarding` route checks (desktop + mobile) and the onboarding journey (`ensure_default_account` doesn't exist yet); the wallet and threshold tests are skipped behind it in the serial group. Categories (create/rename/archive, rule tester, queue), settings, theme sync across two "devices", reduced motion and all earlier tests pass |
+| Visual check (screenshots, Pixel 7 + desktop) | Categories, category dialog, rules, settings, data page. Fixed: tabs wrap instead of clipping "Uncategorized" on phones |
 
 ## Checks run (Phase 3a, 2026-10-26)
 
@@ -215,9 +244,8 @@ Note: because of the `(app)` loading boundary, Next.js streams `notFound()` page
 
 ## Known blockers / notes
 
-- ⚠️ **Turn "Confirm email" back ON** (Authentication → Sign In / Providers → Email → Save). It was turned off temporarily for the live registration test on 2026-10-26.
-- ⚠️ **Migration 0600 push unconfirmed.** Run `npx supabase@2.120.0 migration list` (or `db push`, which applies it if it's missing) in your terminal. The sign-in safety net already repaired the only legacy user, so nothing is broken meanwhile.
-- ⚠️ **The dashboard test user's address isn't yours** (`E2E_EMAIL` belongs to someone else). Any auth email to it (confirmation, reset, email change) would reach a stranger. Before turning "Confirm email" back on or testing reset, replace it with a user on an address you control, and update `.env.e2e.local`.
+- ⚠️ **Push migration 0700:** run `npx supabase@2.120.0 db push` in your terminal (it applies only `…0700_onboarding_accounts_categories.sql`), then `npm run test:e2e`. Until then `/onboarding` and `/accounts` show the error state on the hosted project.
+- ✅ "Confirm email" is back on, 0600 is applied, and the e2e user is on an address you control (your report; 0600 and the user's defaults verified by the agent).
 - ⏳ **Remind at the start of Phase 9: verify the live password-reset email.** Status: built and tested locally; live email test pending. Needs a test user whose address you can open and that Supabase's built-in email will deliver to (a team member's address, or custom SMTP), plus available hourly email quota.
 - Supabase's built-in email service only delivers to team-member addresses and allows a few emails per hour. Configure custom SMTP (Authentication → Emails → SMTP) before real users sign up.
 - The Supabase CLI's `login`, `link` and `db push` need an interactive terminal (or `SUPABASE_ACCESS_TOKEN` + `SUPABASE_DB_PASSWORD`), so they run in your terminal, not the agent's.
@@ -228,11 +256,11 @@ Note: because of the `(app)` loading boundary, Next.js streams `notFound()` page
 
 ## Next concrete tasks
 
-Before Phase 4 (needs the user): turn "Confirm email" back on, confirm migration 0600 with `migration list`, and replace the dashboard test user with an address you control.
+Before Phase 5 (needs you): `npx supabase@2.120.0 db push`, then `npm run test:e2e` — the 5 Phase 4 failures above should pass.
 
-Phase 4:
+Phase 5 (transactions):
 
-1. Onboarding wizard at `/onboarding`: default "Cash" wallet + opening balance + effective date, optional extra wallets, currency/timezone, allowance frequency + next income date, initial budgets, savings goals, theme/reminder/privacy preferences. Every step skippable; writes go through server actions using the RLS client.
-2. Accounts management (create, rename, archive, set default; the opening-date explanation), categories/subcategories management (create, rename, reorder, icons/colours, merge, archive, uncategorised queue), and profile/preferences sync (theme/motion move from localStorage to `profiles`).
-3. Data-access helpers that load rows → `rowToAccount`/`rowToTransaction` → domain functions. Handle the empty, loading, error and permission-denied states.
-4. Run the signed-in e2e suite against the configured project at desktop and mobile sizes.
+1. Quick-add tiles, full form, repeat/frequent. Every form preselects `ensureDefaultAccount()` and pre-fills `suggestCategory(...)` with its reason; the user can override.
+2. When the chosen date is before the wallet's opening date, show the `isBeforeOpeningDate` explanation in the form and on the saved entry.
+3. History with search/filters, detail/edit/delete/undo via the existing RPCs (see the `notFound()` follow-up); the Uncategorized queue then fills from real entries.
+4. The budgets and goal created in onboarding become editable on the Phase 8 screens.
