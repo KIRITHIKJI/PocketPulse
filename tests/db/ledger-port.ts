@@ -2,7 +2,17 @@ import type { LedgerPort } from "@/lib/ledger/executor";
 
 import type { Session } from "./harness";
 
-function cast(value: unknown): string {
+/** Arguments whose type can't be told from the value alone. */
+const NAMED_CASTS: Record<string, string> = {
+  p_type: "::text",
+  p_note: "::text",
+  p_amount_paise: "::bigint",
+  p_occurred_at: "::timestamptz",
+  p_occurrence: "::date",
+};
+
+function cast(name: string, value: unknown): string {
+  if (NAMED_CASTS[name]) return NAMED_CASTS[name];
   if (typeof value === "boolean") return "::boolean";
   if (typeof value === "number") return "::integer";
   if (typeof value === "string") return "::uuid";
@@ -20,7 +30,7 @@ export function pgPort(s: Session): LedgerPort {
     async call({ fn, args }) {
       const entries = Object.entries(args);
       const sql = `select public.${fn}(${entries
-        .map(([name, value], i) => `${name} => $${i + 1}${cast(value)}`)
+        .map(([name, value], i) => `${name} => $${i + 1}${cast(name, value)}`)
         .join(", ")}) as r`;
       const params = entries.map(([, v]) =>
         v !== null && typeof v === "object" ? JSON.stringify(v) : v,

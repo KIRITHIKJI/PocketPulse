@@ -1,7 +1,13 @@
 /** Profile and preference form schemas (Settings and onboarding share them). */
 import { z } from "zod";
 
-import { MAX_AMOUNT_PAISE, SUPPORTED_CURRENCIES, isValidTimeZone } from "@/domain";
+import {
+  INCOME_FREQUENCIES,
+  type IncomeFrequency,
+  MAX_AMOUNT_PAISE,
+  SUPPORTED_CURRENCIES,
+  isValidTimeZone,
+} from "@/domain";
 import {
   amountField,
   optionalAmountField,
@@ -13,8 +19,8 @@ import { MOTION_PREFERENCES } from "@/lib/motion-preference";
 export const THEMES = ["dark", "light", "system"] as const;
 export type ThemePreference = (typeof THEMES)[number];
 
-export const INCOME_FREQUENCIES = ["weekly", "biweekly", "monthly", "irregular", "none"] as const;
-export type IncomeFrequency = (typeof INCOME_FREQUENCIES)[number];
+export { INCOME_FREQUENCIES };
+export type { IncomeFrequency };
 
 export const profileNameSchema = z.object({
   displayName: optionalTextField(60, "Your name"),

@@ -30,7 +30,7 @@ describe("evaluateBudget", () => {
     expect(r.dailyAllowancePaise).toBe(9_375); // 150 000 / 16 days left
     expect(r.reachedThresholdsBp).toEqual([5_000]);
     expect(r.explanation).toMatch(/₹1,500 of ₹3,000 spent on all spending; ₹1,500 left/);
-    expect(r.explanation).toMatch(/target, not money set aside/);
+    expect(r.explanation).toMatch(/target, not reserved money/);
   });
 
   it("only counts its category, net of refunds", () => {

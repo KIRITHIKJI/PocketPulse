@@ -133,10 +133,13 @@ export interface InsightCard {
   scope: SpendingScope;
 }
 
-/** "You bought coffee 16 times for ₹25 each: ₹400 this month." */
+/**
+ * "You logged Bus 4 times for ₹20 each: ₹80 this month." Labels are whatever the user typed (a
+ * thing, a ride, a recharge), so the sentence names them as written and says "logged", which
+ * reads right for all of them. "You bought bus" didn't.
+ */
 export function repeatInsightText(group: PurchaseGroup, words: InsightWords): string {
   const { money } = words;
-  const name = group.label.toLowerCase();
   const price =
     group.minPaise === group.maxPaise
       ? `for ${money(group.minPaise!)} each`
@@ -145,7 +148,7 @@ export function repeatInsightText(group: PurchaseGroup, words: InsightWords): st
     group.refundsPaise > 0
       ? `, or ${money(group.netPaise)} after ${money(group.refundsPaise)} in refunds`
       : "";
-  return `You bought ${name} ${times(group.count)} ${price}: ${money(group.grossPaise)} ${words.period}${refunded}.`;
+  return `You logged ${group.label} ${times(group.count)} ${price}: ${money(group.grossPaise)} ${words.period}${refunded}.`;
 }
 
 /** "Food & Drinks increased by ₹450 compared with the previous week, mainly due to snacks." */

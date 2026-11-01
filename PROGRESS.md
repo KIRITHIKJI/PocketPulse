@@ -3,7 +3,7 @@
 Durable project state. Update before a context reset or at the end of each work session.
 Source of truth for requirements: `PROJECT_SPEC.md`.
 
-_Last updated: 2026-11-01 — end of Phase 7. Migrations 0100–0800 are applied on the hosted project; Phase 7 adds none. Phase 8 is not started and needs its prompt._
+_Last updated: 2026-11-01 — end of Phase 8. Migrations 0100–0900 are applied on the hosted project. Phase 9 is not started and needs its prompt._
 
 ## Build stages
 
@@ -18,7 +18,7 @@ One integrated product. Stages are an internal build order only; nothing is defe
 | 5 | Transactions: one mutation layer (commands + idempotency keys), quick-add tiles, full form, repeat/frequent, history with search/filters, detail/edit/delete/undo with real 404s, Home dashboard | ✅ Done — unit, DB and live e2e (desktop + Pixel 7) pass |
 | 6 | Natural-language parser + voice entry with draft review and atomic batch confirm | ✅ Done — unit, DB and live e2e pass. Voice UI is tested with a stand-in for speech recognition; a real microphone is not yet tested (see blockers) |
 | 7 | Insights + charts with drill-down, sparse-data honesty, Money Leak Detector with what-ifs | ✅ Done — unit (including figure-by-figure reconciliation with history) and live e2e pass on desktop and Pixel 7 |
-| 8 | Budgets (alerts, pace, suggestions), savings goals + allocation ledger, safe-to-spend, survival mode, recurring templates + commitments | ⬜ |
+| 8 | Budgets (alerts, pace, suggestions), savings goals + allocation ledger, safe-to-spend, survival mode, recurring templates + commitments | ✅ Done — unit, DB and live e2e pass on desktop and Pixel 7; screens checked at laptop and phone sizes |
 | 9 | Parent report (preview, PDF, CSV, text; reconciled totals), gamification (XP, levels, streaks, quests, achievements; idempotent), reminders, data export + account deletion | ⬜ |
 | 10 | PWA + IndexedDB offline queue, sync states, conflict handling; full e2e at mobile/desktop; a11y/perf pass; docs; final verification | ⬜ |
 
@@ -35,17 +35,17 @@ Status key: ⬜ not started · 🟨 partial (detail given) · ✅ done and verif
 - ✅ Category/subcategory totals reconcile with transactions. — Every category and subcategory figure on Insights is compared id for id with history for 7 periods (`tests/unit/insights-reconcile.test.ts`), refunds in later periods included, and live in Journey C.
 - ✅ Insights point to real supporting records and handle sparse data honestly. — Every figure carries the history filters behind it; a new account, one entry, income only and refund only are tested for honest states and no NaN. Bars, cards and rows open real entries live.
 - ✅ Money Leak Detector groups and totals correctly. — By description, merchant, tile and category; each group matches history entry for entry, its previous-period figure too. What-ifs use exact integers.
-- 🟨 Budgets/alerts recalculate on changes. — Domain `evaluateBudget` (spent/remaining/%/pace/thresholds) and `newlyReachedThresholds` are tested, including edits/deletes; UI and alert delivery in Phase 8.
-- 🟨 Savings allocations do not count as purchases or reduce consolidated total balance. — Proven in domain tests (invariant 4); end-to-end in Phase 8.
+- ✅ Budgets/alerts recalculate on changes. — Alerts are worked out from the ledger on every read, so editing or deleting an entry takes one away. Unit tested and live e2e on both viewports. The Phase 9 notification centre will deliver them outside the app.
+- ✅ Savings allocations do not count as purchases or reduce consolidated total balance. — Domain tests (invariant 4), the real mutation layer on PostgreSQL (`tests/db/phase8.test.ts`), and live Journey D on both viewports.
 - ✅ Transfers between owned accounts do not inflate consolidated income/expense. — Domain invariants 2–3, plus a DB test through the app's mutation layer: a transfer (and an edit of it) moves money between wallets and leaves the consolidated balance unchanged. Transfers are entered from the full form.
-- 🟨 Safe-to-spend and allowance predictions avoid double counting. — Domain `calculateSafeToSpend` tested (invariant 5, paid-commitment linkage, goal purchase + release); UI in Phase 8.
+- 🟨 Safe-to-spend and allowance predictions avoid double counting. — `calculatePlan` is the one calculation behind both screens. On PostgreSQL the safe-to-spend figure is compared before and after every save and every retry: paying a bill, confirming a recurring item and buying from a goal each subtract once. Live Journey E passes on both viewports.
 - 🟨 Parent report balances and totals reconcile for the selected historical period. — Domain `summarizePeriod` rebuilds opening/closing from the ledger and is tested to reconcile (invariant 10); report UI/exports in Phase 9.
 - ⬜ PDF/CSV exports are real and contain correct data.
 - ⬜ XP, streaks, quests and achievements work consistently.
 - 🟨 PWA works on supported devices; responsive app works on laptop/mobile. — Responsive shell done (sidebar ≥1024px; header + 5-tab bottom nav + "All sections" sheet + add FAB on mobile), Playwright runs at desktop and Pixel 7 sizes. No PWA manifest/service worker yet (Phase 10).
 - ⬜ Offline entries persist and sync without loss or duplication. — Only an online/offline banner exists; it truthfully says changes can't be saved offline.
 - 🟨 Loading, empty, error, permission-denied and offline states are handled. — Shared `StatePanel` (empty/error/offline/denied), `PageSkeleton`, route `loading.tsx`, `error.tsx`, in-shell and global `not-found.tsx`, `global-error.tsx`, offline banner. Each feature must still wire these to its real data states.
-- 🟨 No required action is a placeholder or fake success. — Every Phase 1–6 action is real: saves go through RPCs, and success shows only after the database answers. Screens for Phases 8–10 are still honest empty states.
+- 🟨 No required action is a placeholder or fake success. — Every Phase 1–8 action is real: saves go through RPCs or RLS-checked writes, and success shows only after the database answers. Screens for Phases 9–10 are still honest empty states.
 - 🟨 Lint/typecheck/tests/production build are run and failures are addressed. — All pass for Phase 3 (see Checks).
 - 🟨 Setup documentation accurately describes what needs a real Supabase project/credentials. — README › Setup was followed for the hosted project: init/login/link/db push (login/link/db push must run in an interactive terminal), URL configuration, token-hash email templates, `.env.e2e.local`. Re-check at final delivery.
 
@@ -63,8 +63,10 @@ Every screen has a route; feature screens show a real empty state until their st
 | Wallets | `/accounts` | Create, edit (name/type/opening balance + date), default, archive/restore, balances now |
 | Categories | `/categories?tab=…` | Hierarchy, create/edit/icon/colour, reorder, archive/restore, merge, rules + live tester, Uncategorized queue |
 | Insights, Money leaks | `/insights`, `/insights/category/[id]`, `/insights/leaks` | Period picker, totals, insight cards, trend chart, categories, comparison, frequent, unusual, recurring. Category page (Journey C). Leak groups with what-ifs |
-| Budgets, goals, safe-to-spend, survival | `/budgets`, `/goals`, `/safe-to-spend`, `/survival` | Empty state (Phase 8) |
-| Income & recurring | `/recurring` | Empty state (Phase 8) |
+| Budgets | `/budgets` | Total and per-category; monthly, weekly or custom dates; suggested limits, thresholds, alerts, pace, last period |
+| Savings goals | `/goals`, `/goals/[id]` | Ring, remaining, suggestion, forecast, set aside/release, "I bought it", pause/complete/archive, history. Real 404s |
+| Safe to spend, Survival mode | `/safe-to-spend`, `/survival` | Every input with its explanation; no limit without a next income date |
+| Income & recurring | `/recurring` | Due and upcoming (labelled forecast, reminder or planned), recurring items, skipped, what actually happened |
 | Parent report | `/reports` | Empty state (Phase 9) |
 | Rewards, reminders | `/rewards`, `/reminders` | Empty state (Phase 9) |
 | Settings: profile/preferences | `/settings` | Name, theme/motion (synced), currency/timezone/week start, income, small-purchase threshold, reminders, privacy |
@@ -222,6 +224,32 @@ Every screen has a route; feature screens show a real empty state until their st
 - **Charts:** Recharts 3.10.1 for the one-series trend, loaded only on these screens. Category shares are HTML bars, so each one is a real link and keyboard-reachable. Negative buckets draw at zero with a note; `chartShares` keeps percentages at 100 % when a refund-heavy category is at zero. Week buckets are clipped to the period, so a bar's link can't pull in days outside it. Future days aren't drawn. Each chart has a table with links. Animation follows the motion preference.
 - **E2E server:** Playwright reuses whatever is on port 3100. A `next start` left over from Phase 6a served the old build to the first runs here. If results look stale, check that port first.
 
+### Phase 8 decisions
+
+- **Migration `…0900_plan_money`:** the only one this phase. Budgets, goals, bills and templates are ordinary owner-only writes that RLS and the existing triggers already cover.
+- **Bugs fixed in the Phase 3 RPCs:**
+  - `record_goal_purchase` decided a replay by looking for the release row. A purchase that released nothing has no such row, so its retry would release money set aside since. Now the expense already existing means the whole operation already ran.
+  - The same function returned `duplicate` when a new expense met a used release id, leaving the expense saved. Now it raises and rolls back.
+  - `pay_commitment` answered `duplicate` to a replay whose entry had been deleted, which read as paid while the bill was unpaid again. Now it's a `conflict`.
+- **Tile id:** `transactions.preset_id`, expenses only, same-owner foreign key, part of the replay fingerprint, not patchable. Tile groups key on it, and show the tile's current name. A repeat of a tile entry keeps the tile. The custom tile never stamps one: it means something different each time, so those entries group by what was typed.
+- **Backfill:** links an entry when exactly one tile of its owner has that label (case and outer spaces ignored, hidden tiles counted, custom tiles skipped). It's kept as `backfill_entry_presets()` so the test can run it on real rows, and clients can't call it. The trigger is off during it, so no row gets a new `version`. An entry made before a rename can't be linked: its label matches no tile. It keeps grouping by description.
+- **Recurring occurrences are worked out, not stored.** A template produces dates; an occurrence is done while an active entry points at it, the same rule as a paid commitment. So deleting the entry makes it due again, undo is an ordinary delete, and no date math lives in SQL. `next_due_date` is where the schedule starts counting (resuming moves it past the paused gap).
+- **One active entry per occurrence:** the unique constraint became a partial index over active rows, so a confirmation that was undone can be confirmed again, and restoring the old entry over a new one is refused. `confirm_recurring` locks the template, so two devices queue; the second gets `duplicate` with the first's entry.
+- **Skips** reuse `commitments`: a cancelled row with the template and occurrence. Repeating a skip does nothing, and "Bring back" deletes the row. These rows aren't bills.
+- **Forecast expenses join the commitments list only inside the calculation** (`forecastCommitments`, ids `recurring:<template>:<date>`). Expected income never counts.
+- **`calculatePlan`** is the one entry point for Safe to spend and Survival Mode. The horizon is the saved next income date. Without a usable date it's 30 days, for the bills shown, and every limit stays null.
+- **Income date:** today or earlier counts as passed. With a regular frequency the screen offers the next date from it, as a button: a passed date is never rolled forward without the user. Survival Mode's "day 12 of 30" also comes from the frequency, and doesn't show for irregular income.
+- **Survival status** reads the safe-to-spend result: flexible at or below zero, or a recent pace that runs out early, is `at_risk`; a spend today above the daily amount is `watch`; no pace yet is `too_early`.
+- **"I bought it"** releases the price or everything saved, whichever is less, and the two rows share a batch id so `undo_batch` reverses both. Deleting that expense alone from history leaves the release in place: they're separate records, and the balance stays right.
+- **Deleting a goal purchase says what happened.** The delete dialog warns first. Then a note on History and the goal's page says the money wasn't put back, with "Set ₹X aside again". No new column: a release whose id is its own batch, with no active expense in that batch, is such a case (`orphanedPurchaseReleases`). The button soft-deletes the release, which puts back that exact amount and clears the note. Without a way to decline the note would stay for good, so "Keep it flexible" tags the release `kept flexible`, an ordinary checked edit. Both have Undo. `batchId` is now on domain records for this.
+- **Budget alerts are read from the ledger, not stored.** Each budget shows its highest reached threshold, unless alerts are off in Settings. Writing them to `notifications` belongs with the Phase 9 notification centre.
+- **`BudgetRemaining` is the only way a remaining amount is rendered,** so "target, not reserved money" can't be left off. `BUDGET_TARGET_NOTE` is the one wording.
+- **Domain text took INR for granted.** Budgets, goals and safe-to-spend now take the profile's formatter; ISO dates in explanations became readable ones.
+- **Wording:** "You logged Bus 4 times for ₹20 each: ₹80 this month." It keeps the label as typed and says "logged", which fits rides and recharges too. What-ifs follow: "If you logged 2 fewer Bus entries at ₹20…". This replaces the spec's "You bought coffee 16 times" example, by your instruction.
+- **Celebration** is CSS keyframes around a message that stays. It starts only on the Mark complete click, covers nothing, and doesn't replay on reload. Under reduced motion the burst isn't drawn.
+- **New-record ids regenerate per dialog opening.** Within one opening a double submit is one record. Keeping one id for the page's life would make a second add overwrite the first.
+- **E2E:** the plan and motion specs join the serial ledger projects. Goals with history can't be deleted, so each spec reuses one archived goal.
+
 ### Phase 9 notes: account deletion (recorded in Phase 3a)
 
 Clients can't hard-delete transactions (no grant or policy), so account deletion runs **server-side**:
@@ -257,6 +285,28 @@ Hosted project `qzmqvytrekenzciasvph`. Live checks use the publishable key only,
 | Sign-up with "Confirm email" ON (email → `/auth/confirm`) | ⏳ not tested live (built-in email quota was exhausted) | ✅ code path + invalid-link e2e |
 | Forgot / reset password email | ⏳ **pending**: the dashboard test user's address belongs to someone else, so no reset email was sent | ✅ forms, validation, no-session page, invalid link |
 | Transfers, refunds, goal money, batch rollback | — (no UI yet) | ✅ PG 18 |
+
+## Checks run (Phase 8, 2026-11-01)
+
+| Command / action | Result |
+| --- | --- |
+| `npx supabase@2.120.0 migration list` | 0100–0900 applied remotely (you ran `db push`; 0900 confirmed) |
+| `npm run lint` / `typecheck` / `format:check` | Pass |
+| `npm test` | Pass, 22 files / 614 tests (71 new) |
+| `npm run test:db` (local PostgreSQL 18) | Pass, 9 files / 99 tests, plus 9 "URL not set" placeholders. 26 new in `tests/db/phase8.test.ts`, through the real executor, comparing the safe-to-spend figure before and after every save and retry |
+| `npm run test:e2e` (hosted project, desktop + Pixel 7, fresh build) | **206 passed, 9 skipped, 0 failed** on the final code. The 9 are the same as Phase 7: one-viewport tests, plus the cross-user 404 that needs a second account |
+| Mutation check | 13 breaks of the money rules: 11 failed tests first time. One showed a weak test (the rollback test's taken id was stopped earlier by the earmark trigger; it now uses an expense's id, and the break fails). One showed a redundant line, since removed. Putting the "second add" bug back in each of the 4 forms fails exactly one test each |
+| Motion check | Every case runs against a control that animates. The first recorder couldn't see animation and its control failed; heights are now sampled per bar, per frame. Under reduced motion a bar gets at most one layout pass and no in-between frames |
+| Visual check (1280 px and Pixel 7, dark and light; overflow also at 360 px) | Real seeded data on 8 screens plus the purchase sheet. No overflow or console errors. Calculations re-added by hand. Fixed: "Released · Released for a purchase", "No monthly budget yet" under an alert when only a custom budget exists, a 16 px alert link, the note's wording. The remaining short tap target is an inline text link in a sentence |
+| `npm run build` | Pass. The secret key value is in 0 files under `.next`; `sb_secret_` is in 0 files under `.next/static` |
+| `npm audit` | Production dependencies: 0 vulnerabilities. Dev tooling: a new moderate advisory in `minimatch`, through ESLint and its plugins. No package changed this phase, and npm's only fix would install eslint 4, so it's left alone |
+| Test data | The account ends with no active money entries. Left behind by design: archived test goals, cancelled bills, archived recurring items, and archived zero-balance check wallets |
+
+Real bugs the live run found, which unit and DB tests didn't:
+
+- A bill whose payment was deleted is unpaid again, but Cancel refused it as already paid, because the action read the old link instead of asking whether that payment is still active. Fixed, and covered by Journey E.
+
+Runs that don't count: two full e2e runs reported failures that had nothing to do with the app. A `next start` of mine from an earlier check was still holding port 3100, so Playwright reused it, and it kept serving a build that had since been replaced. Killing its `npx` wrapper left the real server alive. Before trusting a run, confirm the port is empty and that `.next/BUILD_ID` changes. One Pixel 7 run also hit a failed lookup with no error code; it passed on the full rerun, and a `fetch failed` from a plain script around the same time suggests the connection to the hosted project, not the app.
 
 ## Checks run (Phase 7, 2026-11-01)
 
@@ -428,6 +478,7 @@ Note: because of the `(app)` loading boundary, Next.js streams `notFound()` page
 ## Known blockers / notes
 
 - ✅ Migration 0700 is applied (confirmed by `migration list`); Phase 4 e2e passes live.
+- ⏳ **`npm audit` reports a moderate `minimatch` advisory.** See Phase 8 checks. Re-check when `eslint` or `typescript-eslint` ship a fix. Don't run `npm audit fix --force`: it would install eslint 4.
 - ⏳ **Decide on voice and "never upload audio"** (see Phase 6a decisions).
 - ⏳ **Try voice on a real phone and laptop.** The e2e tests use a stand-in for the browser's speech recognition, so no real microphone or speech service has been exercised. Check Chrome on Android and desktop: permission prompt, an Indian-English phrase such as "tea fifteen, bus twenty", a denied microphone, and whether `en-IN` recognition keeps "kal", "aaj" and "parso" as those words (it may write "call" or similar, which the parser won't read as a date).
 - ⏳ **Cross-user 404 e2e** needs a second test account: add `E2E_USER_B_EMAIL` / `E2E_USER_B_PASSWORD` to `.env.e2e.local`. Until then that test is skipped. Cross-user denial is proven in the DB tests and by the RLS-scoped lookup.
@@ -442,7 +493,4 @@ Note: because of the `(app)` loading boundary, Next.js streams `notFound()` page
 
 ## Next concrete tasks
 
-Phase 8 (budgets, savings goals, safe-to-spend, survival mode, recurring), not started and needs its prompt:
-
-1. Reuse `recurringSignals` to suggest recurring templates, and `comparisonWindows` wherever a running period is compared.
-2. The Phase 8 goal screens add allocation/release commands (extend `LedgerCommand`); Phase 10 queues `LedgerCommand`s offline and replays them through `runLedgerCommandWith`.
+Phase 9 needs its prompt. Carry over: write budget alerts to `notifications` for the notification centre; Phase 10 queues `LedgerCommand`s, including the new goal and bill commands, and replays them through `runLedgerCommandWith`.

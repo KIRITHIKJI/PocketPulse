@@ -20,6 +20,8 @@ export type QuickEntry = {
   key: string;
   /** Set for tiles: lets the sheet remember the amount as the tile's usual one. */
   presetId: string | null;
+  /** The tile the saved entry belongs to: a repeat of a tile entry stays in that tile's group. */
+  groupPresetId: string | null;
   title: string;
   icon: string | null;
   color: string | null;
@@ -64,6 +66,8 @@ export function tileEntries(presets: readonly QuickAddPreset[], categories: read
       return {
         key: p.id,
         presetId: p.id,
+        // A tile that asks what it was (the custom tile) has no meaning of its own to group by.
+        groupPresetId: choice ? p.id : null,
         title: p.label,
         icon: presetIcon(p.icon) ?? look.icon,
         color: look.color,
@@ -84,6 +88,7 @@ function fromExpense(tx: ExpenseTransaction, key: string, byId: Map<string, Cate
   return {
     key,
     presetId: null,
+    groupPresetId: tx.presetId,
     title: tx.description || tx.merchant || label?.split(" › ").pop() || "Expense",
     ...(choice ? style(choice, byId) : { icon: null, color: null }),
     amountPaise: tx.amountPaise,

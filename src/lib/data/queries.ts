@@ -2,14 +2,29 @@ import "server-only";
 
 import { cache } from "react";
 
-import type { Account, Category, CategoryRule, CurrencyCode, Transaction, Weekday } from "@/domain";
+import type {
+  Account,
+  Budget,
+  Category,
+  CategoryRule,
+  Commitment,
+  CurrencyCode,
+  RecurringTemplate,
+  SavingsGoal,
+  Transaction,
+  Weekday,
+} from "@/domain";
 import { ensureDefaults } from "@/lib/auth/defaults";
 import { DataLoadError } from "@/lib/data/errors";
 import {
   rowToAccount,
+  rowToBudget,
   rowToCategory,
   rowToCategoryRule,
+  rowToCommitment,
+  rowToGoal,
   rowToLedgerRecord,
+  rowToRecurringTemplate,
   rowToTransaction,
 } from "@/lib/data/mappers";
 import { type Session, requireSession } from "@/lib/data/session";
@@ -32,6 +47,7 @@ export interface Profile {
   incomeFrequency: IncomeFrequency;
   nextIncomeDate: string | null;
   expectedIncomePaise: number | null;
+  safeToSpendReservePaise: number;
   includeNotesInReports: boolean;
   onboardingCompletedAt: string | null;
 }
@@ -39,6 +55,7 @@ export interface Profile {
 type Row = Record<string, unknown>;
 
 const PAGE = 1000; // PostgREST's default max rows per request
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Reads every row of a query, page by page, so large ledgers are never silently truncated. */
 async function fetchAll(
@@ -70,6 +87,7 @@ function toProfile(row: Row): Profile {
     nextIncomeDate: (row.next_income_date as string | null) ?? null,
     expectedIncomePaise:
       row.expected_income_paise === null ? null : Number(row.expected_income_paise),
+    safeToSpendReservePaise: Number(row.safe_to_spend_reserve_paise ?? 0),
     includeNotesInReports: Boolean(row.include_notes_in_reports),
     onboardingCompletedAt: (row.onboarding_completed_at as string | null) ?? null,
   };
@@ -196,49 +214,78 @@ export const hasAnyTransactions = cache(async (): Promise<boolean> => {
   return (count ?? 0) > 0;
 });
 
-export interface BudgetRecord {
-  id: string;
-  categoryId: string | null;
-  limitPaise: number;
-}
-
-/** Active monthly budgets (onboarding's starting budgets; the Budgets screen manages them all). */
-export const getMonthlyBudgets = cache(async (): Promise<BudgetRecord[]> => {
+/** Every budget that isn't archived: total and per-category, in any period. */
+export const getBudgets = cache(async (): Promise<Budget[]> => {
   const { supabase } = await requireSession();
-  const { data, error } = await supabase
-    .from("budgets")
-    .select("id, category_id, limit_paise")
-    .eq("period", "monthly")
-    .is("archived_at", null);
-  if (error) throw new DataLoadError("your budgets", error.code);
-  return (data ?? []).map((r) => ({
-    id: r.id as string,
-    categoryId: (r.category_id as string | null) ?? null,
-    limitPaise: Number(r.limit_paise),
-  }));
+  const rows = await fetchAll(
+    (from, to) =>
+      supabase
+        .from("budgets")
+        .select("*")
+        .is("archived_at", null)
+        .order("created_at")
+        .order("id")
+        .range(from, to),
+    "your budgets",
+  );
+  return rows.map(rowToBudget);
 });
 
-export interface GoalRecord {
-  id: string;
-  title: string;
-  targetPaise: number;
-  targetDate: string | null;
-}
+/** Monthly budgets only (onboarding's starting budgets). */
+export const getMonthlyBudgets = cache(async (): Promise<Budget[]> =>
+  (await getBudgets()).filter((b) => b.period === "monthly"),
+);
 
-export const getActiveGoals = cache(async (): Promise<GoalRecord[]> => {
+/** Every goal. Paused, completed and archived ones keep their money and history. */
+export const getGoals = cache(async (): Promise<SavingsGoal[]> => {
   const { supabase } = await requireSession();
-  const { data, error } = await supabase
-    .from("savings_goals")
-    .select("id, title, target_paise, target_date")
-    .eq("status", "active")
-    .order("created_at");
-  if (error) throw new DataLoadError("your goals", error.code);
-  return (data ?? []).map((r) => ({
-    id: r.id as string,
-    title: r.title as string,
-    targetPaise: Number(r.target_paise),
-    targetDate: (r.target_date as string | null) ?? null,
-  }));
+  const rows = await fetchAll(
+    (from, to) =>
+      supabase
+        .from("savings_goals")
+        .select("*")
+        .order("sort_order")
+        .order("created_at")
+        .order("id")
+        .range(from, to),
+    "your goals",
+  );
+  return rows.map(rowToGoal);
+});
+
+export const getActiveGoals = cache(async (): Promise<SavingsGoal[]> =>
+  (await getGoals()).filter((goal) => goal.status === "active"),
+);
+
+export const getGoal = cache(async (id: string): Promise<SavingsGoal | null> => {
+  if (!UUID_PATTERN.test(id)) return null;
+  return (await getGoals()).find((goal) => goal.id === id) ?? null;
+});
+
+/** One-off bills plus the rows that mark a recurring occurrence as skipped. */
+export const getCommitments = cache(async (): Promise<Commitment[]> => {
+  const { supabase } = await requireSession();
+  const rows = await fetchAll(
+    (from, to) =>
+      supabase.from("commitments").select("*").order("due_date").order("id").range(from, to),
+    "your planned bills",
+  );
+  return rows.map(rowToCommitment);
+});
+
+export const getRecurringTemplates = cache(async (): Promise<RecurringTemplate[]> => {
+  const { supabase } = await requireSession();
+  const rows = await fetchAll(
+    (from, to) =>
+      supabase
+        .from("recurring_templates")
+        .select("*")
+        .order("next_due_date")
+        .order("id")
+        .range(from, to),
+    "your recurring items",
+  );
+  return rows.map(rowToRecurringTemplate);
 });
 
 export interface QuickAddPreset {
@@ -271,8 +318,6 @@ export const getQuickAddPresets = cache(async (): Promise<QuickAddPreset[]> => {
     archived: r.archived_at !== null,
   }));
 });
-
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * One active (not deleted) ledger row with its version, or null. RLS limits the read to the

@@ -23,12 +23,15 @@ export function DeleteEntryButton({
   id,
   summary,
   blockedReason,
+  note,
 }: {
   id: string;
   /** "−₹15 · Tea on 24 Oct" — repeated in the confirmation so the right entry is deleted. */
   summary: string;
   /** Set when the database would refuse (e.g. the expense has refunds); explains why. */
   blockedReason: string | null;
+  /** Anything else this delete won't change, said before the user confirms. */
+  note?: string;
 }) {
   const router = useRouter();
   const { run } = useLedger();
@@ -68,6 +71,7 @@ export function DeleteEntryButton({
                   right after deleting.
                 </p>
               )}
+              {note && !blockedReason && <p data-testid="delete-note">{note}</p>}
             </div>
           </DialogDescription>
         </DialogHeader>

@@ -12,6 +12,8 @@ export * from "./aggregation";
 export * from "./budgets";
 export * from "./savings";
 export * from "./safe-to-spend";
+export * from "./recurring";
+export * from "./survival";
 export * from "./categorize";
 export * from "./shortcuts";
 export * from "./parse-entries";

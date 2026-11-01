@@ -156,6 +156,7 @@ export function commandFromForm(form: EntryForm, currency: CurrencyCode): Ledger
     currency,
     refundOfId: form.type === "refund" ? form.refundOfId : null,
     source: "manual",
+    presetId: null,
     ...fields,
   };
   return { kind: "create", opId: form.opId, draft };

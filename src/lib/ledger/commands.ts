@@ -12,6 +12,11 @@
  * - `batch` logs several reviewed drafts all-or-nothing; `opId` is the batch id and each draft
  *   keeps its own id, so replaying the batch can't double anything. `undo_batch` is its undo:
  *   every entry of the batch goes or none does, and replaying it (same `opId`) changes nothing.
+ * - `goal_move` sets money aside for a goal or releases it. It's an earmark, never spending.
+ * - `goal_purchase` records a real expense and releases the earmark in one database transaction;
+ *   its undo is `undo_batch` on the same id, so the two come back together too.
+ * - `pay_commitment` and `confirm_recurring` record the real entry and clear what was planned in
+ *   the same save, so it's never subtracted as both.
  *
  * Commands are plain JSON, validated with Zod at every boundary, and turned into exactly one
  * database RPC call by `toRpcCall`. This module is pure (client, server and tests share it).
@@ -24,6 +29,7 @@ import {
   amountPaiseSchema,
   currencySchema,
   isoDateTimeSchema,
+  localDateSchema,
 } from "@/domain";
 
 /** Entry types the user records directly (allocations/releases go through goal screens). */
@@ -64,10 +70,12 @@ export const entryDraftSchema = z
     note: optionalText(1000),
     tags: tagsSchema,
     source: z.enum(TRANSACTION_SOURCES).default("manual"),
+    presetId: nullableId,
   })
   .superRefine((d, ctx) => {
     const issue = (path: string, message: string) =>
       ctx.addIssue({ code: "custom", path: [path], message });
+    if (d.presetId && d.type !== "expense") issue("presetId", "Only expenses come from a tile.");
     if (d.type === "transfer") {
       if (!d.fromAccountId) issue("fromAccountId", "Choose the wallet the money leaves.");
       if (!d.toAccountId) issue("toAccountId", "Choose the wallet the money goes to.");
@@ -130,6 +138,15 @@ const opId = z.uuid();
 /** The most entries one confirmation can save (`log_transactions_batch` enforces it too). */
 export const MAX_BATCH_SIZE = 50;
 
+const expenseDraftSchema = entryDraftSchema.refine(
+  (d) => d.type === "expense",
+  "This records an expense.",
+);
+const incomeOrExpenseDraftSchema = entryDraftSchema.refine(
+  (d) => d.type === "expense" || d.type === "income",
+  "This records income or an expense.",
+);
+
 export const ledgerCommandSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("create"), opId, draft: entryDraftSchema }),
   z.object({
@@ -158,6 +175,37 @@ export const ledgerCommandSchema = z.discriminatedUnion("kind", [
       }),
   }),
   z.object({ kind: z.literal("undo_batch"), opId, batchId: z.uuid() }),
+  z.object({
+    kind: z.literal("goal_move"),
+    opId,
+    id: z.uuid(),
+    goalId: z.uuid(),
+    moveType: z.enum(["allocation", "allocation_release"]),
+    amountPaise: amountPaiseSchema,
+    occurredAt: isoDateTimeSchema,
+    note: optionalText(1000),
+  }),
+  z.object({
+    kind: z.literal("goal_purchase"),
+    opId,
+    goalId: z.uuid(),
+    /** The release row's id, and the batch id both rows share. */
+    releaseId: z.uuid(),
+    draft: expenseDraftSchema,
+  }),
+  z.object({
+    kind: z.literal("pay_commitment"),
+    opId,
+    commitmentId: z.uuid(),
+    draft: expenseDraftSchema,
+  }),
+  z.object({
+    kind: z.literal("confirm_recurring"),
+    opId,
+    templateId: z.uuid(),
+    occurrence: localDateSchema,
+    draft: incomeOrExpenseDraftSchema,
+  }),
 ]);
 export type LedgerCommand = z.output<typeof ledgerCommandSchema>;
 export type LedgerCommandInput = z.input<typeof ledgerCommandSchema>;
@@ -184,6 +232,10 @@ export interface RpcCall {
     | "create_transaction"
     | "log_transactions_batch"
     | "undo_transactions_batch"
+    | "move_goal_money"
+    | "record_goal_purchase"
+    | "pay_commitment"
+    | "confirm_recurring"
     | "update_transaction"
     | "set_transaction_deleted";
   args: Record<string, unknown>;
@@ -208,6 +260,7 @@ function draftRow(d: EntryDraft, idempotencyKey: string) {
     note: d.note,
     tags: d.tags,
     source: d.source,
+    preset_id: d.presetId,
   };
 }
 
@@ -231,6 +284,44 @@ export function toRpcCall(command: LedgerCommand): RpcCall {
       return {
         fn: "undo_transactions_batch",
         args: { p_op_id: command.opId, p_batch_id: command.batchId },
+      };
+    case "goal_move":
+      return {
+        fn: "move_goal_money",
+        args: {
+          p_id: command.id,
+          p_goal_id: command.goalId,
+          p_type: command.moveType,
+          p_amount_paise: command.amountPaise,
+          p_occurred_at: command.occurredAt,
+          p_note: command.note,
+        },
+      };
+    case "goal_purchase":
+      return {
+        fn: "record_goal_purchase",
+        args: {
+          p_expense: draftRow(command.draft, command.opId),
+          p_release_id: command.releaseId,
+          p_goal_id: command.goalId,
+        },
+      };
+    case "pay_commitment":
+      return {
+        fn: "pay_commitment",
+        args: {
+          p_commitment_id: command.commitmentId,
+          p_expense: draftRow(command.draft, command.opId),
+        },
+      };
+    case "confirm_recurring":
+      return {
+        fn: "confirm_recurring",
+        args: {
+          p_template_id: command.templateId,
+          p_occurrence: command.occurrence,
+          p_tx: draftRow(command.draft, command.opId),
+        },
       };
     case "update":
       return {
@@ -289,6 +380,15 @@ export function inverseCommand(
       return { kind: "restore", opId: newOpId, id: command.id };
     case "restore":
       return { kind: "delete", opId: newOpId, id: command.id };
+    case "goal_move":
+      return { kind: "delete", opId: newOpId, id: command.id };
+    case "goal_purchase":
+      return { kind: "undo_batch", opId: newOpId, batchId: command.releaseId };
+    case "pay_commitment":
+      return { kind: "delete", opId: newOpId, id: command.draft.id };
+    case "confirm_recurring":
+      // On a retry from another device the entry that exists is that device's, not this draft.
+      return { kind: "delete", opId: newOpId, id: after?.id ?? command.draft.id };
     case "update": {
       if (!before || !after) return null;
       const patch = Object.fromEntries(

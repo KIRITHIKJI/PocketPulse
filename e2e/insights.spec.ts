@@ -10,6 +10,8 @@ test.use({ storageState: AUTH_FILE });
 test.describe.configure({ mode: "serial" });
 
 const WORD = "zzkopi";
+/** How the parser saves it. Sentences use the label as saved. */
+const LABEL = "Zzkopi";
 const main = (page: Page) => page.locator("#main");
 const toast = (page: Page) => page.getByTestId("toast");
 
@@ -85,7 +87,7 @@ test("Journey C: Insights, leaks and history agree on real entries", async ({ pa
 
   // The sentence comes from the entries, and opens exactly them.
   await page.goto("/insights?period=this_month");
-  const sentence = `You bought ${WORD} ${count} times for ₹${price} each: ₹${total} this month.`;
+  const sentence = `You logged ${LABEL} ${count} times for ₹${price} each: ₹${total} this month.`;
   const card = main(page).getByTestId("insight-card").filter({ hasText: sentence });
   await expect(card).toBeVisible();
 
@@ -119,7 +121,7 @@ test("Journey C: Insights, leaks and history agree on real entries", async ({ pa
   const group = main(page).getByTestId("leak-group").filter({ hasText: WORD });
   await expect(group).toContainText(`₹${total}`);
   await expect(group.getByTestId("what-if")).toHaveText(
-    `If you made one fewer ₹${price} ${WORD} purchase in a period like this one, you’d spend ₹${price} less.`,
+    `If you logged one fewer ${LABEL} entry at ₹${price} in a period like this one, you’d spend ₹${price} less.`,
   );
   await group.getByRole("button", { name: "One more" }).click();
   await expect(group.getByTestId("what-if")).toContainText(`₹${price * 2} less`);

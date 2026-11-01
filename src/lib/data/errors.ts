@@ -30,6 +30,14 @@ const RULES: Record<string, string> = {
   expense_below_refunds: "The expense can’t be smaller than what was already refunded.",
   transaction_field_immutable:
     "That part of an entry can’t be changed. Delete it and add a new one.",
+  goal_not_found: "That goal doesn’t exist any more.",
+  goal_archived: "Restore this goal before setting money aside.",
+  release_exceeds_allocation:
+    "That would take out more than is set aside for this goal. Check the goal’s history.",
+  commitment_cancelled: "This bill was cancelled, so it can’t be paid.",
+  commitment_payment_not_expense: "A bill is paid by an expense.",
+  template_archived: "This recurring item is archived. Restore it first.",
+  conflict: "This conflicts with an entry already saved. Reload and try again.",
   batch_conflict: "One of these entries was already saved with different details.",
   invalid_payload: "Something in that entry isn’t valid. Check it and try again.",
   missing_id: "Something in that entry isn’t valid. Check it and try again.",

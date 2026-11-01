@@ -10,10 +10,17 @@ import {
   type Account,
   type Category,
   type CategoryRule,
+  type Commitment,
+  type RecurringTemplate,
+  type SavingsGoal,
   type Transaction,
   accountSchema,
+  budgetSchema,
   categoryRuleSchema,
   categorySchema,
+  commitmentSchema,
+  recurringTemplateSchema,
+  savingsGoalSchema,
   transactionSchema,
 } from "@/domain";
 
@@ -44,6 +51,10 @@ function localDate(value: unknown): string {
   return String(value);
 }
 
+function optionalDate(value: unknown): string | null {
+  return value === null || value === undefined ? null : localDate(value);
+}
+
 export function rowToTransaction(row: Row): Transaction {
   const common = {
     id: row.id,
@@ -57,6 +68,7 @@ export function rowToTransaction(row: Row): Transaction {
     note: row.note ?? null,
     tags: row.tags ?? [],
     source: row.source,
+    batchId: row.batch_id ?? null,
     createdAt: timestamp(row.created_at),
     updatedAt: timestamp(row.updated_at),
     deletedAt: timestamp(row.deleted_at),
@@ -66,10 +78,26 @@ export function rowToTransaction(row: Row): Transaction {
     categoryId: row.category_id ?? null,
     subcategoryId: row.subcategory_id ?? null,
   };
+  const recurring = {
+    recurringTemplateId: row.recurring_template_id ?? null,
+    recurringOccurrence: optionalDate(row.recurring_occurrence),
+  };
   switch (row.type) {
     case "income":
+      return transactionSchema.parse({
+        ...common,
+        ...category,
+        ...recurring,
+        accountId: row.account_id,
+      });
     case "expense":
-      return transactionSchema.parse({ ...common, ...category, accountId: row.account_id });
+      return transactionSchema.parse({
+        ...common,
+        ...category,
+        ...recurring,
+        accountId: row.account_id,
+        presetId: row.preset_id ?? null,
+      });
     case "refund":
       return transactionSchema.parse({
         ...common,
@@ -136,5 +164,70 @@ export function rowToCategoryRule(row: Row): CategoryRule {
     categoryId: row.category_id,
     subcategoryId: row.subcategory_id ?? null,
     priority: row.priority ?? 0,
+  });
+}
+
+export function rowToGoal(row: Row): SavingsGoal {
+  return savingsGoalSchema.parse({
+    id: row.id,
+    ownerId: row.owner_id,
+    title: row.title,
+    icon: row.icon ?? null,
+    targetPaise: paise(row.target_paise),
+    targetDate: optionalDate(row.target_date),
+    status: row.status,
+    completedAt: timestamp(row.completed_at),
+  });
+}
+
+export function rowToBudget(row: Row) {
+  return budgetSchema.parse({
+    id: row.id,
+    ownerId: row.owner_id,
+    categoryId: row.category_id ?? null,
+    limitPaise: paise(row.limit_paise),
+    period: row.period,
+    customFrom: optionalDate(row.custom_from),
+    customTo: optionalDate(row.custom_to),
+    alertThresholdsBp: row.alert_thresholds_bp,
+  });
+}
+
+export function rowToCommitment(row: Row): Commitment {
+  return commitmentSchema.parse({
+    id: row.id,
+    ownerId: row.owner_id,
+    title: row.title,
+    amountPaise: paise(row.amount_paise),
+    dueDate: localDate(row.due_date),
+    categoryId: row.category_id ?? null,
+    subcategoryId: row.subcategory_id ?? null,
+    accountId: row.account_id ?? null,
+    note: row.note ?? null,
+    recurringTemplateId: row.recurring_template_id ?? null,
+    recurringOccurrence: optionalDate(row.recurring_occurrence),
+    paidTransactionId: row.paid_transaction_id ?? null,
+    cancelledAt: timestamp(row.cancelled_at),
+  });
+}
+
+export function rowToRecurringTemplate(row: Row): RecurringTemplate {
+  return recurringTemplateSchema.parse({
+    id: row.id,
+    ownerId: row.owner_id,
+    kind: row.kind,
+    title: row.title,
+    amountPaise: paise(row.amount_paise),
+    accountId: row.account_id ?? null,
+    categoryId: row.category_id ?? null,
+    subcategoryId: row.subcategory_id ?? null,
+    cadence: row.cadence,
+    intervalCount: Number(row.interval_count ?? 1),
+    anchorDate: localDate(row.anchor_date),
+    nextDueDate: localDate(row.next_due_date),
+    endDate: optionalDate(row.end_date),
+    mode: row.mode,
+    pausedAt: timestamp(row.paused_at),
+    archivedAt: timestamp(row.archived_at),
   });
 }

@@ -43,6 +43,8 @@ const CONFLICT_MESSAGES: Record<string, string> = {
   different_content:
     "An entry with this id was already saved with different details. Reload and check your history.",
   id_in_use: "This entry id is already in use. Reload and try again.",
+  already_paid: "This bill was already paid. Nothing new was saved.",
+  entry_removed: "That entry was deleted after it was saved. Reload and record it again.",
 };
 
 const NOT_FOUND = "That entry doesn’t exist any more.";
@@ -51,7 +53,13 @@ const NOT_FOUND = "That entry doesn’t exist any more.";
 const ROLLED_BACK: Partial<Record<LedgerCommand["kind"], string>> = {
   batch: "Nothing was saved.",
   undo_batch: "Nothing was removed.",
+  goal_purchase: "Nothing was saved.",
+  pay_commitment: "Nothing was saved.",
+  confirm_recurring: "Nothing was saved.",
 };
+
+/** The one unique rule a ledger write can hit: an occurrence that already has an entry. */
+const ALREADY_RECORDED = "This was already recorded, so the entry stays as it is.";
 
 export async function runLedgerCommandWith(
   port: LedgerPort,
@@ -70,7 +78,7 @@ export async function runLedgerCommandWith(
 
   const { data, error } = await port.call(toRpcCall(command));
   if (error) {
-    const message = dbErrorMessage(error);
+    const message = dbErrorMessage(error, ALREADY_RECORDED);
     const rolledBack = ROLLED_BACK[command.kind];
     return {
       ok: false,
