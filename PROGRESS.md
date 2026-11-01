@@ -3,7 +3,7 @@
 Durable project state. Update before a context reset or at the end of each work session.
 Source of truth for requirements: `PROJECT_SPEC.md`. Working rules: `CLAUDE.md`.
 
-_Last updated: 2026-10-26 — end of Phase 5 (transactions). Migrations 0100–0700 are applied on the hosted project; Phase 5 adds no migration._
+_Last updated: 2026-11-01 — end of Phase 6 (typed and voice entry). Migrations 0100–0700 are applied on the hosted project; Phases 5 and 6 add no migration._
 
 ## Build stages
 
@@ -16,7 +16,7 @@ One integrated product. Stages are an internal build order only; nothing is defe
 | 3 | Supabase: schema + migrations, RLS on every private table, cross-user denial tests, server data access, auth (register, login, logout, recovery) and route protection | ✅ Done — applied to the hosted project (`qzmqvytrekenzciasvph`) and verified live in Phase 3a: registration, login, logout, defaults, signed-in e2e, cross-user RLS, account-deletion cascade. The live password-reset email is still pending (see blockers) |
 | 4 | Onboarding (balance + effective date, wallets, currency/timezone, allowance, budgets, goals, prefs), accounts, categories/subcategories management, profile/preferences sync | ✅ Done — 0700 confirmed applied (`migration list`); `/onboarding` and `/accounts` e2e pass live |
 | 5 | Transactions: one mutation layer (commands + idempotency keys), quick-add tiles, full form, repeat/frequent, history with search/filters, detail/edit/delete/undo with real 404s, Home dashboard | ✅ Done — unit, DB and live e2e (desktop + Pixel 7) pass |
-| 6 | Natural-language parser + voice entry with draft review and atomic batch confirm | ⬜ |
+| 6 | Natural-language parser + voice entry with draft review and atomic batch confirm | ✅ Done — unit, DB and live e2e pass. Voice UI is tested with a stand-in for speech recognition; a real microphone is not yet tested (see blockers) |
 | 7 | Insights + charts with drill-down, sparse-data honesty, Money Leak Detector with what-ifs | ⬜ |
 | 8 | Budgets (alerts, pace, suggestions), savings goals + allocation ledger, safe-to-spend, survival mode, recurring templates + commitments | ⬜ |
 | 9 | Parent report (preview, PDF, CSV, text; reconciled totals), gamification (XP, levels, streaks, quests, achievements; idempotent), reminders, data export + account deletion | ⬜ |
@@ -30,7 +30,7 @@ Status key: ⬜ not started · 🟨 partial (detail given) · ✅ done and verif
 - ✅ All user data is private and protected by tested access rules. — RLS on all 20 tables, owner-only. Proven locally (`tests/db`, 34 tests on PostgreSQL 18) **and live** (`npm run test:live`, publishable key only, 6/6): user B can't read, update, re-own, delete, soft-delete, link to or reuse the ids of user A's rows, and anonymous callers get `42501` on tables and RPCs.
 - ✅ Adding income and expense updates correct balance immediately. — DB tests (income/expense direction, consolidated and per wallet) and live e2e Journey A (Home balance and today's spending change by exactly the amount, and return on Undo), desktop + Pixel 7.
 - ✅ Quick-add presets/custom amounts work. — 12 seeded tiles (no invented amounts); editable label, usual amount, category and icon; add/hide/restore; custom tile with a description and a suggested category; opt-in "remember as usual amount"; repeat-last and frequent shortcuts.
-- ⬜ Text and voice routes create reviewable drafts and confirm before save. — Routes `/add/text`, `/add/voice` exist.
+- 🟨 Text and voice routes create reviewable drafts and confirm before save. — Typed entry is proven end to end (`/add/text`, live e2e). Voice shares the same review and save, and its transcript, error and unsupported paths are tested with a stand-in; real speech on a real device is still to be checked.
 - ✅ History, search, filters, editing, deletion and undo work. — Day-grouped history (cards on phones, table from 1024 px), search, type/category/wallet/date/amount filters in the URL, detail, edit (version-checked), delete with confirmation, Undo for create/edit/delete. Missing, malformed, deleted and other-user ids return HTTP 404. The live cross-user check needs a second account (see blockers); cross-user denial is proven in the DB tests.
 - 🟨 Category/subcategory totals reconcile with transactions. — Domain `categoryBreakdown` is tested to reconcile category → subcategory → period total (refunds included, including refunds landing in a later period); screens wire it in Phases 5/7.
 - ⬜ Insights point to real supporting records and handle sparse data honestly.
@@ -166,6 +166,23 @@ Every screen has a route; feature screens show a real empty state until their st
 - **Tiles never invent prices.** A tile without an amount opens with an empty amount and offers "Make ₹X the usual amount", checked by default only in that case. The seeded "plus" icon is drawn as `circle-plus`.
 - **E2E isolation:** the ledger spec runs as `ledger-desktop` then `ledger-mobile`, never in parallel, because it asserts exact balance changes. The Phase 4 wallet test now starts tracking tomorrow, so it can't shift today's totals. Page-content locators are scoped to `#main` because React 19 briefly keeps a hidden copy of streamed content.
 
+### Phase 6 decisions
+
+- **Parser** (`src/domain/parse-entries.ts`): deterministic and pure; no network or API key. It produces drafts only. Anything uncertain becomes an `issue` on the draft, never a silent guess.
+  - **Order:** dates are replaced by markers first (so "24/10" is never an amount); then text splits on commas, semicolons, full stops and new lines, and on "and / & / plus / then" unless the left side has no amount ("bread and butter 40" stays one entry).
+  - **No separators:** several amounts in one part mean several entries ("tea 15 bus 20"). If that would leave a bare number ("2 samosa 30"), it stays one entry and the amount is flagged. A currency mark settles it ("2 samosa ₹30").
+  - **Spoken numbers** count only when the text has no digits ("tea fifteen", "two hundred fifty", and the Indian "one fifty" = 150).
+  - **One date applies to every entry.** With several dates, an entry without its own takes the nearest earlier one, else the next. So "tea 15, lunch 40 yesterday" dates both yesterday; each draft shows its date and it can be changed.
+  - A day and month with no year means the most recent past one. Income is recognised from "received / earned / salary / stipend / allowance / pocket money / got … from". English only for now.
+- **Review** (`src/lib/drafts.ts`, `draft-review.tsx`), shared by typed and voice entry. Nothing saves until confirmed.
+  - **Blocks saving:** a missing or invalid amount, a future date, and doubts awaiting an answer (several numbers, another currency, reads like a refund/transfer). Editing the field or tapping the confirm button clears a doubt.
+  - **Doesn't block:** no category. The draft is marked Uncategorized, saved, and joins the Uncategorized queue.
+  - Suggestions refresh as the words change, but never override the user's own pick. Entries dated today use the time of confirming; earlier ones use 12:00 local.
+  - Refunds and transfers need the full form, because `log_transactions_batch` takes only income and expenses and a refund must link to its purchase.
+- **Mutation layer:** new command kinds. `batch` calls `log_transactions_batch` (all-or-nothing; `opId` is the batch id; each draft keeps its own id, so a replay is `duplicate`). `delete_many` undoes a batch.
+- **Undo of a batch is not atomic.** There's no bulk-delete RPC and adding one needs a migration, so `delete_many` makes one idempotent `set_transaction_deleted` call per row. On failure it reports how many were removed and the toast keeps Undo, which finishes the job. The save itself is atomic. A `set_batch_deleted` RPC would be a small improvement if a migration ships for another reason.
+- **Voice honesty:** the old copy said "Audio never leaves your device", which isn't true: Chrome's speech recognition sends audio to Google. It's replaced on `/add/voice` and `/settings/privacy` with an up-front disclosure. Listening starts only from a tap, PocketPulse receives only text, and the transcript is editable. `continuous` is off because it repeats results on Android Chrome, so each tap captures one phrase and appends it. Language is `en-IN`.
+
 ### Phase 9 notes: account deletion (recorded in Phase 3a)
 
 Clients can't hard-delete transactions (no grant or policy), so account deletion runs **server-side**:
@@ -201,6 +218,21 @@ Hosted project `qzmqvytrekenzciasvph`. Live checks use the publishable key only,
 | Sign-up with "Confirm email" ON (email → `/auth/confirm`) | ⏳ not tested live (built-in email quota was exhausted) | ✅ code path + invalid-link e2e |
 | Forgot / reset password email | ⏳ **pending**: the dashboard test user's address belongs to someone else, so no reset email was sent | ✅ forms, validation, no-session page, invalid link |
 | Transfers, refunds, goal money, batch rollback | — (no UI yet) | ✅ PG 18 |
+
+## Checks run (Phase 6, 2026-11-01)
+
+| Command / action | Result |
+| --- | --- |
+| `npm run lint` / `typecheck` / `format:check` | Pass |
+| `npm test` | Pass, 17 files / 332 tests (21 new: parser examples, amounts, dates, doubts; drafts; batch command) |
+| `npm run test:db` (local PostgreSQL 18, throwaway cluster) | Pass, 7 files / 61 tests, plus 7 "URL not set" placeholders. 5 new in `tests/db/phase6.test.ts`, from text through parser, drafts and the real executor: Journey B saves three categorised entries in one batch; replay adds nothing; undo removes all and can repeat; one bad entry rolls back everything and says "Nothing was saved"; an unknown item lands in the queue; another user's wallet is refused |
+| Mutation check | Dropping the past-date handling and the "Nothing was saved" message each made DB tests fail. Restored |
+| `npm run build` | Pass. The secret key and `sb_secret_` occur 0 times in the build output |
+| `npm run test:e2e` (hosted project) | **156 passed, 9 skipped, 0 failed** on the final build. The earlier run on that build had 1 failure: `/welcome` logged one 404 resource error. It didn't recur in 2 auth-spec repeats, 40 page loads or the final full run, and its cause is unknown. A third repeat had 4 failures from the computer sleeping (`browserType.launch` timeout, `ERR_NETWORK_IO_SUSPENDED`). The 9 skips are the same as Phase 5 (cross-user test needs a second account; the rest are one-viewport by design) |
+| Visual check (screenshots, 1280 px + Pixel 7) | Typed entry, review, voice. `innerWidth` = device width. Fixed: the sticky save bar stacked too tall on phones and each draft was a long column; amount and date now share a row |
+| Test data | A failed run left one Tea ₹75.27 test entry; it was soft-deleted through the app. The account ends with no active entries |
+
+Fixed along the way: ledger specs ran in parallel with each other because `serial` only applies inside one file, so the ledger projects now use `workers: 1`.
 
 ## Checks run (Phase 5, 2026-10-26)
 
@@ -309,6 +341,7 @@ Note: because of the `(app)` loading boundary, Next.js streams `notFound()` page
 ## Known blockers / notes
 
 - ✅ Migration 0700 is applied (confirmed by `migration list`); Phase 4 e2e passes live.
+- ⏳ **Try voice on a real phone and laptop.** The e2e tests use a stand-in for the browser's speech recognition, so no real microphone or speech service has been exercised. Check Chrome on Android and desktop: permission prompt, an Indian-English phrase such as "tea fifteen, bus twenty", and a denied microphone.
 - ⏳ **Cross-user 404 e2e** needs a second test account: add `E2E_USER_B_EMAIL` / `E2E_USER_B_PASSWORD` to `.env.e2e.local`. Until then that test is skipped. Cross-user denial is proven in the DB tests and by the RLS-scoped lookup.
 - ✅ "Confirm email" is back on, 0600 is applied, and the e2e user is on an address you control (your report; 0600 and the user's defaults verified by the agent).
 - ⏳ **Remind at the start of Phase 9: verify the live password-reset email.** Status: built and tested locally; live email test pending. Needs a test user whose address you can open and that Supabase's built-in email will deliver to (a team member's address, or custom SMTP), plus available hourly email quota.
@@ -321,8 +354,7 @@ Note: because of the `(app)` loading boundary, Next.js streams `notFound()` page
 
 ## Next concrete tasks
 
-Phase 6 (natural-language + voice entry), not started:
+Phase 7 (insights + charts with drill-down, sparse-data honesty, Money Leak Detector with what-ifs), not started:
 
-1. Deterministic parser (`tea 15, bus 20, snacks 35`, `₹40 lunch and ₹15 tea yesterday`) → drafts with `suggestCategory`, marked unassigned when unsure → review screen → confirm all through `log_transactions_batch`. Add a `batch` command kind to `src/lib/ledger/commands.ts` so the executor and undo stay the single write path.
-2. Voice: browser speech recognition with a permission explanation, an editable transcript and a text fallback. No audio upload.
-3. Later: the Phase 8 goal screens add allocation/release commands (extend `LedgerCommand`); Phase 10 queues `LedgerCommand`s offline and replays them through `runLedgerCommandWith`.
+1. Build every figure from `categoryBreakdown`, `comparePeriods`, `spendingTrend` and `spendingDisplay`, each drillable to `/transactions` with URL filters.
+2. Later: the Phase 8 goal screens add allocation/release commands (extend `LedgerCommand`); Phase 10 queues `LedgerCommand`s offline and replays them through `runLedgerCommandWith`.

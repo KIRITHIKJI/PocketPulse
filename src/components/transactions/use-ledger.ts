@@ -11,6 +11,8 @@ const UNDONE: Record<LedgerCommand["kind"], string> = {
   update: "Change undone.",
   delete: "Undone — the entry is removed again.",
   restore: "Restored.",
+  batch: "Undone.",
+  delete_many: "Undone — those entries are removed.",
 };
 
 /**
@@ -23,10 +25,16 @@ export function useLedger() {
   const inFlight = React.useRef(new Set<string>());
 
   const undo = React.useCallback(
-    async (command: LedgerCommand) => {
+    async function undo(command: LedgerCommand): Promise<void> {
       const result = await runLedgerCommand(command);
       if (result.ok) show({ tone: "success", message: UNDONE[command.kind] });
-      else show({ tone: "error", message: result.message });
+      // Undo is idempotent, so a failed one stays on offer (a partial bulk undo resumes).
+      else
+        show({
+          tone: "error",
+          message: result.message,
+          action: { label: "Undo", run: () => undo(command) },
+        });
     },
     [show],
   );
@@ -57,11 +65,12 @@ export function useLedger() {
           return result;
         }
         if (command.kind === "create") setHighlightId(command.draft.id);
+        if (command.kind === "batch") setHighlightId(command.drafts[0]!.id);
         const reverse = result.undo;
         show({
           tone: "success",
           message:
-            result.status === "duplicate" && command.kind === "create"
+            result.status === "duplicate" && (command.kind === "create" || command.kind === "batch")
               ? "Already saved — no duplicate was added."
               : options.success,
           action: reverse ? { label: "Undo", run: () => undo(reverse) } : undefined,

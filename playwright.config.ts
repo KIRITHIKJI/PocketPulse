@@ -7,7 +7,7 @@ if (existsSync(".env.e2e.local")) process.loadEnvFile(".env.e2e.local");
 
 const PORT = Number(process.env.PORT ?? 3100);
 const baseURL = `http://localhost:${PORT}`;
-const LEDGER_SPEC = /transactions\.spec\.ts/;
+const LEDGER_SPEC = /transactions(-batch)?\.spec\.ts/;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -45,12 +45,14 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
       dependencies: ["setup"],
       testMatch: LEDGER_SPEC,
+      workers: 1,
     },
     {
       name: "ledger-mobile",
       use: { ...devices["Pixel 7"] },
       dependencies: ["ledger-desktop"],
       testMatch: LEDGER_SPEC,
+      workers: 1,
     },
   ],
   webServer: {
