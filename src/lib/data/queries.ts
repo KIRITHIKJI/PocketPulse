@@ -12,6 +12,7 @@ import type {
   RecurringTemplate,
   SavingsGoal,
   Transaction,
+  ReminderSettings,
   Weekday,
 } from "@/domain";
 import { ensureDefaults } from "@/lib/auth/defaults";
@@ -124,6 +125,52 @@ export const getReminderPreferences = cache(async (): Promise<ReminderPreference
   };
 });
 
+export const getReminderSettings = cache(async (): Promise<ReminderSettings> => {
+  const { supabase } = await requireSession();
+  const { data, error } = await supabase.from("notification_preferences").select("*").maybeSingle();
+  if (error) throw new DataLoadError("reminder preferences", error.code);
+  return {
+    ...(await getReminderPreferences()),
+    missedLoggingTime: String(data?.missed_logging_time ?? "21:00").slice(0, 5),
+    missedLoggingDays: data?.missed_logging_days ?? "daily",
+    weeklyReviewDay: Number(data?.weekly_review_day ?? 0),
+    upcomingIncomeDays: Number(data?.upcoming_income_days ?? 1),
+    upcomingCommitmentDays: Number(data?.upcoming_commitment_days ?? 2),
+    savingsReviewFrequency: data?.savings_review_frequency ?? "monthly",
+  };
+});
+
+export interface InboxNotification {
+  id: string;
+  kind: string;
+  title: string;
+  body: string | null;
+  linkPath: string | null;
+  scheduledFor: string;
+  read: boolean;
+}
+
+/** The newest reminders that haven't been dismissed. */
+export const getNotifications = cache(async (): Promise<InboxNotification[]> => {
+  const { supabase } = await requireSession();
+  const { data, error } = await supabase
+    .from("notifications")
+    .select("id, kind, title, body, link_path, scheduled_for, read_at")
+    .is("dismissed_at", null)
+    .order("scheduled_for", { ascending: false })
+    .limit(50);
+  if (error) throw new DataLoadError("your reminders", error.code);
+  return (data ?? []).map((r) => ({
+    id: r.id as string,
+    kind: r.kind as string,
+    title: r.title as string,
+    body: (r.body as string | null) ?? null,
+    linkPath: (r.link_path as string | null) ?? null,
+    scheduledFor: r.scheduled_for as string,
+    read: r.read_at !== null,
+  }));
+});
+
 export interface AccountRecord extends Account {
   sortOrder: number;
 }
@@ -214,8 +261,10 @@ export const hasAnyTransactions = cache(async (): Promise<boolean> => {
   return (count ?? 0) > 0;
 });
 
+export type BudgetRecord = Budget & { createdAt: string | null };
+
 /** Every budget that isn't archived: total and per-category, in any period. */
-export const getBudgets = cache(async (): Promise<Budget[]> => {
+export const getBudgets = cache(async (): Promise<BudgetRecord[]> => {
   const { supabase } = await requireSession();
   const rows = await fetchAll(
     (from, to) =>
@@ -228,11 +277,14 @@ export const getBudgets = cache(async (): Promise<Budget[]> => {
         .range(from, to),
     "your budgets",
   );
-  return rows.map(rowToBudget);
+  return rows.map((row) => ({
+    ...rowToBudget(row),
+    createdAt: (row.created_at as string | null) ?? null,
+  }));
 });
 
 /** Monthly budgets only (onboarding's starting budgets). */
-export const getMonthlyBudgets = cache(async (): Promise<Budget[]> =>
+export const getMonthlyBudgets = cache(async (): Promise<BudgetRecord[]> =>
   (await getBudgets()).filter((b) => b.period === "monthly"),
 );
 

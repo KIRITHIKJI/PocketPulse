@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { z } from "zod";
 
 import { getProfile } from "@/lib/data/queries";
@@ -8,6 +9,7 @@ import { requestNow, requireSession } from "@/lib/data/session";
 import { type FormState, invalid, text } from "@/lib/forms";
 import { type LedgerCommand, ledgerCommandSchema } from "@/lib/ledger/commands";
 import { executeLedgerCommand } from "@/lib/ledger/execute";
+import { syncRewards } from "@/lib/rewards/sync";
 import { commandFromForm, entryFormSchema } from "@/lib/validation/transactions";
 
 /** What every ledger write returns to the client: serialisable, no row contents beyond the id. */
@@ -30,6 +32,8 @@ async function run(command: LedgerCommand): Promise<CommandResult> {
   const outcome = await executeLedgerCommand(supabase, command);
   if (!outcome.ok) return { ok: false, status: outcome.status, message: outcome.message };
   refreshViews();
+  // After the response, so rewards never slow down recording an expense.
+  after(() => syncRewards().catch(() => undefined));
   return { ok: true, status: outcome.status, id: entryId(command), undo: outcome.undo };
 }
 

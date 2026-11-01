@@ -3,6 +3,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { HOME_PATH, routeAccess } from "@/lib/auth/routes";
 import { readPublicSupabaseEnv } from "@/lib/env";
+import { retryingFetch } from "@/lib/supabase/retrying-fetch";
 
 /**
  * Runs before every page request: refreshes the Supabase session cookie and redirects by
@@ -23,6 +24,7 @@ export async function proxy(request: NextRequest) {
 
   let response = NextResponse.next({ request });
   const supabase = createServerClient(env.url, env.publishableKey, {
+    global: { fetch: retryingFetch() },
     cookies: {
       getAll: () => request.cookies.getAll(),
       setAll(cookiesToSet, headers) {

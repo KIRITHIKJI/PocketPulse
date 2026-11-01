@@ -1,0 +1,525 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  type AchievementDefinition,
+  type QuestDefinition,
+  type ReminderSettings,
+  type Transaction,
+  budgetSchema,
+  calculateRewards,
+  calculateStreaks,
+  dueReminders,
+  formatINR,
+  levelFor,
+  loggedDays,
+  savingsGoalSchema,
+  totalXp,
+} from "@/domain";
+import {
+  type RewardData,
+  type RewardState,
+  type RewardStore,
+  syncRewardsWith,
+} from "@/lib/rewards/engine";
+
+import {
+  CASH,
+  LAPTOP_GOAL,
+  OWNER,
+  allocate,
+  commitment,
+  expense,
+  id,
+  income,
+  ist,
+  istMs,
+  transfer,
+} from "./domain/fixtures";
+
+const IST = { timeZone: "Asia/Kolkata", weekStartsOn: 1 } as const;
+const NOW = istMs("2026-11-11", "18:00"); // a Wednesday
+const TODAY = "2026-11-11";
+
+const ACHIEVEMENTS: AchievementDefinition[] = [
+  ["first_10_transactions", 50],
+  ["streak_7_day", 70],
+  ["no_mystery_money", 60],
+  ["first_savings_goal", 40],
+  ["monthly_budget_achieved", 100],
+  ["spending_detective", 40],
+  ["weekly_review_complete", 30],
+].map(([code, xp]) => ({
+  code: code as string,
+  xp: xp as number,
+  title: String(code),
+  description: "",
+  icon: null,
+}));
+const QUESTS: QuestDefinition[] = [
+  ["log_today", "daily", 5],
+  ["categorise_week", "weekly", 20],
+  ["weekly_review", "weekly", 15],
+  ["set_a_goal", "once", 20],
+].map(([code, cadence, xp]) => ({
+  code: code as string,
+  cadence: cadence as QuestDefinition["cadence"],
+  xp: xp as number,
+  target: 1,
+  title: String(code),
+  description: "",
+}));
+
+/** An entry logged at that moment, whatever date it's for. */
+const logged = (when: string, o: Parameters<typeof expense>[1] = {}, amount = 2_000) => {
+  const tx = expense(amount, { occurredAt: when, ...o });
+  return { ...tx, createdAt: when, updatedAt: when };
+};
+const day = (n: number, time = "12:00") => ist(`2026-11-${String(n).padStart(2, "0")}`, time);
+
+function data(ledger: Transaction[], extra: Partial<RewardData> = {}): RewardData {
+  return {
+    ledger,
+    goals: [],
+    budgets: [],
+    achievements: ACHIEVEMENTS,
+    quests: QUESTS,
+    now: NOW,
+    settings: IST,
+    ...extra,
+  };
+}
+
+/** The database's one rule that matters here: one row per key. */
+function memoryStore(): RewardStore & { state: RewardState } {
+  const state: RewardState = { events: [], achievements: [], quests: [] };
+  return {
+    state,
+    async read() {
+      return structuredClone(state);
+    },
+    async addEvents(events) {
+      for (const e of events) {
+        if (state.events.some((s) => s.sourceKey === e.sourceKey)) continue;
+        state.events.push({ ...e, createdAt: ist("2026-11-11"), revokedAt: null });
+      }
+    },
+    async addAchievements(codes) {
+      for (const code of codes) {
+        if (!state.achievements.some((a) => a.code === code)) {
+          state.achievements.push({ code, unlockedAt: ist("2026-11-11") });
+        }
+      }
+    },
+    async saveQuests(rows) {
+      for (const q of rows) {
+        const found = state.quests.find(
+          (s) => s.questCode === q.code && s.periodKey === q.periodKey,
+        );
+        const completedAt = q.complete ? ist("2026-11-11") : null;
+        if (found) found.completedAt ??= completedAt;
+        else {
+          state.quests.push({
+            questCode: q.code,
+            periodKey: q.periodKey,
+            completedAt,
+            optedOutAt: null,
+          });
+        }
+      }
+    },
+    async saveStreaks() {},
+  };
+}
+
+describe("streaks across IST midnight", () => {
+  const streak = (days: string[], today = TODAY) => calculateStreaks(days, today, IST);
+
+  it("counts by the local day, so 23:59 and 00:00 IST are two days", () => {
+    const entries = [logged(ist("2026-11-09", "23:59")), logged(ist("2026-11-10", "00:00"))];
+    expect(loggedDays(entries, IST.timeZone)).toEqual(["2026-11-09", "2026-11-10"]);
+    expect(streak(loggedDays(entries, IST.timeZone)).currentDaily).toBe(2);
+  });
+
+  it("the same instants are one day in UTC terms but two here, and one in New York", () => {
+    // 18:29 and 18:31 UTC straddle IST midnight.
+    const a = logged("2026-11-09T18:29:00Z");
+    const b = logged("2026-11-09T18:31:00Z");
+    expect(loggedDays([a, b], "Asia/Kolkata")).toEqual(["2026-11-09", "2026-11-10"]);
+    expect(loggedDays([a, b], "America/New_York")).toEqual(["2026-11-09"]);
+  });
+
+  it("two entries at 23:58 and 23:59 are one day, not two", () => {
+    const entries = [logged(ist("2026-11-10", "23:58")), logged(ist("2026-11-10", "23:59"))];
+    expect(loggedDays(entries, IST.timeZone)).toEqual(["2026-11-10"]);
+  });
+
+  it("isn't broken yet today, and a day off ends the run without touching the longest", () => {
+    expect(streak(["2026-11-09", "2026-11-10"]).currentDaily).toBe(2);
+    expect(streak(["2026-11-08", "2026-11-09"]).currentDaily).toBe(0);
+    expect(streak(["2026-11-01", "2026-11-02", "2026-11-03", "2026-11-10"])).toMatchObject({
+      currentDaily: 1,
+      longestDaily: 3,
+    });
+    expect(streak([]).currentDaily).toBe(0);
+  });
+
+  it("runs across a month and a year", () => {
+    expect(streak(["2026-12-31", "2027-01-01"], "2027-01-01").currentDaily).toBe(2);
+    expect(streak(["2026-10-31", "2026-11-01"], "2026-11-01").currentDaily).toBe(2);
+  });
+
+  it("counts weeks by the user's week start", () => {
+    const days = ["2026-11-01", "2026-11-02", "2026-11-09"]; // Sun, Mon, Mon
+    expect(calculateStreaks(days, TODAY, IST).longestWeekly).toBe(3);
+    expect(calculateStreaks(days, TODAY, { ...IST, weekStartsOn: 0 }).longestWeekly).toBe(2);
+  });
+
+  it("a week stays current through the following week", () => {
+    expect(streak(["2026-11-03"]).currentWeekly).toBe(1);
+    expect(streak(["2026-10-20"]).currentWeekly).toBe(0);
+  });
+});
+
+describe("what earns XP", () => {
+  it("logging once or fifty times in a day is one award", async () => {
+    const entries = Array.from({ length: 50 }, () => logged(day(5)));
+    const keys = calculateRewards({
+      ...data(entries),
+      reviewedWeeks: [],
+      insightsExplored: 0,
+      optedOutQuests: [],
+      awardedDays: [],
+    }).events.filter((e) => e.kind === "logged_day");
+    expect(keys.map((e) => e.sourceKey)).toEqual(["logged_day:2026-11-05"]);
+  });
+
+  it("backdating entries can't build a streak: only when they were logged counts", async () => {
+    const store = memoryStore();
+    const backdated = Array.from({ length: 8 }, (_, i) =>
+      logged(day(11), { occurredAt: day(i + 1) }),
+    );
+    const { result } = await syncRewardsWith(store, data(backdated));
+    expect(result.loggedDays).toEqual([TODAY]);
+    expect(store.state.achievements.map((a) => a.code)).not.toContain("streak_7_day");
+  });
+
+  it("the amount never matters: a ₹10 day and a ₹10,000 day earn the same", async () => {
+    const small = await syncRewardsWith(memoryStore(), data([logged(day(5), {}, 1_000)]));
+    const huge = await syncRewardsWith(memoryStore(), data([logged(day(5), {}, 10_00_000)]));
+    expect(totalXp(small.state.events)).toBe(totalXp(huge.state.events));
+  });
+
+  it("goal money earns for saving, and transfers and income count as logging", () => {
+    const r = calculateRewards({
+      ...data([
+        allocate(100_000, LAPTOP_GOAL, { occurredAt: day(3) }),
+        { ...income(100), createdAt: day(4) },
+      ]),
+      reviewedWeeks: [],
+      insightsExplored: 0,
+      optedOutQuests: [],
+      awardedDays: [],
+    });
+    expect(r.achievementCodes).toContain("first_savings_goal");
+    expect(r.events.map((e) => e.sourceKey)).toContain("saved_week:2026-11-02");
+    expect(r.loggedDays).toEqual(["2026-11-04"]);
+    const moved = { ...transfer(100, CASH, id(101)), createdAt: day(6) };
+    expect(loggedDays([moved], IST.timeZone)).toEqual(["2026-11-06"]);
+  });
+
+  it("a clean week needs real activity, and an unassigned entry spoils it", () => {
+    const week = (o: { categoryId?: string | null }, count = 3) =>
+      Array.from({ length: count }, () => logged(day(3), o));
+    const earned = (rows: Transaction[]) =>
+      calculateRewards({
+        ...data(rows),
+        reviewedWeeks: [],
+        insightsExplored: 0,
+        optedOutQuests: [],
+        awardedDays: [],
+      }).achievementCodes;
+    expect(earned(week({}))).toContain("no_mystery_money");
+    expect(earned(week({}, 2))).not.toContain("no_mystery_money");
+    expect(earned([...week({}), logged(day(4), { categoryId: null })])).not.toContain(
+      "no_mystery_money",
+    );
+    // The current week isn't finished, so it can't count yet.
+    expect(earned(Array.from({ length: 3 }, () => logged(day(10))))).not.toContain(
+      "no_mystery_money",
+    );
+  });
+
+  it("a month under budget needs real logging and a budget set in time", () => {
+    const october = Array.from({ length: 5 }, (_, i) =>
+      logged(ist(`2026-10-${String(i + 10)}`), {}, 1_000),
+    );
+    const budget = (createdAt: string, limitPaise = 100_000) => ({
+      ...budgetSchema.parse({ id: id(700), ownerId: OWNER, limitPaise }),
+      createdAt,
+    });
+    const earned = (rows: Transaction[], b: ReturnType<typeof budget>) =>
+      calculateRewards({
+        ...data(rows, { budgets: [b] }),
+        reviewedWeeks: [],
+        insightsExplored: 0,
+        optedOutQuests: [],
+        awardedDays: [],
+      }).achievementCodes;
+    const inTime = budget(ist("2026-10-01"));
+    expect(earned(october, inTime)).toContain("monthly_budget_achieved");
+    expect(earned(october.slice(1), inTime)).not.toContain("monthly_budget_achieved");
+    expect(earned(october, budget(ist("2026-11-05")))).not.toContain("monthly_budget_achieved");
+    expect(earned(october, budget(ist("2026-10-01"), 100))).not.toContain(
+      "monthly_budget_achieved",
+    );
+  });
+});
+
+describe("idempotency", () => {
+  const entries = Array.from({ length: 12 }, (_, i) => logged(day(i < 8 ? i + 1 : 8)));
+
+  it("syncing again changes nothing", async () => {
+    const store = memoryStore();
+    const first = await syncRewardsWith(store, data(entries));
+    expect(first.newAchievements).toEqual(
+      expect.arrayContaining(["first_10_transactions", "streak_7_day"]),
+    );
+    const xp = totalXp(store.state.events);
+    const again = await syncRewardsWith(store, data(entries));
+    expect(again.newAchievements).toEqual([]);
+    expect(totalXp(store.state.events)).toBe(xp);
+    expect(store.state.events).toHaveLength(first.state.events.length);
+  });
+
+  it("deleting entries takes nothing away, and keeps the streak's days", async () => {
+    const store = memoryStore();
+    await syncRewardsWith(store, data(entries));
+    const xp = totalXp(store.state.events);
+    const { streaks, state } = await syncRewardsWith(store, data(entries.slice(0, 2)));
+    expect(totalXp(state.events)).toBe(xp);
+    expect(state.achievements.map((a) => a.code)).toContain("first_10_transactions");
+    expect(streaks.longestDaily).toBe(8);
+  });
+
+  it("adding, deleting and adding again can't farm a day", async () => {
+    const store = memoryStore();
+    for (let i = 0; i < 5; i += 1) {
+      await syncRewardsWith(store, data([logged(day(5))]));
+      await syncRewardsWith(store, data([]));
+    }
+    expect(store.state.events.filter((e) => e.kind === "logged_day")).toHaveLength(1);
+  });
+
+  it("editing an entry's amount or date earns nothing new", async () => {
+    const store = memoryStore();
+    const entry = logged(day(5));
+    await syncRewardsWith(store, data([entry]));
+    const xp = totalXp(store.state.events);
+    await syncRewardsWith(
+      store,
+      data([{ ...entry, amountPaise: 9_999, occurredAt: day(6), updatedAt: day(9) }]),
+    );
+    expect(totalXp(store.state.events)).toBe(xp);
+  });
+
+  it("a quest counts once per period", async () => {
+    const store = memoryStore();
+    const today = logged(day(11));
+    await syncRewardsWith(store, data([today]));
+    await syncRewardsWith(store, data([today]));
+    const quest = store.state.events.filter((e) => e.sourceKey.startsWith("quest:log_today"));
+    expect(quest.map((e) => e.sourceKey)).toEqual([`quest:log_today:${TODAY}`]);
+  });
+
+  it("a skipped quest awards nothing", async () => {
+    const store = memoryStore();
+    store.state.quests.push({
+      questCode: "log_today",
+      periodKey: "opt-out",
+      completedAt: null,
+      optedOutAt: ist("2026-11-01"),
+    });
+    await syncRewardsWith(store, data([logged(day(11))]));
+    expect(store.state.events.some((e) => e.sourceKey.startsWith("quest:log_today"))).toBe(false);
+  });
+
+  it("a goal's quest and Spending Detective come from what's stored", async () => {
+    const store = memoryStore();
+    for (let i = 0; i < 5; i += 1) {
+      store.state.events.push({
+        kind: "insight_explored",
+        xp: 0,
+        sourceKey: `insight:${i}`,
+        createdAt: ist("2026-11-01"),
+        revokedAt: null,
+      });
+    }
+    const goal = savingsGoalSchema.parse({
+      id: LAPTOP_GOAL,
+      ownerId: OWNER,
+      title: "Laptop",
+      targetPaise: 100,
+    });
+    const { state } = await syncRewardsWith(store, data([], { goals: [goal] }));
+    expect(state.achievements.map((a) => a.code)).toContain("spending_detective");
+    expect(state.events.map((e) => e.sourceKey)).toContain("quest:set_a_goal:once");
+  });
+});
+
+describe("levels", () => {
+  it.each([
+    [0, 1],
+    [99, 1],
+    [100, 2],
+    [299, 2],
+    [300, 3],
+    [600, 4],
+  ])("%i XP is level %i", (xp, level) => {
+    expect(levelFor(xp).level).toBe(level);
+  });
+
+  it("reports progress through the level, in whole basis points", () => {
+    expect(levelFor(150)).toEqual({ level: 2, floorXp: 100, nextLevelXp: 300, progressBp: 2_500 });
+  });
+
+  it("revoked events don't count", () => {
+    expect(totalXp([{ xp: 10 }, { xp: 20, revokedAt: ist("2026-11-01") }])).toBe(10);
+  });
+});
+
+describe("reminder preferences", () => {
+  const off: ReminderSettings = {
+    allDisabled: false,
+    missedLogging: false,
+    missedLoggingTime: "21:00",
+    missedLoggingDays: "daily",
+    weeklyReview: false,
+    weeklyReviewDay: 3,
+    upcomingIncome: false,
+    upcomingIncomeDays: 1,
+    budgetAlerts: false,
+    upcomingCommitments: false,
+    upcomingCommitmentDays: 2,
+    savingsReview: false,
+    savingsReviewFrequency: "monthly",
+  };
+  const on: ReminderSettings = {
+    ...off,
+    missedLogging: true,
+    weeklyReview: true,
+    upcomingIncome: true,
+    budgetAlerts: true,
+    upcomingCommitments: true,
+    savingsReview: true,
+  };
+  const budget = budgetSchema.parse({ id: id(700), ownerId: OWNER, limitPaise: 10_000 });
+  const goal = savingsGoalSchema.parse({
+    id: LAPTOP_GOAL,
+    ownerId: OWNER,
+    title: "Laptop",
+    targetPaise: 100,
+  });
+  const evening = istMs("2026-11-11", "21:30");
+  const input = {
+    ledger: [expense(9_000, { occurredAt: ist("2026-11-02") })],
+    budgets: [budget],
+    commitments: [commitment(5_000, "2026-11-12")],
+    templates: [],
+    goals: [goal],
+    nextIncomeDate: "2026-11-12",
+    now: evening,
+    settings: IST,
+    money: formatINR,
+    dateText: (date: string) => date,
+  };
+  const kinds = (prefs: ReminderSettings, over: Partial<typeof input> = {}) =>
+    dueReminders({ ...input, ...over, prefs }).map((r) => r.kind);
+
+  it("everything is quiet unless turned on", () => {
+    expect(kinds(off)).toEqual([]);
+  });
+
+  it("each one comes only when it's on", () => {
+    expect(kinds(on)).toEqual([
+      "missed_logging",
+      "weekly_review",
+      "upcoming_income",
+      "budget_threshold",
+      "upcoming_commitment",
+      "savings_review",
+    ]);
+    expect(kinds({ ...off, savingsReview: true })).toEqual(["savings_review"]);
+    expect(kinds({ ...off, budgetAlerts: true })).toEqual(["budget_threshold"]);
+  });
+
+  it("turning off all beats every individual choice", () => {
+    expect(kinds({ ...on, allDisabled: true })).toEqual([]);
+  });
+
+  it("the missed-log nudge waits for its time, and skips days with an entry", () => {
+    const prefs = { ...off, missedLogging: true };
+    expect(kinds(prefs, { now: istMs("2026-11-11", "20:59") })).toEqual([]);
+    expect(kinds(prefs, { ledger: [logged(ist("2026-11-11", "09:00"))] })).toEqual([]);
+    // After 23:59 IST the next day has started, and the nudge is about that day.
+    expect(kinds(prefs, { now: istMs("2026-11-12", "00:01") })).toEqual([]);
+  });
+
+  it("weekdays-only stays quiet at the weekend", () => {
+    const prefs = { ...off, missedLogging: true, missedLoggingDays: "weekdays" as const };
+    expect(kinds(prefs, { now: istMs("2026-11-14", "21:30") })).toEqual([]);
+    expect(kinds(prefs, { now: istMs("2026-11-13", "21:30") })).toEqual(["missed_logging"]);
+  });
+
+  it("honours the lead time for allowance and bills, and a paid bill says nothing", () => {
+    const income_ = { ...off, upcomingIncome: true, upcomingIncomeDays: 0 };
+    expect(kinds(income_)).toEqual([]);
+    expect(kinds({ ...income_, upcomingIncomeDays: 1 })).toEqual(["upcoming_income"]);
+    const bills = { ...off, upcomingCommitments: true, upcomingCommitmentDays: 0 };
+    expect(kinds(bills)).toEqual([]);
+    const paid = expense(5_000, { occurredAt: ist("2026-11-10") });
+    expect(
+      kinds(
+        { ...bills, upcomingCommitmentDays: 3 },
+        {
+          ledger: [paid],
+          commitments: [commitment(5_000, "2026-11-12", { paidTransactionId: paid.id })],
+        },
+      ),
+    ).toEqual([]);
+  });
+
+  it("only looks ahead: an overdue bill belongs on the bills screen, not in a new reminder", () => {
+    const prefs = { ...off, upcomingCommitments: true };
+    expect(kinds(prefs, { commitments: [commitment(5_000, "2026-11-10")] })).toEqual([]);
+  });
+
+  it("a key is the same on a repeat, and differs by period", () => {
+    const prefs = { ...off, savingsReview: true };
+    const key = (now: number) => dueReminders({ ...input, prefs, now })[0]?.dedupeKey;
+    expect(key(evening)).toBe(key(evening + 3_600_000));
+    expect(key(istMs("2026-12-01"))).not.toBe(key(evening));
+    const weekly = { ...prefs, savingsReviewFrequency: "weekly" as const };
+    const weekKey = (now: number) => dueReminders({ ...input, prefs: weekly, now })[0]?.dedupeKey;
+    expect(weekKey(evening)).toBe(weekKey(istMs("2026-11-15")));
+    expect(weekKey(evening)).not.toBe(weekKey(istMs("2026-11-16")));
+  });
+
+  it("a budget reminder moves up a level, once each", () => {
+    const prefs = { ...off, budgetAlerts: true };
+    const key = (amount: number) =>
+      dueReminders({
+        ...input,
+        prefs,
+        ledger: [expense(amount, { occurredAt: ist("2026-11-02") })],
+      })[0]?.dedupeKey;
+    expect(key(8_500)).toBe(key(9_000));
+    expect(key(8_500)).not.toBe(key(10_500));
+  });
+
+  it("never scolds", () => {
+    const text = dueReminders({ ...input, prefs: on })
+      .map((r) => `${r.title} ${r.body}`)
+      .join(" ");
+    expect(text).not.toMatch(/\b(failed|missed|broke|lost|should|must|don['’]t forget)\b/i);
+  });
+});

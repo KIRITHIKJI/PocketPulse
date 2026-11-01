@@ -18,6 +18,9 @@
  *  5. The Hindi day words "aaj", "kal" and "parso" count as dates. "kal" and "parso" can also
  *     mean tomorrow and the day after, but only things that have happened are recorded here, so
  *     they read as past days and `dateWord` lets the review say which day that was.
+ *  6. Speech recognition can write "kal" as "call". Only in a voice entry, and only where it can't
+ *     be a phone call (see `respellSpokenKal`), it's read as "kal". The review says so, and the
+ *     date stays editable like every other. Typed text is never changed: there, "call" is a word.
  */
 import { MAX_AMOUNT_PAISE, type Paise, multiplyPaise, parseAmountInput } from "./money";
 import { type LocalDate, addDays, isLocalDate, parseLocalDate, weekdayOf } from "./time";
@@ -48,8 +51,11 @@ export interface ParsedEntry {
   date: LocalDate;
   /** True when the date came from the text rather than defaulting to today. */
   dateFromText: boolean;
-  /** "kal" or "parso" when the date came from one: a default reading the user should see. */
-  dateWord: "kal" | "parso" | null;
+  /**
+   * "kal" or "parso" when the date came from one: a default reading the user should see. "call"
+   * means speech wrote "call" and it was read as "kal".
+   */
+  dateWord: "kal" | "parso" | "call" | null;
   issues: ParseIssue[];
 }
 
@@ -135,6 +141,9 @@ function recentWeekday(name: string, today: LocalDate, strictlyBefore: boolean):
 
 type DateRule = [RegExp, (m: RegExpExecArray, today: LocalDate) => LocalDate | null];
 
+/** What a spoken "call" becomes while parsing, so the review can say where the date came from. */
+const HEARD_KAL = "heardaskal";
+
 /** The rest of a Hindi day phrase, so "kal raat ka dinner 200" leaves just "dinner". */
 const HINDI_DAY_TAIL = "(?:\\s+(?:subah|dopahar|shaam|sham|raat))?(?:\\s+(?:ka|ki|ke))?\\b";
 
@@ -197,6 +206,7 @@ const DATE_RULES: DateRule[] = [
   [/\btomorrow\b/gi, (_, today) => addDays(today, 1)],
   [new RegExp(`\\bparson?\\b${HINDI_DAY_TAIL}`, "gi"), (_, today) => addDays(today, -2)],
   [new RegExp(`\\bkal\\b${HINDI_DAY_TAIL}`, "gi"), (_, today) => addDays(today, -1)],
+  [new RegExp(`\\b${HEARD_KAL}\\b${HINDI_DAY_TAIL}`, "gi"), (_, today) => addDays(today, -1)],
   [new RegExp(`\\baaj\\b${HINDI_DAY_TAIL}`, "gi"), (_, today) => today],
   [
     new RegExp(`\\blast\\s+(${WEEKDAYS.join("|")})\\b`, "gi"),
@@ -230,6 +240,41 @@ function extractDates(text: string, today: LocalDate) {
     });
   }
   return { text: out, found };
+}
+
+/** Words that make the next "call" a phone call or an action: "phone call 50", "for call 20". */
+const CALL_AFTER = new Set(
+  "phone mobile video voice audio missed conference whatsapp zoom international isd std local roaming wake a an the my one per each to for this that".split(
+    " ",
+  ),
+);
+/** Words that do the same from behind: "call charges 99", "call taxi 200", "call back". */
+const CALL_BEFORE = new Set(
+  "charge charges recharge taxi cab center centre pack plan rate rates bill minutes mins credit balance back me him her them".split(
+    " ",
+  ),
+);
+
+/**
+ * Speech recognition may write "kal" as "call". In one spoken entry that has an amount and no date
+ * of its own, a "call" reads as "kal" unless the words beside it make it a real call. So "call
+ * chai 15", "chai 15 call" and "chai call 15" are yesterday, and "phone call 50" and "call charges
+ * 99" are left alone. Entries are split as usual, so each is judged on its own words.
+ */
+function respellSpokenKal(text: string, today: LocalDate): string {
+  return text.replace(/[^,;\n]+/g, (segment) => {
+    const words = segment.toLowerCase().split(/\s+/);
+    const hasAmount = /\d/.test(segment) || words.some(isNumberWord);
+    if (!hasAmount || extractDates(segment, today).found.length > 0) return segment;
+    return segment.replace(/\bcall\b/gi, (word, offset: number) => {
+      const before = /([\p{L}\p{N}]+)\s*$/u.exec(segment.slice(0, offset))?.[1]?.toLowerCase();
+      const after = /^\s*([\p{L}\p{N}]+)/u.exec(segment.slice(offset + word.length))?.[1];
+      const isCall =
+        (before !== undefined && CALL_AFTER.has(before)) ||
+        (after !== undefined && CALL_BEFORE.has(after.toLowerCase()));
+      return isCall ? word : HEARD_KAL;
+    });
+  });
 }
 
 // --- Numbers ---------------------------------------------------------------------------------
@@ -502,6 +547,7 @@ interface FoundDate {
 }
 
 function dateWordOf(raw: string): ParsedEntry["dateWord"] {
+  if (new RegExp(`^${HEARD_KAL}\\b`, "i").test(raw)) return "call";
   if (/^kal\b/i.test(raw)) return "kal";
   return /^parson?\b/i.test(raw) ? "parso" : null;
 }
@@ -549,15 +595,25 @@ function resolveDates(drafts: readonly Draft[], found: readonly FoundDate[]) {
   });
 }
 
-/** Parses free text into drafts. `today` is the user's local date. */
-export function parseEntries(input: string, today: LocalDate): ParsedEntry[] {
+/**
+ * Parses free text into drafts. `today` is the user's local date. `spoken` marks a transcript from
+ * voice entry, which is the only text where "call" can mean "kal".
+ */
+export function parseEntries(
+  input: string,
+  today: LocalDate,
+  options: { spoken?: boolean } = {},
+): ParsedEntry[] {
   const text = input.normalize("NFKC").slice(0, MAX_PARSE_LENGTH).trim();
   if (!text) return [];
   // Times of day aren't amounts ("tea 15 at 5pm").
   const withoutTimes = markCurrency(
     text.replace(/\b(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/gi, " "),
   );
-  const { text: marked, found } = extractDates(withoutTimes, today);
+  const { text: marked, found } = extractDates(
+    options.spoken ? respellSpokenKal(withoutTimes, today) : withoutTimes,
+    today,
+  );
 
   const drafts: Draft[] = [];
   for (const segment of marked.split(STRONG_BREAK)) {

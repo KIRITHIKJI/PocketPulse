@@ -3,6 +3,7 @@ import { AppSidebar } from "@/components/layout/app-sidebar";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { ToastProvider } from "@/components/feedback/toast";
 import { OfflineBanner } from "@/components/layout/offline-banner";
+import { ReminderSync } from "@/components/reminders/reminder-sync";
 import { PreferenceSync } from "@/components/providers/preference-sync";
 import { type Profile, getProfile } from "@/lib/data/queries";
 import { optionalSession } from "@/lib/data/session";
@@ -42,6 +43,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </main>
         </div>
         <BottomNav />
+        {profile && <ReminderSync />}
       </div>
     </ToastProvider>
   );

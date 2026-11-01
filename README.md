@@ -72,6 +72,14 @@ Or paste each file, in filename order, into Dashboard → SQL Editor. New sign-u
 profile, default categories (spec §9) and quick-add tiles from the `on_auth_user_created`
 trigger. Users created before the migrations can call the `ensure_my_defaults()` RPC.
 
+### Server key
+
+`SUPABASE_SECRET_KEY` is required on the server for two things. Rewards are written with it,
+because clients can't write to the reward tables, and account deletion uses it to remove the auth
+user. It's read at call time, is never prefixed `NEXT_PUBLIC_`, and can't reach a browser bundle.
+Without it, the app still works and `/rewards` says rewards aren't available; deleting an account
+reports that nothing was changed.
+
 ### 4. Run
 
 ```bash
@@ -122,7 +130,7 @@ wallets) run on the desktop project only and restore defaults; runs leave archiv
 wallets/categories in the test account. Without the credentials it is skipped.
 
 `e2e/transactions.spec.ts`, `e2e/transactions-batch.spec.ts`, `e2e/insights.spec.ts`,
-`e2e/plan.spec.ts` and `e2e/motion.spec.ts` record real money entries and assert exact balance
+`e2e/plan.spec.ts`, `e2e/motion.spec.ts`, `e2e/report.spec.ts` and `e2e/rewards.spec.ts` record real money entries and assert exact balance
 changes, so they run in their own projects (`ledger-desktop`, then
 `ledger-mobile`), one worker each, never in parallel with each other. Every entry they create is
 undone or deleted again (soft delete, like a user delete), so the account's totals end where they
@@ -131,7 +139,9 @@ started; if a run is interrupted mid-test, an entry can be left behind. `ledger-
 records money unless you add `--no-deps`. Wallets created by the
 Phase 4 test start tracking tomorrow, so they never shift today's totals. A goal with history
 can't be deleted, so the plan and motion specs reuse one archived goal each between runs, and the
-plan spec leaves cancelled bills and archived recurring items behind. Voice tests use a
+plan spec leaves cancelled bills and archived recurring items behind. `e2e/rewards.spec.ts` tests account
+deletion only on a throwaway `pp-delete-…@example.test` user it creates with the admin API, so it
+needs `SUPABASE_SECRET_KEY`; it never touches the two accounts in `.env.e2e.local`. Voice tests use a
 stand-in for the browser's speech recognition, so they don't exercise a real microphone or speech
 service. The cross-user 404 check also needs a second account:
 add `E2E_USER_B_EMAIL` / `E2E_USER_B_PASSWORD` (the same variables `test:live` uses); without

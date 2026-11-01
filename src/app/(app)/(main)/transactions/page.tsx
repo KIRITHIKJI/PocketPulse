@@ -4,6 +4,7 @@ import { Plus, Receipt, SearchX, Zap } from "lucide-react";
 
 import { PageHeader } from "@/components/layout/page-header";
 import { GoalReleaseNotes } from "@/components/plan/goal-release-notes";
+import { InsightExplored } from "@/components/rewards/insight-explored";
 import { StatePanel } from "@/components/states/state-panel";
 import { type ListedDay, EntryList } from "@/components/transactions/entry-list";
 import { HistoryFilterForm } from "@/components/transactions/history-filters";
@@ -129,6 +130,16 @@ export default async function TransactionsPage({
           </Button>
         }
       />
+
+      {params.from_insight === "1" && (
+        <InsightExplored
+          scope={Object.entries(params)
+            .filter(([key]) => key !== "from_insight" && key !== "show")
+            .map(([key, value]) => `${key}=${String(value)}`)
+            .sort()
+            .join("&")}
+        />
+      )}
 
       <GoalReleaseNotes
         notes={goalReleaseNotes(ledger, goals, versions)}

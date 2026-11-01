@@ -326,3 +326,74 @@ describe("day words against the Asia/Kolkata clock", () => {
     expect(datesAt("2026-10-31T18:30:00Z", "America/New_York")[0]).toBe("2026-10-31");
   });
 });
+
+describe("a spoken \u201ccall\u201d", () => {
+  const YESTERDAY = "2026-11-03";
+  const spoken = (text: string) => parseEntries(text, TODAY, { spoken: true });
+  const heard = (text: string) =>
+    spoken(text).map((e) => [e.description, e.amountPaise, e.date, e.dateWord ?? ""]);
+
+  it.each([
+    ["at the start of an entry", "call chai 15"],
+    ["with a capital, as speech often writes it", "Call chai 15"],
+    ["right after an amount", "chai 15 call"],
+    ["between an item and an amount", "chai call 15"],
+    ["right before an amount", "call 15 chai"],
+    ["with a spoken amount", "call chai fifteen"],
+    ["with a Hindi time of day", "call raat chai 15"],
+  ])("reads as kal %s", (_, text) => {
+    expect(heard(text)).toEqual([["Chai", 1500, YESTERDAY, "call"]]);
+  });
+
+  it("dates only its own entries as usual, and leaves the word out of the item", () => {
+    expect(heard("call chai 15, bus 20")).toEqual([
+      ["Chai", 1500, YESTERDAY, "call"],
+      ["Bus", 2000, YESTERDAY, "call"],
+    ]);
+    expect(heard("bus 20 today, call chai 15")).toEqual([
+      ["Bus", 2000, TODAY, ""],
+      ["Chai", 1500, YESTERDAY, "call"],
+    ]);
+  });
+
+  it.each([
+    ["a phone call", "phone call 50"],
+    ["a mobile call", "mobile call 50"],
+    ["a video call", "video call 100"],
+    ["call charges", "call charges 99"],
+    ["a call recharge pack", "call recharge 199"],
+    ["a call taxi", "call taxi 200"],
+    ["a cab called for", "call cab 200"],
+    ["a word after for", "paid 20 for call"],
+  ])("leaves %s alone", (_, text) => {
+    const [entry] = spoken(text);
+    expect(entry!.date).toBe(TODAY);
+    expect(entry!.dateWord).toBeNull();
+    expect(entry!.description?.toLowerCase()).toContain("call");
+  });
+
+  it("needs an amount: on its own it's just a word", () => {
+    expect(spoken("call mom").every((e) => e.dateWord === null)).toBe(true);
+    expect(spoken("call").every((e) => e.date === TODAY)).toBe(true);
+  });
+
+  it("an entry's own date wins", () => {
+    expect(heard("call chai 15 today")).toEqual([["Call chai", 1500, TODAY, ""]]);
+    expect(heard("call chai 15 on monday")[0]![3]).toBe("");
+  });
+
+  it("is only ever a voice reading: typed text keeps its word and today's date", () => {
+    for (const text of ["call chai 15", "chai 15 call", "chai call 15"]) {
+      const [entry] = parseEntries(text, TODAY);
+      expect(entry!.date).toBe(TODAY);
+      expect(entry!.dateWord).toBeNull();
+      expect(entry!.description?.toLowerCase()).toContain("call");
+    }
+  });
+
+  it("doesn't touch words that contain it, or a spoken kal", () => {
+    expect(spoken("called auto 40")[0]!.date).toBe(TODAY);
+    expect(spoken("recall fee 40")[0]!.date).toBe(TODAY);
+    expect(heard("kal chai 15")).toEqual([["Chai", 1500, YESTERDAY, "kal"]]);
+  });
+});

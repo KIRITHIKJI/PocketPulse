@@ -5,6 +5,8 @@ import {
   INCOME_FREQUENCIES,
   type IncomeFrequency,
   MAX_AMOUNT_PAISE,
+  REMINDER_DAY_CHOICES,
+  SAVINGS_REVIEW_CHOICES,
   SUPPORTED_CURRENCIES,
   isValidTimeZone,
 } from "@/domain";
@@ -80,6 +82,21 @@ export const remindersSchema = z.object({
   savingsReview: z.boolean(),
 });
 export type ReminderPreferences = z.output<typeof remindersSchema>;
+
+const leadDays = z.coerce
+  .number("Use a whole number from 0 to 14.")
+  .int("Use a whole number from 0 to 14.")
+  .min(0, "Use a whole number from 0 to 14.")
+  .max(14, "Use a whole number from 0 to 14.");
+
+export const reminderScheduleSchema = z.object({
+  missedLoggingTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Choose a time."),
+  missedLoggingDays: z.enum(REMINDER_DAY_CHOICES),
+  weeklyReviewDay: z.coerce.number().int().min(0).max(6),
+  upcomingIncomeDays: leadDays,
+  upcomingCommitmentDays: leadDays,
+  savingsReviewFrequency: z.enum(SAVINGS_REVIEW_CHOICES),
+});
 
 export const privacySchema = z.object({
   includeNotesInReports: z.boolean(),

@@ -4,6 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
 import { readPublicSupabaseEnv } from "@/lib/env";
+import { retryingFetch } from "@/lib/supabase/retrying-fetch";
 
 /**
  * Supabase client for Server Components, Server Actions and Route Handlers, acting as the
@@ -15,6 +16,7 @@ export async function createSupabaseServerClient() {
   if (!env) return null;
   const cookieStore = await cookies();
   return createServerClient(env.url, env.publishableKey, {
+    global: { fetch: retryingFetch() },
     cookies: {
       getAll: () => cookieStore.getAll(),
       setAll(cookiesToSet) {

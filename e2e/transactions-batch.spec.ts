@@ -267,6 +267,61 @@ test("voice: a spoken phrase becomes an editable transcript, then reviewed draft
   expect(await balance(page)).toBe(before);
 });
 
+test("voice: a heard \u201ccall\u201d reads as kal, with the date shown and editable", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    class FakeRecognition {
+      onresult: ((event: unknown) => void) | null = null;
+      onend: (() => void) | null = null;
+      start() {
+        setTimeout(() => {
+          const final = Object.assign([{ transcript: "call chai 15" }], { isFinal: true });
+          this.onresult?.({ resultIndex: 0, results: [final] });
+          this.onend?.();
+        }, 50);
+      }
+      stop() {}
+      abort() {}
+    }
+    Object.assign(window, {
+      SpeechRecognition: FakeRecognition,
+      webkitSpeechRecognition: FakeRecognition,
+    });
+  });
+  await page.goto("/add/voice");
+  const mic = page.getByRole("button", { name: "Start listening" });
+  await expect(mic).toBeEnabled();
+  const transcript = page.getByRole("textbox", { name: "Transcript (edit if needed)" });
+  await expect(async () => {
+    await mic.click();
+    await expect(transcript).toHaveValue("call chai 15", { timeout: 1_000 });
+  }).toPass();
+  await page.getByRole("button", { name: "Review entries" }).click();
+
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(Date.now());
+  const yesterday = new Date(Date.parse(`${today}T00:00:00Z`) - 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  const date = drafts(page).first().getByLabel("Date");
+  await expect(date).toHaveValue(yesterday);
+  const note = drafts(page).first().getByTestId("draft-date-note");
+  await expect(note).toContainText("We heard “call” and read it as “kal”");
+
+  // Fixing the date settles it. Nothing is saved: the test leaves from the review.
+  await date.fill(today);
+  await expect(note).toBeHidden();
+});
+
+test("typing \u201ccall chai 15\u201d stays today, with no note", async ({ page }) => {
+  await page.goto("/add/text");
+  await review(page, "call chai 15");
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(Date.now());
+  await expect(drafts(page).first().getByLabel("Date")).toHaveValue(today);
+  await expect(drafts(page).first().getByTestId("draft-date-note")).toHaveCount(0);
+  await page.getByRole("button", { name: "Back to edit" }).click();
+});
+
 test("voice: unsupported browsers get the typed route", async ({ page }) => {
   await page.addInitScript(() => {
     Object.assign(window, { webkitSpeechRecognition: undefined, SpeechRecognition: undefined });
