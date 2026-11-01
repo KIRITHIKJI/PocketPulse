@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import {
   formatMoney,
   indexById,
+  isActive,
   netSpending,
   resolvePeriod,
   sumPaise,
@@ -60,7 +61,16 @@ export default async function TransactionsPage({
   // Totals of what's listed, from the same domain functions every other screen uses.
   const allTime = resolvePeriod({ kind: "all_time" }, now, settings);
   const spent = netSpending(matches, allTime);
-  const income = sumPaise(matches.filter((tx) => tx.type === "income").map((tx) => tx.amountPaise));
+  const income = sumPaise(
+    matches.filter((tx) => tx.type === "income" && isActive(tx)).map((tx) => tx.amountPaise),
+  );
+  const narrowing = [
+    filters.noSubcategory ? "entries with no subcategory" : null,
+    filters.underPaise !== null ? `small purchases under ${money(filters.underPaise)}` : null,
+    filters.group ? `one repeated purchase (“${filters.group.key}”)` : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
 
   const days: ListedDay[] = groupByDay(shown, tz).map((day) => {
     const daySpent = netSpending(
@@ -142,6 +152,14 @@ export default async function TransactionsPage({
             {filtered ? " match" : ""} · net spending {money(spent)}
             {income > 0 ? ` · income ${money(income)}` : ""}
           </p>
+          {narrowing && (
+            <p className="text-sm text-muted-foreground" data-testid="history-narrowing">
+              Showing {narrowing}.{" "}
+              <Link href="/transactions" className="font-medium text-primary underline">
+                See everything
+              </Link>
+            </p>
+          )}
           {matches.length === 0 ? (
             <StatePanel
               icon={SearchX}

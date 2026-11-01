@@ -3,7 +3,7 @@
 Durable project state. Update before a context reset or at the end of each work session.
 Source of truth for requirements: `PROJECT_SPEC.md`.
 
-_Last updated: 2026-11-01 — end of Phase 6a (review and fixes). Migrations 0100–0800 are applied on the hosted project. Phase 7 is not started and needs its prompt._
+_Last updated: 2026-11-01 — end of Phase 7. Migrations 0100–0800 are applied on the hosted project; Phase 7 adds none. Phase 8 is not started and needs its prompt._
 
 ## Build stages
 
@@ -17,7 +17,7 @@ One integrated product. Stages are an internal build order only; nothing is defe
 | 4 | Onboarding (balance + effective date, wallets, currency/timezone, allowance, budgets, goals, prefs), accounts, categories/subcategories management, profile/preferences sync | ✅ Done — 0700 confirmed applied (`migration list`); `/onboarding` and `/accounts` e2e pass live |
 | 5 | Transactions: one mutation layer (commands + idempotency keys), quick-add tiles, full form, repeat/frequent, history with search/filters, detail/edit/delete/undo with real 404s, Home dashboard | ✅ Done — unit, DB and live e2e (desktop + Pixel 7) pass |
 | 6 | Natural-language parser + voice entry with draft review and atomic batch confirm | ✅ Done — unit, DB and live e2e pass. Voice UI is tested with a stand-in for speech recognition; a real microphone is not yet tested (see blockers) |
-| 7 | Insights + charts with drill-down, sparse-data honesty, Money Leak Detector with what-ifs | ⬜ |
+| 7 | Insights + charts with drill-down, sparse-data honesty, Money Leak Detector with what-ifs | ✅ Done — unit (including figure-by-figure reconciliation with history) and live e2e pass on desktop and Pixel 7 |
 | 8 | Budgets (alerts, pace, suggestions), savings goals + allocation ledger, safe-to-spend, survival mode, recurring templates + commitments | ⬜ |
 | 9 | Parent report (preview, PDF, CSV, text; reconciled totals), gamification (XP, levels, streaks, quests, achievements; idempotent), reminders, data export + account deletion | ⬜ |
 | 10 | PWA + IndexedDB offline queue, sync states, conflict handling; full e2e at mobile/desktop; a11y/perf pass; docs; final verification | ⬜ |
@@ -32,9 +32,9 @@ Status key: ⬜ not started · 🟨 partial (detail given) · ✅ done and verif
 - ✅ Quick-add presets/custom amounts work. — 12 seeded tiles (no invented amounts); editable label, usual amount, category and icon; add/hide/restore; custom tile with a description and a suggested category; opt-in "remember as usual amount"; repeat-last and frequent shortcuts.
 - 🟨 Text and voice routes create reviewable drafts and confirm before save. — Typed entry is proven end to end (`/add/text`, live e2e). Voice shares the same review and save, and its transcript, error and unsupported paths are tested with a stand-in; real speech on a real device is still to be checked.
 - ✅ History, search, filters, editing, deletion and undo work. — Day-grouped history (cards on phones, table from 1024 px), search, type/category/wallet/date/amount filters in the URL, detail, edit (version-checked), delete with confirmation, Undo for create/edit/delete. Missing, malformed, deleted and other-user ids return HTTP 404. The live cross-user check needs a second account (see blockers); cross-user denial is proven in the DB tests.
-- 🟨 Category/subcategory totals reconcile with transactions. — Domain `categoryBreakdown` is tested to reconcile category → subcategory → period total (refunds included, including refunds landing in a later period); screens wire it in Phases 5/7.
-- ⬜ Insights point to real supporting records and handle sparse data honestly.
-- ⬜ Money Leak Detector groups and totals correctly.
+- ✅ Category/subcategory totals reconcile with transactions. — Every category and subcategory figure on Insights is compared id for id with history for 7 periods (`tests/unit/insights-reconcile.test.ts`), refunds in later periods included, and live in Journey C.
+- ✅ Insights point to real supporting records and handle sparse data honestly. — Every figure carries the history filters behind it; a new account, one entry, income only and refund only are tested for honest states and no NaN. Bars, cards and rows open real entries live.
+- ✅ Money Leak Detector groups and totals correctly. — By description, merchant, tile and category; each group matches history entry for entry, its previous-period figure too. What-ifs use exact integers.
 - 🟨 Budgets/alerts recalculate on changes. — Domain `evaluateBudget` (spent/remaining/%/pace/thresholds) and `newlyReachedThresholds` are tested, including edits/deletes; UI and alert delivery in Phase 8.
 - 🟨 Savings allocations do not count as purchases or reduce consolidated total balance. — Proven in domain tests (invariant 4); end-to-end in Phase 8.
 - ✅ Transfers between owned accounts do not inflate consolidated income/expense. — Domain invariants 2–3, plus a DB test through the app's mutation layer: a transfer (and an edit of it) moves money between wallets and leaves the consolidated balance unchanged. Transfers are entered from the full form.
@@ -45,7 +45,7 @@ Status key: ⬜ not started · 🟨 partial (detail given) · ✅ done and verif
 - 🟨 PWA works on supported devices; responsive app works on laptop/mobile. — Responsive shell done (sidebar ≥1024px; header + 5-tab bottom nav + "All sections" sheet + add FAB on mobile), Playwright runs at desktop and Pixel 7 sizes. No PWA manifest/service worker yet (Phase 10).
 - ⬜ Offline entries persist and sync without loss or duplication. — Only an online/offline banner exists; it truthfully says changes can't be saved offline.
 - 🟨 Loading, empty, error, permission-denied and offline states are handled. — Shared `StatePanel` (empty/error/offline/denied), `PageSkeleton`, route `loading.tsx`, `error.tsx`, in-shell and global `not-found.tsx`, `global-error.tsx`, offline banner. Each feature must still wire these to its real data states.
-- 🟨 No required action is a placeholder or fake success. — Every Phase 1–6 action is real: saves go through RPCs, and success shows only after the database answers. Screens for Phases 7–10 are still honest empty states.
+- 🟨 No required action is a placeholder or fake success. — Every Phase 1–6 action is real: saves go through RPCs, and success shows only after the database answers. Screens for Phases 8–10 are still honest empty states.
 - 🟨 Lint/typecheck/tests/production build are run and failures are addressed. — All pass for Phase 3 (see Checks).
 - 🟨 Setup documentation accurately describes what needs a real Supabase project/credentials. — README › Setup was followed for the hosted project: init/login/link/db push (login/link/db push must run in an interactive terminal), URL configuration, token-hash email templates, `.env.e2e.local`. Re-check at final delivery.
 
@@ -62,7 +62,7 @@ Every screen has a route; feature screens show a real empty state until their st
 | History, detail, edit | `/transactions`, `/transactions/[id]`, `/transactions/[id]/edit` | History with search and filters; detail (refund links, before-opening note, repeat, record a refund, delete); edit. Real 404s |
 | Wallets | `/accounts` | Create, edit (name/type/opening balance + date), default, archive/restore, balances now |
 | Categories | `/categories?tab=…` | Hierarchy, create/edit/icon/colour, reorder, archive/restore, merge, rules + live tester, Uncategorized queue |
-| Insights, Money leaks | `/insights`, `/insights/leaks` | Empty state (Phase 7) |
+| Insights, Money leaks | `/insights`, `/insights/category/[id]`, `/insights/leaks` | Period picker, totals, insight cards, trend chart, categories, comparison, frequent, unusual, recurring. Category page (Journey C). Leak groups with what-ifs |
 | Budgets, goals, safe-to-spend, survival | `/budgets`, `/goals`, `/safe-to-spend`, `/survival` | Empty state (Phase 8) |
 | Income & recurring | `/recurring` | Empty state (Phase 8) |
 | Parent report | `/reports` | Empty state (Phase 9) |
@@ -204,6 +204,24 @@ Every screen has a route; feature screens show a real empty state until their st
   - **Garbage:** "..." made an empty draft; it now counts as no entry.
 - **"Never upload audio" vs the Web Speech API (open):** the Phase 6 prompt asks for both. PocketPulse never receives or uploads audio, but Chrome's implementation sends it to Google to recognise it. The page says so before listening starts, which meets the spec's "do not silently upload". Meeting the prompt's wording strictly would need on-device recognition only, or dropping voice in browsers that lack it. Your call; nothing is changed yet.
 
+### Phase 7 decisions
+
+- **One model, no logic in screens:** `buildInsights` (`src/domain/insights.ts`) makes every figure and sentence; `src/domain/purchases.ts` holds grouping, small purchases, leaks, what-ifs and recurring signals. `src/lib/insights-view.ts` reads the period from the URL, words it, and builds links.
+- **Every figure carries a `SpendingScope`:** the history filters behind it, turned into a link by `historyHref`. History gained `type=spending`, `nosub`, `under` and `by` + `key`, each decided by the same domain functions as the figure (`isSmallPurchase`, `purchaseGroupKey`, `refundCategory`). They survive changing other filters, and history says what it's narrowed to.
+- **Fair comparison:** a running period is compared with the same days of the earlier one (1–21 Oct against 1–21 Sep), never all of it. Finished periods compare whole. The card names the dates. Below 3 purchases on either side it says "Not enough data to compare yet" and why.
+- **Refunds:** a refund joins the group of the purchase it refunds, in the refund's own period. A refund counts as small when its *purchase* was small, whatever its own amount. Income is its own figure; transfers and allocations never enter a group.
+- **"Small" is strict:** under the threshold, so at ₹50 a ₹50 purchase isn't small. The threshold, timezone, week start and currency all come from the profile. `spendingDisplay` took INR for granted; it now takes a formatter.
+- **Unassigned** is always its own row and insight, drillable, with a link to the Uncategorized queue. The drill-down leaves out unassigned income, which isn't spending.
+- **Sparse rules:** average from 2 purchases, median from 3, repeats and leaks from 3, a trend from 2 active days/weeks/months, unusual changes from 3 earlier windows. Windows from before tracking began don't count as ₹0. Below these the screen says so instead of showing a figure.
+- **Unusual:** at least 1.5× or at most half the median of up to 4 earlier windows, and a gap of at least the small-purchase amount (no hardcoded rupees). The rule and the numbers are shown under "How we detected this".
+- **Recurring signals** look across all history: 3+ dates, even gaps of 6+ days, prices within 25 %, not quiet for more than two gaps. Worded as "looks", not as fact.
+- **"Similar description" has no spelling tolerance.** Case, plurals, word order, digits and filler match; "coffee" and "toffee" are one letter apart and must never merge. A typo therefore forms its own group.
+- **Tiles are identified by label.** Transactions don't store a preset id, so a renamed tile starts a new group. A `preset_id` column would fix this, but needs a migration.
+- **Groupings are separate views,** so one purchase is never counted twice in one list. Purchases a view can't place are counted in a note.
+- **`mainDriver` now moves with the category.** It used to take the largest change in either direction, so "increased, mainly due to snacks" could name something that fell. "Mainly" also needs at least half of the change.
+- **Charts:** Recharts 3.10.1 for the one-series trend, loaded only on these screens. Category shares are HTML bars, so each one is a real link and keyboard-reachable. Negative buckets draw at zero with a note; `chartShares` keeps percentages at 100 % when a refund-heavy category is at zero. Week buckets are clipped to the period, so a bar's link can't pull in days outside it. Future days aren't drawn. Each chart has a table with links. Animation follows the motion preference.
+- **E2E server:** Playwright reuses whatever is on port 3100. A `next start` left over from Phase 6a served the old build to the first runs here. If results look stale, check that port first.
+
 ### Phase 9 notes: account deletion (recorded in Phase 3a)
 
 Clients can't hard-delete transactions (no grant or policy), so account deletion runs **server-side**:
@@ -239,6 +257,23 @@ Hosted project `qzmqvytrekenzciasvph`. Live checks use the publishable key only,
 | Sign-up with "Confirm email" ON (email → `/auth/confirm`) | ⏳ not tested live (built-in email quota was exhausted) | ✅ code path + invalid-link e2e |
 | Forgot / reset password email | ⏳ **pending**: the dashboard test user's address belongs to someone else, so no reset email was sent | ✅ forms, validation, no-session page, invalid link |
 | Transfers, refunds, goal money, batch rollback | — (no UI yet) | ✅ PG 18 |
+
+## Checks run (Phase 7, 2026-11-01)
+
+| Command / action | Result |
+| --- | --- |
+| `npm run lint` / `typecheck` / `format:check` | Pass |
+| `npm test` | Pass, 19 files / 543 tests (140 new). `tests/unit/insights-reconcile.test.ts` runs 7 periods: headline, each category and subcategory, income, refunds, small purchases, every trend bar at every granularity, frequent rows, cards, unusual changes, both comparison windows, and every leak group in all 4 groupings, each compared with what history shows |
+| Mutation check | 6 deliberate breaks all failed tests: week bucket not clipped, no-subcategory filter ignored, refund judged on its own amount, voided rows in spending, leak group ignoring the refund rule, running month against a whole month. Restored |
+| `npm run build` | Pass (through Playwright's web server) |
+| `npm run test:e2e` (hosted project, desktop + Pixel 7) | **178 passed, 9 skipped, 0 failed.** The 9 skips are the same as Phase 6a |
+| Ledger projects, after adding the chart-bar test | 29 passed, 1 skipped. A bar click opens its entry, with no console errors, on both viewports. The full suite wasn't repeated for this one added test |
+| Live bug found by e2e | A server component passed a function to a client component, so any page with entries crashed. Types didn't catch it. Fixed |
+| Visual check (1280 px and 412 px, dark and light, seeded entries) | No sideways overflow. Fixed: the trend shared a row with the long category list and left an empty card. The test entries were deleted; the account ends with no active entries |
+| `npm audit` after adding Recharts | 0 vulnerabilities |
+| `npm run test:db` | Not run: no SQL or mutation code changed |
+
+Not covered: no test asserts that chart animation stops under reduced motion, and the phone visual check used a resized desktop browser (the e2e runs use the Pixel 7 profile).
 
 ## Checks run (Phase 6a, 2026-11-01)
 
@@ -407,7 +442,7 @@ Note: because of the `(app)` loading boundary, Next.js streams `notFound()` page
 
 ## Next concrete tasks
 
-Phase 7 (insights + charts with drill-down, sparse-data honesty, Money Leak Detector with what-ifs), not started and needs its prompt:
+Phase 8 (budgets, savings goals, safe-to-spend, survival mode, recurring), not started and needs its prompt:
 
-1. Build every figure from `categoryBreakdown`, `comparePeriods`, `spendingTrend` and `spendingDisplay`, each drillable to `/transactions` with URL filters.
-2. Later: the Phase 8 goal screens add allocation/release commands (extend `LedgerCommand`); Phase 10 queues `LedgerCommand`s offline and replays them through `runLedgerCommandWith`.
+1. Reuse `recurringSignals` to suggest recurring templates, and `comparisonWindows` wherever a running period is compared.
+2. The Phase 8 goal screens add allocation/release commands (extend `LedgerCommand`); Phase 10 queues `LedgerCommand`s offline and replays them through `runLedgerCommandWith`.

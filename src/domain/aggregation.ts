@@ -194,18 +194,32 @@ export interface SpendingDisplay {
  * lands in a later period than its purchase; it is drawn as a zero bar with an explicit note,
  * and the refund stays visible as its own line — never a silent negative bar.
  */
-export function spendingDisplay(group: SpendingGroup): SpendingDisplay {
+export function spendingDisplay(
+  group: SpendingGroup,
+  format: (paise: Paise) => string = formatINR,
+): SpendingDisplay {
   if (group.netPaise >= 0) return { chartPaise: group.netPaise, netRefundPaise: 0, note: null };
   const netRefundPaise = -group.netPaise;
   const fromEarlier =
     group.earlierPurchaseRefundsPaise > 0
-      ? ` (${formatINR(group.earlierPurchaseRefundsPaise)} of it refunds purchases from an earlier period)`
+      ? ` (${format(group.earlierPurchaseRefundsPaise)} of it refunds purchases from an earlier period)`
       : "";
   return {
     chartPaise: 0,
     netRefundPaise,
-    note: `Refunds exceeded purchases here by ${formatINR(netRefundPaise)}${fromEarlier}.`,
+    note: `Refunds exceeded purchases here by ${format(netRefundPaise)}${fromEarlier}.`,
   };
+}
+
+/**
+ * Shares of what the chart draws: each group's `chartPaise` over their sum, in basis points, so
+ * the bars add up to 100 % even when a refund-heavy group is drawn at zero. (`shareBp` is relative
+ * to the signed total, which goes above 100 % in that case.) Null when nothing is drawn.
+ */
+export function chartShares(groups: readonly SpendingGroup[]): Map<string, number | null> {
+  const drawn = groups.map((g) => [g.key, spendingDisplay(g).chartPaise] as const);
+  const total = sumPaise(drawn.map(([, paise]) => paise));
+  return new Map(drawn.map(([key, paise]) => [key, ratioBasisPoints(paise, total)]));
 }
 
 function groupBy<T>(items: readonly T[], keyOf: (item: T) => string): Map<string, T[]> {
@@ -278,7 +292,7 @@ export interface Change {
   deltaBp: number | null;
 }
 
-function change(currentPaise: Paise, previousPaise: Paise): Change {
+export function change(currentPaise: Paise, previousPaise: Paise): Change {
   return {
     currentPaise,
     previousPaise,
@@ -289,7 +303,10 @@ function change(currentPaise: Paise, previousPaise: Paise): Change {
 
 export interface CategoryChange extends Change {
   key: string;
-  /** Subcategory with the largest absolute change ("mainly due to snacks"), if any changed. */
+  /**
+   * Subcategory with the largest change in the same direction as the category's ("mainly due to
+   * snacks"). A subcategory moving against the total can't explain it, so it is never the driver.
+   */
   mainDriver: (Change & { key: string }) | null;
 }
 
@@ -322,11 +339,13 @@ export function comparePeriods(
     const prev = prevByKey.get(key);
     const subPrev = new Map(prev?.subcategories.map((s) => [s.key, s.netPaise]) ?? []);
     const subCur = new Map(cur?.subcategories.map((s) => [s.key, s.netPaise]) ?? []);
+    const direction = Math.sign((cur?.netPaise ?? 0) - (prev?.netPaise ?? 0));
     let mainDriver: CategoryChange["mainDriver"] = null;
     for (const subKey of new Set([...subCur.keys(), ...subPrev.keys()])) {
       const c = change(subCur.get(subKey) ?? 0, subPrev.get(subKey) ?? 0);
       if (
-        c.deltaPaise !== 0 &&
+        Math.sign(c.deltaPaise) === direction &&
+        direction !== 0 &&
         (!mainDriver || Math.abs(c.deltaPaise) > Math.abs(mainDriver.deltaPaise))
       ) {
         mainDriver = { key: subKey, ...c };
@@ -364,12 +383,17 @@ export interface TrendBucket {
   transactionIds: string[];
 }
 
-/** Net spending per day/week/month across a bounded period, including empty buckets. */
+/**
+ * Net spending per day/week/month across a bounded period, including empty buckets. `only`
+ * narrows it to some entries (one category's trend). A week or month bucket can start before the
+ * period does, but holds only the period's entries.
+ */
 export function spendingTrend(
   ledger: readonly Transaction[],
   period: Period,
   granularity: TrendGranularity,
   settings: TimeSettings = DEFAULT_TIME_SETTINGS,
+  only: (entry: SpendingEntry) => boolean = () => true,
 ): TrendBucket[] {
   const keyOf = (date: LocalDate) =>
     granularity === "day"
@@ -384,7 +408,7 @@ export function spendingTrend(
     if (!buckets.has(key))
       buckets.set(key, { startDate: key, netPaise: 0, count: 0, transactionIds: [] });
   }
-  for (const entry of spendingEntries(ledger, period)) {
+  for (const entry of spendingEntries(ledger, period).filter(only)) {
     const key = keyOf(toLocalDate(occurredAtMs(entry.tx), period.timeZone));
     let bucket = buckets.get(key);
     if (!bucket) {

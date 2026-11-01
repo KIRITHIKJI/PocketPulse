@@ -15,3 +15,5 @@ export * from "./safe-to-spend";
 export * from "./categorize";
 export * from "./shortcuts";
 export * from "./parse-entries";
+export * from "./purchases";
+export * from "./insights";
