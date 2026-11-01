@@ -252,13 +252,15 @@ function QuickAddForm({
       },
     };
     setPending(true);
+    const usual =
+      remember && canRemember && entry.presetId
+        ? { presetId: entry.presetId, amountPaise: parsed.paise }
+        : null;
     const result = await run(command, {
       success: `Saved ${money(parsed.paise, kit)} · ${text ?? entry.title}`,
-      send: (c) =>
-        saveQuickAdd(
-          c,
-          remember && canRemember ? { presetId: entry.presetId, amountPaise: parsed.paise } : null,
-        ),
+      send: (c) => saveQuickAdd(c, usual),
+      label: text ?? entry.title,
+      remember: usual,
     });
     setPending(false);
     if (result?.ok) onDone();

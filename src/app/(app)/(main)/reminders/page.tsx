@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { Route } from "next";
-import { Bell, X } from "lucide-react";
+import { Bell, Info, X } from "lucide-react";
 
 import { InlineAction } from "@/components/forms/inline-action";
 import { PageHeader } from "@/components/layout/page-header";
@@ -16,6 +16,7 @@ import {
 } from "@/lib/actions/reminders";
 import { getNotifications, getProfile, getReminderSettings } from "@/lib/data/queries";
 import { formatDateTime } from "@/lib/format";
+import { REMINDERS_OPEN_NOTE } from "@/lib/validation/settings";
 
 export const metadata: Metadata = { title: "Reminders" };
 
@@ -34,6 +35,14 @@ export default async function RemindersPage() {
         description="Optional, quiet nudges for logging, weekly reviews, allowance day and upcoming bills. All off by default, apart from budget alerts."
       />
 
+      <p
+        className="flex gap-2 rounded-xl border border-warning/30 bg-warning/10 p-3 text-sm"
+        data-testid="reminders-open-note"
+      >
+        <Info className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden="true" />
+        {REMINDERS_OPEN_NOTE}
+      </p>
+
       <section aria-labelledby="inbox-heading" className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 id="inbox-heading" className="font-semibold">
@@ -49,7 +58,7 @@ export default async function RemindersPage() {
           <StatePanel
             icon={Bell}
             title="Nothing here"
-            description="Reminders you turn on appear here when PocketPulse is open. Nothing is emailed."
+            description="Reminders you turn on appear here the next time PocketPulse is open."
           />
         ) : (
           <ul className="flex flex-col gap-2" data-testid="notification-list">

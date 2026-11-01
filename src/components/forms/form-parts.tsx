@@ -169,12 +169,16 @@ export function FormMessage({
  */
 export function ActionForm({
   action,
+  worksOffline = false,
   children,
   ...props
 }: Omit<React.ComponentProps<"form">, "action" | "onSubmit"> & {
   action: (formData: FormData) => void;
+  /** The action keeps entries in the offline queue. Every other form needs a connection. */
+  worksOffline?: boolean;
 }) {
   const [, startTransition] = React.useTransition();
+  const [offline, setOffline] = React.useState(false);
   return (
     <form
       noValidate
@@ -182,11 +186,19 @@ export function ActionForm({
       action={action}
       onSubmit={(event) => {
         event.preventDefault();
+        const blocked = !worksOffline && !navigator.onLine;
+        setOffline(blocked);
+        if (blocked) return;
         const submitter = (event.nativeEvent as SubmitEvent).submitter;
         const formData = new FormData(event.currentTarget, submitter);
         startTransition(() => action(formData));
       }}
     >
+      {offline && (
+        <p role="alert" className="basis-full text-sm text-warning">
+          You’re offline, so this wasn’t saved. It needs a connection. What you typed is still here.
+        </p>
+      )}
       {children}
     </form>
   );

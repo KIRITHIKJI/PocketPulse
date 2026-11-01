@@ -26,6 +26,7 @@ export function ReminderSync() {
   React.useEffect(() => {
     let active = true;
     const check = async () => {
+      if (!navigator.onLine) return;
       const created = await syncReminders().catch(() => []);
       if (!active || created.length === 0) return;
       router.refresh();

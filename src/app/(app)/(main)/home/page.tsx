@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowRight, Bell, Info, ListChecks, PiggyBank, Receipt, Target } from "lucide-react";
 
 import { PageHeader } from "@/components/layout/page-header";
+import { WaitingEntries } from "@/components/offline/waiting-entries";
 import { BudgetRemaining, Meter } from "@/components/plan/parts";
 import { AnimatedMoney } from "@/components/transactions/animated-money";
 import { EntryCard } from "@/components/transactions/entry-list";
@@ -122,6 +123,7 @@ export default async function HomePage() {
         title="Home"
         description="Your tracked balance, today’s spending, budgets and goals at a glance."
       />
+      <WaitingEntries currency={profile.currency} />
 
       {!profile.onboardingCompletedAt && (
         <Card className="flex-row flex-wrap items-center gap-3" data-testid="finish-setup">

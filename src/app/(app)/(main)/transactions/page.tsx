@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Plus, Receipt, SearchX, Zap } from "lucide-react";
 
 import { PageHeader } from "@/components/layout/page-header";
+import { WaitingEntries } from "@/components/offline/waiting-entries";
 import { GoalReleaseNotes } from "@/components/plan/goal-release-notes";
 import { InsightExplored } from "@/components/rewards/insight-explored";
 import { StatePanel } from "@/components/states/state-panel";
@@ -130,6 +131,8 @@ export default async function TransactionsPage({
           </Button>
         }
       />
+
+      <WaitingEntries currency={profile.currency} />
 
       {params.from_insight === "1" && (
         <InsightExplored

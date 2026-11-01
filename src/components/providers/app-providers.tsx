@@ -3,6 +3,7 @@
 import * as React from "react";
 import { ThemeProvider } from "next-themes";
 
+import { ServiceWorker } from "@/components/offline/service-worker";
 import { MotionProvider } from "@/components/providers/motion-provider";
 
 export function AppProviders({ children }: { children: React.ReactNode }) {
@@ -14,6 +15,7 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
       enableSystem
       disableTransitionOnChange
     >
+      <ServiceWorker />
       <MotionProvider>{children}</MotionProvider>
     </ThemeProvider>
   );

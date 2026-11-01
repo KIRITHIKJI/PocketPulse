@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Route } from "next";
 import { KeyRound } from "lucide-react";
 
+import { ForgetDevice } from "@/components/offline/forget-device";
 import { StatePanel } from "@/components/states/state-panel";
 import { isSupabaseConfigured } from "@/lib/env";
 
@@ -22,6 +23,7 @@ export function AuthFrame({ title, description, links = [], notice, children }: 
   const configured = isSupabaseConfigured();
   return (
     <div className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center gap-6 py-10">
+      <ForgetDevice />
       <div className="flex flex-col gap-1 text-center">
         <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
         <p className="text-muted-foreground">{description}</p>

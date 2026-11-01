@@ -70,6 +70,10 @@ export const REMINDER_KEYS = [
   "upcomingCommitments",
   "savingsReview",
 ] as const;
+/** There's no background server or push service, so this has to be said wherever they're set up. */
+export const REMINDERS_OPEN_NOTE =
+  "Reminders only appear while PocketPulse is open. It can’t alert you when the app is closed, and nothing is emailed.";
+
 export type ReminderKey = (typeof REMINDER_KEYS)[number];
 
 export const remindersSchema = z.object({

@@ -1,7 +1,7 @@
 /**
  * Runs ledger commands against the database through a small port (read one row, call one RPC),
- * so the same logic serves the Supabase server client today, the database tests, and the
- * Phase 10 sync replay. Status mapping and undo construction live only here.
+ * so the same logic serves the Supabase server client, the database tests and the offline sync
+ * replay. Status mapping and undo construction live only here.
  */
 import { type DbError, dbErrorMessage } from "@/lib/data/errors";
 import { rowToLedgerRecord } from "@/lib/data/mappers";
@@ -36,6 +36,10 @@ export type LedgerOutcome =
       message: string;
       /** The current row, when the database returned it (e.g. the newer version on a conflict). */
       record: LedgerRecord | null;
+      /** Why, for a conflict: lets the sync screen offer the right way out. */
+      reason?: string;
+      /** The request never reached the database, so the same command can simply be sent again. */
+      retryable?: boolean;
     };
 
 const CONFLICT_MESSAGES: Record<string, string> = {
@@ -45,6 +49,7 @@ const CONFLICT_MESSAGES: Record<string, string> = {
   id_in_use: "This entry id is already in use. Reload and try again.",
   already_paid: "This bill was already paid. Nothing new was saved.",
   entry_removed: "That entry was deleted after it was saved. Reload and record it again.",
+  changed_since: "This entry changed on another device after you deleted it here.",
 };
 
 const NOT_FOUND = "That entry doesn’t exist any more.";
@@ -61,31 +66,40 @@ const ROLLED_BACK: Partial<Record<LedgerCommand["kind"], string>> = {
 /** The one unique rule a ledger write can hit: an occurrence that already has an entry. */
 const ALREADY_RECORDED = "This was already recorded, so the entry stays as it is.";
 
+/** PostgreSQL always gives a code; a failed connection to it doesn't. */
+function rejected(error: DbError, message = dbErrorMessage(error)): LedgerOutcome {
+  return { ok: false, status: "rejected", message, record: null, retryable: !error.code };
+}
+
 export async function runLedgerCommandWith(
   port: LedgerPort,
   command: LedgerCommand,
   newOpId: () => string = () => crypto.randomUUID(),
 ): Promise<LedgerOutcome> {
-  // An edit's undo restores the values it replaced, so read them first.
+  // An edit's undo restores the values it replaced, so read them first. A delete that quotes a
+  // version is checked the same way: `set_transaction_deleted` has no version of its own.
   let before: LedgerRecord | null = null;
-  if (command.kind === "update") {
+  if (command.kind === "update" || (command.kind === "delete" && command.expectedVersion)) {
     const { row, error } = await port.readRow(command.id);
-    if (error)
-      return { ok: false, status: "rejected", message: dbErrorMessage(error), record: null };
+    if (error) return rejected(error);
     if (!row) return { ok: false, status: "not_found", message: NOT_FOUND, record: null };
     before = rowToLedgerRecord(row);
+    if (
+      command.kind === "delete" &&
+      !before.deletedAt &&
+      before.version !== command.expectedVersion
+    ) {
+      const reason = "changed_since";
+      const message = CONFLICT_MESSAGES[reason]!;
+      return { ok: false, status: "conflict", message, record: before, reason };
+    }
   }
 
   const { data, error } = await port.call(toRpcCall(command));
   if (error) {
     const message = dbErrorMessage(error, ALREADY_RECORDED);
     const rolledBack = ROLLED_BACK[command.kind];
-    return {
-      ok: false,
-      status: "rejected",
-      message: rolledBack ? `${message} ${rolledBack}` : message,
-      record: null,
-    };
+    return rejected(error, rolledBack ? `${message} ${rolledBack}` : message);
   }
 
   const result = data as { status: CommandStatus; reason?: string; transaction?: Row };
@@ -117,6 +131,7 @@ export async function runLedgerCommandWith(
           CONFLICT_MESSAGES[result.reason ?? ""] ??
           "This entry conflicts with one already saved. Reload and try again.",
         record,
+        ...(result.reason ? { reason: result.reason } : {}),
       };
   }
 }

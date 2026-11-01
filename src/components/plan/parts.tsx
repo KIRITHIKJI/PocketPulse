@@ -112,19 +112,19 @@ export function FigureRow({
   strong?: boolean;
 }) {
   return (
-    <div className="flex flex-col gap-0.5 py-2.5">
-      <div className="flex items-baseline justify-between gap-4">
-        <dt className={cn("text-sm", strong ? "font-semibold" : "text-muted-foreground")}>
-          {label}
-        </dt>
-        <dd
-          className={cn("tabular shrink-0", strong && "text-lg font-semibold")}
-          data-testid={testId}
-        >
-          {value}
-        </dd>
-      </div>
-      {explanation && <p className="text-xs text-muted-foreground">{explanation}</p>}
+    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 py-2.5">
+      <dt
+        className={cn("min-w-0 flex-1 text-sm", strong ? "font-semibold" : "text-muted-foreground")}
+      >
+        {label}
+      </dt>
+      <dd
+        className={cn("tabular shrink-0", strong && "text-lg font-semibold")}
+        data-testid={testId}
+      >
+        {value}
+      </dd>
+      {explanation && <dd className="basis-full text-xs text-muted-foreground">{explanation}</dd>}
     </div>
   );
 }

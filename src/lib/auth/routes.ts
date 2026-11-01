@@ -3,7 +3,16 @@
  */
 
 /** Reachable without a session. */
-const PUBLIC_PREFIXES = ["/welcome", "/login", "/register", "/forgot-password", "/auth"];
+const PUBLIC_PREFIXES = [
+  "/welcome",
+  "/login",
+  "/register",
+  "/forgot-password",
+  "/auth",
+  "/offline",
+  // API routes answer for themselves: a redirect to a sign-in page means nothing to a fetch.
+  "/api",
+];
 
 /** Reachable only without a session (signed-in users go home). */
 const SIGNED_OUT_ONLY = ["/login", "/register", "/forgot-password"];

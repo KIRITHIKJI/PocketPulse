@@ -1,6 +1,6 @@
 /**
  * In-app motion preference. "system" follows the OS `prefers-reduced-motion` setting;
- * "reduce" and "full" override it. Stored per device until profile preferences sync (Phase 4).
+ * "reduce" and "full" override it. Also synced through the profile.
  */
 export const MOTION_PREFERENCES = ["system", "reduce", "full"] as const;
 export type MotionPreference = (typeof MOTION_PREFERENCES)[number];
