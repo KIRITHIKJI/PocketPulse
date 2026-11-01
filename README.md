@@ -91,7 +91,7 @@ connection, **never at your hosted Supabase project**:
 
 ```bash
 # Any local Postgres, e.g. a throwaway cluster (no Docker needed):
-initdb -D ./.pgtest -U postgres --auth=trust
+initdb -D ./.pgtest -U postgres --auth=trust -E UTF8 --locale=C
 pg_ctl -D ./.pgtest -o "-p 54329" -l ./.pgtest.log start
 POCKETPULSE_TEST_DB_URL=postgres://postgres@127.0.0.1:54329/postgres npm run test:db
 
@@ -125,7 +125,9 @@ wallets/categories in the test account. Without the credentials it is skipped.
 assert exact balance changes, so they run in their own projects (`ledger-desktop`, then
 `ledger-mobile`), one worker each, never in parallel with each other. Every entry they create is
 undone or deleted again (soft delete, like a user delete), so the account's totals end where they
-started; if a run is interrupted mid-test, an entry can be left behind. Wallets created by the
+started; if a run is interrupted mid-test, an entry can be left behind. `ledger-mobile` depends on
+`ledger-desktop` and `-g` doesn't filter dependency projects, so filtering these specs still
+records money unless you add `--no-deps`. Wallets created by the
 Phase 4 test start tracking tomorrow, so they never shift today's totals. Voice tests use a
 stand-in for the browser's speech recognition, so they don't exercise a real microphone or speech
 service. The cross-user 404 check also needs a second account:

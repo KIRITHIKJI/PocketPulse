@@ -8,6 +8,7 @@ import { dbErrorMessage } from "@/lib/data/errors";
 import { rowToCategory } from "@/lib/data/mappers";
 import { requireSession } from "@/lib/data/session";
 import { type FormState, flag, invalid, text } from "@/lib/forms";
+import { executeLedgerCommand } from "@/lib/ledger/execute";
 import {
   assignCategorySchema,
   categoryFormSchema,
@@ -203,8 +204,8 @@ export async function deleteRule(_prev: FormState, formData: FormData): Promise<
 
 /**
  * Categorises an entry from the Uncategorized queue, optionally remembering the choice as a
- * rule for that description. Uses the optimistic-concurrency RPC: an entry edited elsewhere in
- * the meantime is reported, never overwritten.
+ * rule for that description. An ordinary ledger edit: an entry changed elsewhere in the meantime
+ * is reported, never overwritten.
  */
 export async function assignCategory(_prev: FormState, formData: FormData): Promise<FormState> {
   const parsed = assignCategorySchema.safeParse({
@@ -215,17 +216,14 @@ export async function assignCategory(_prev: FormState, formData: FormData): Prom
   });
   if (!parsed.success) return invalid(parsed.error);
   const { supabase } = await requireSession();
-  const { data, error } = await supabase.rpc("update_transaction", {
-    p_id: parsed.data.transactionId,
-    p_expected_version: parsed.data.version,
-    p_patch: { category_id: parsed.data.categoryId, subcategory_id: parsed.data.subcategoryId },
+  const outcome = await executeLedgerCommand(supabase, {
+    kind: "update",
+    opId: crypto.randomUUID(),
+    id: parsed.data.transactionId,
+    expectedVersion: parsed.data.version,
+    patch: { categoryId: parsed.data.categoryId, subcategoryId: parsed.data.subcategoryId },
   });
-  if (error) return fail(dbErrorMessage(error));
-  const status = (data as { status: string }).status;
-  if (status === "not_found") return fail("That entry doesn’t exist any more.");
-  if (status === "conflict") {
-    return fail("This entry changed on another device. Reload to see the latest version.");
-  }
+  if (!outcome.ok) return fail(outcome.message);
 
   const remember = text(formData, "rememberText").trim();
   if (flag(formData, "remember") && normalizeText(remember) !== "") {

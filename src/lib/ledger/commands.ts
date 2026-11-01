@@ -10,11 +10,11 @@
  * - edits quote the row `version` they were based on (optimistic concurrency → `conflict`).
  * - deletes are soft; `restore` undoes them. Repeating either is a harmless `duplicate`.
  * - `batch` logs several reviewed drafts all-or-nothing; `opId` is the batch id and each draft
- *   keeps its own id, so replaying the batch can't double anything. `delete_many` is its undo.
+ *   keeps its own id, so replaying the batch can't double anything. `undo_batch` is its undo:
+ *   every entry of the batch goes or none does, and replaying it (same `opId`) changes nothing.
  *
  * Commands are plain JSON, validated with Zod at every boundary, and turned into exactly one
- * database RPC call by `toRpcCall` (`delete_many` is one call per row, run by the executor).
- * This module is pure (client, server and tests share it).
+ * database RPC call by `toRpcCall`. This module is pure (client, server and tests share it).
  */
 import { z } from "zod";
 
@@ -157,11 +157,7 @@ export const ledgerCommandSchema = z.discriminatedUnion("kind", [
         }
       }),
   }),
-  z.object({
-    kind: z.literal("delete_many"),
-    opId,
-    ids: z.array(z.uuid()).min(1).max(MAX_BATCH_SIZE),
-  }),
+  z.object({ kind: z.literal("undo_batch"), opId, batchId: z.uuid() }),
 ]);
 export type LedgerCommand = z.output<typeof ledgerCommandSchema>;
 export type LedgerCommandInput = z.input<typeof ledgerCommandSchema>;
@@ -187,13 +183,11 @@ export interface RpcCall {
   fn:
     | "create_transaction"
     | "log_transactions_batch"
+    | "undo_transactions_batch"
     | "update_transaction"
     | "set_transaction_deleted";
   args: Record<string, unknown>;
 }
-
-/** Every command except `delete_many`, which is one call per row. */
-export type SingleCallCommand = Exclude<LedgerCommand, { kind: "delete_many" }>;
 
 function draftRow(d: EntryDraft, idempotencyKey: string) {
   return {
@@ -218,7 +212,7 @@ function draftRow(d: EntryDraft, idempotencyKey: string) {
 }
 
 /** The one database RPC a command maps to. The owner always comes from the session, never here. */
-export function toRpcCall(command: SingleCallCommand): RpcCall {
+export function toRpcCall(command: LedgerCommand): RpcCall {
   switch (command.kind) {
     case "create":
       return {
@@ -232,6 +226,11 @@ export function toRpcCall(command: SingleCallCommand): RpcCall {
           p_batch_id: command.opId,
           p_items: command.drafts.map((d) => draftRow(d, d.id)),
         },
+      };
+    case "undo_batch":
+      return {
+        fn: "undo_transactions_batch",
+        args: { p_op_id: command.opId, p_batch_id: command.batchId },
       };
     case "update":
       return {
@@ -283,8 +282,8 @@ export function inverseCommand(
     case "create":
       return { kind: "delete", opId: newOpId, id: command.draft.id };
     case "batch":
-      return { kind: "delete_many", opId: newOpId, ids: command.drafts.map((d) => d.id) };
-    case "delete_many":
+      return { kind: "undo_batch", opId: newOpId, batchId: command.opId };
+    case "undo_batch":
       return null;
     case "delete":
       return { kind: "restore", opId: newOpId, id: command.id };

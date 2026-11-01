@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { History, Info, LoaderCircle, Repeat2 } from "lucide-react";
+import Link from "next/link";
+import { History, Info, LoaderCircle, MessageSquareText, Mic, Repeat2 } from "lucide-react";
 
 import { CategoryBadge } from "@/components/categories/category-icon";
 import { CategoryPicker } from "@/components/categories/category-picker";
@@ -34,6 +35,26 @@ import { cn } from "@/lib/utils";
 
 function money(paise: number, kit: EntryKit) {
   return formatMoney(paise, { currency: kit.currency });
+}
+
+/** The ways in for several entries at once, or for anything a tile doesn't cover. */
+function OtherEntryRoutes() {
+  return (
+    <nav aria-label="Other ways to add" className="flex flex-wrap gap-2">
+      <Button variant="outline" size="sm" className="min-h-10 rounded-full" asChild>
+        <Link href="/add/text">
+          <MessageSquareText aria-hidden="true" />
+          Type it
+        </Link>
+      </Button>
+      <Button variant="outline" size="sm" className="min-h-10 rounded-full" asChild>
+        <Link href="/add/voice">
+          <Mic aria-hidden="true" />
+          Say it
+        </Link>
+      </Button>
+    </nav>
+  );
 }
 
 /** Tiles + "repeat last" + frequent shortcuts, and the sheet that confirms the amount. */
@@ -82,6 +103,9 @@ export function QuickAdd({
           </li>
         ))}
       </ul>
+
+      {/* The full Quick add screen already has these as tabs. */}
+      {compact && <OtherEntryRoutes />}
 
       {shortcuts.length > 0 && (
         <div className="flex flex-col gap-2">
@@ -347,6 +371,10 @@ function QuickAddForm({
         {pending && <LoaderCircle className="animate-spin" aria-hidden="true" />}
         {pending ? "Saving…" : amountPaise !== null ? `Save ${money(amountPaise, kit)}` : "Save"}
       </Button>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
+        <p className="text-sm text-muted-foreground">More than one thing?</p>
+        <OtherEntryRoutes />
+      </div>
     </form>
   );
 }

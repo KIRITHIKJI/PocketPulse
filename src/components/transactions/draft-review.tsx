@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
   type CategoryChoice,
+  type LocalDate,
   type ParseIssue,
   formatMoney,
   instantFromLocalDateTime,
@@ -25,6 +26,7 @@ import {
   type ReviewDraft,
   clearIssues,
   commandFromDrafts,
+  dateWordNote,
   draftProblems,
   refreshSuggestion,
 } from "@/lib/drafts";
@@ -39,12 +41,15 @@ import { beforeOpeningText } from "@/lib/opening-note";
  */
 export function DraftReview({
   kit,
+  today,
   initial,
   source,
   onSaved,
   onBack,
 }: {
   kit: EntryKit;
+  /** The day the text was read on: a tab left open overnight must not reuse the page's date. */
+  today: LocalDate;
   initial: ReviewDraft[];
   source: "parsed_text" | "voice";
   onSaved: () => void;
@@ -66,7 +71,7 @@ export function DraftReview({
   const update = (id: string, change: (draft: ReviewDraft) => ReviewDraft) =>
     setDrafts((list) => list.map((d) => (d.id === id ? change(d) : d)));
 
-  const problems = new Map(drafts.map((d) => [d.id, draftProblems(d, kit.today, money)]));
+  const problems = new Map(drafts.map((d) => [d.id, draftProblems(d, today, money)]));
   const blocked = [...problems.values()].filter((p) => p.length > 0).length;
   const amounts = drafts.flatMap((d) => {
     const parsed = parseAmountInput(d.amountText);
@@ -87,7 +92,7 @@ export function DraftReview({
         accountId,
         currency: kit.currency,
         source,
-        today: kit.today,
+        today,
         confirmedAt: confirmedAt.current,
         timeZone: kit.timeZone,
       }),
@@ -120,6 +125,7 @@ export function DraftReview({
               draft={draft}
               index={index}
               kit={kit}
+              today={today}
               problems={problems.get(draft.id) ?? []}
               beforeOpeningNote={beforeOpeningNote(draft, account, kit)}
               onEdit={(change, answered = []) =>
@@ -173,8 +179,8 @@ export function DraftReview({
           ) : (
             uncategorized > 0 && (
               <p>
-                {uncategorized} without a category will wait in the Uncategorized queue. They still
-                count in your totals.
+                {uncategorized} unassigned will wait in the Uncategorized queue, and still count in
+                your totals.
               </p>
             )
           )}
@@ -193,7 +199,7 @@ export function DraftReview({
             {pending && <LoaderCircle className="animate-spin" aria-hidden="true" />}
             {pending
               ? "Saving…"
-              : `Save ${drafts.length} ${drafts.length === 1 ? "entry" : "entries"} · ${money(sumPaise(amounts))}`}
+              : `${drafts.length === 1 ? "Save 1 entry" : `Save all ${drafts.length} entries`} · ${money(sumPaise(amounts))}`}
           </Button>
         </div>
       </Card>
@@ -218,6 +224,7 @@ function DraftCard({
   draft,
   index,
   kit,
+  today,
   problems,
   beforeOpeningNote: note,
   onEdit,
@@ -228,6 +235,7 @@ function DraftCard({
   draft: ReviewDraft;
   index: number;
   kit: EntryKit;
+  today: LocalDate;
   problems: ReturnType<typeof draftProblems>;
   beforeOpeningNote: string | null;
   onEdit: (change: (draft: ReviewDraft) => ReviewDraft, answered?: readonly ParseIssue[]) => void;
@@ -237,6 +245,7 @@ function DraftCard({
 }) {
   const prefix = `draft-${draft.id}`;
   const name = draft.description.trim() || `entry ${index + 1}`;
+  const dateNote = dateWordNote(draft, formatLocalDate);
   return (
     <li>
       <Card className="gap-4" data-testid="draft-card">
@@ -245,7 +254,7 @@ function DraftCard({
             <p className="truncate text-xs text-muted-foreground">From “{draft.source}”</p>
             <div className="mt-1 flex flex-wrap gap-1">
               {draft.type === "income" && <Badge variant="positive">Income</Badge>}
-              {!draft.category && <Badge variant="warning">Uncategorized</Badge>}
+              {!draft.category && <Badge variant="warning">Unassigned</Badge>}
             </div>
           </div>
           <Button variant="ghost" size="sm" onClick={onRemove} aria-label={`Remove ${name}`}>
@@ -285,7 +294,7 @@ function DraftCard({
             autoComplete="off"
             onChange={(e) => {
               const description = e.target.value;
-              onEdit((d) => ({ ...d, description }));
+              onEdit((d) => ({ ...d, description }), ["unclear_item"]);
             }}
           />
           <MoneyField
@@ -304,10 +313,10 @@ function DraftCard({
             label="Date"
             type="date"
             value={draft.date}
-            max={kit.today}
+            max={today}
             onChange={(e) => {
               const date = e.target.value;
-              onEdit((d) => ({ ...d, date }), ["future_date"]);
+              onEdit((d) => ({ ...d, date, dateWord: null }), ["future_date"]);
             }}
           />
           <div className="col-span-2 sm:col-span-3">
@@ -316,7 +325,7 @@ function DraftCard({
               label="Category"
               tree={draft.type === "income" ? kit.incomeTree : kit.expenseTree}
               value={draft.category}
-              placeholder="Uncategorized"
+              placeholder="Unassigned"
               hint={
                 draft.suggestionReason
                   ? `Suggested: ${draft.suggestionReason}. Change it if it’s wrong.`
@@ -348,6 +357,16 @@ function DraftCard({
           </SelectField>
         </div>
 
+        {dateNote && (
+          <p
+            className="flex gap-2 rounded-lg bg-muted p-2.5 text-xs"
+            role="note"
+            data-testid="draft-date-note"
+          >
+            <Info className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+            {dateNote}
+          </p>
+        )}
         {note && (
           <p className="flex gap-2 rounded-lg bg-warning/10 p-2.5 text-xs" role="note">
             <Info className="mt-0.5 size-3.5 shrink-0 text-warning" aria-hidden="true" />

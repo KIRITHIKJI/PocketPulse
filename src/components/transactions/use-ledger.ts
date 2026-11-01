@@ -12,8 +12,10 @@ const UNDONE: Record<LedgerCommand["kind"], string> = {
   delete: "Undone — the entry is removed again.",
   restore: "Restored.",
   batch: "Undone.",
-  delete_many: "Undone — those entries are removed.",
+  undo_batch: "Undone — those entries are removed.",
 };
+
+const UNREACHABLE = "Couldn’t reach PocketPulse. Check your connection and try again.";
 
 /**
  * Client side of the mutation layer: sends a command once (a second tap while the first is in
@@ -26,9 +28,14 @@ export function useLedger() {
 
   const undo = React.useCallback(
     async function undo(command: LedgerCommand): Promise<void> {
-      const result = await runLedgerCommand(command);
+      let result: CommandResult;
+      try {
+        result = await runLedgerCommand(command);
+      } catch {
+        result = { ok: false, status: "rejected", message: UNREACHABLE };
+      }
       if (result.ok) show({ tone: "success", message: UNDONE[command.kind] });
-      // Undo is idempotent, so a failed one stays on offer (a partial bulk undo resumes).
+      // Undo is idempotent, so a failed one stays on offer: retrying can't undo twice.
       else
         show({
           tone: "error",
@@ -54,11 +61,7 @@ export function useLedger() {
         try {
           result = await (options.send ?? runLedgerCommand)(command);
         } catch {
-          result = {
-            ok: false,
-            status: "rejected",
-            message: "Couldn’t reach PocketPulse. Check your connection and try again.",
-          };
+          result = { ok: false, status: "rejected", message: UNREACHABLE };
         }
         if (!result.ok) {
           show({ tone: "error", message: result.message });

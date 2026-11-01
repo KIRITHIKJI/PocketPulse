@@ -15,6 +15,9 @@
  *     entry and the amount is flagged for the user to confirm.
  *  4. One date in the text applies to every entry. With several, an entry without its own date
  *     takes the nearest earlier one, otherwise the next one.
+ *  5. The Hindi day words "aaj", "kal" and "parso" count as dates. "kal" and "parso" can also
+ *     mean tomorrow and the day after, but only things that have happened are recorded here, so
+ *     they read as past days and `dateWord` lets the review say which day that was.
  */
 import { MAX_AMOUNT_PAISE, type Paise, multiplyPaise, parseAmountInput } from "./money";
 import { type LocalDate, addDays, isLocalDate, parseLocalDate, weekdayOf } from "./time";
@@ -26,6 +29,8 @@ export type ParseIssue =
   | "invalid_amount"
   /** Several numbers and no way to tell which is the price. */
   | "ambiguous_amount"
+  /** One price with an item on each side ("tea 15 bus"): one purchase, or a missing amount? */
+  | "unclear_item"
   /** Written in another currency; amounts here are always in the user's currency. */
   | "other_currency"
   /** Dated in the future: only things that have happened are recorded. */
@@ -43,6 +48,8 @@ export interface ParsedEntry {
   date: LocalDate;
   /** True when the date came from the text rather than defaulting to today. */
   dateFromText: boolean;
+  /** "kal" or "parso" when the date came from one: a default reading the user should see. */
+  dateWord: "kal" | "parso" | null;
   issues: ParseIssue[];
 }
 
@@ -78,6 +85,19 @@ const MONTHS: Record<string, number> = {
 };
 const MONTH_NAMES = Object.keys(MONTHS).join("|");
 const WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+/** Short names need "on", "this" or "last" in front: "sun glasses 200" isn't a date. */
+const SHORT_WEEKDAYS: Record<string, string> = {
+  sun: "sunday",
+  mon: "monday",
+  tue: "tuesday",
+  tues: "tuesday",
+  wed: "wednesday",
+  thu: "thursday",
+  thur: "thursday",
+  thurs: "thursday",
+  fri: "friday",
+  sat: "saturday",
+};
 const SMALL_NUMBERS: Record<string, number> = {
   a: 1,
   an: 1,
@@ -114,6 +134,9 @@ function recentWeekday(name: string, today: LocalDate, strictlyBefore: boolean):
 }
 
 type DateRule = [RegExp, (m: RegExpExecArray, today: LocalDate) => LocalDate | null];
+
+/** The rest of a Hindi day phrase, so "kal raat ka dinner 200" leaves just "dinner". */
+const HINDI_DAY_TAIL = "(?:\\s+(?:subah|dopahar|shaam|sham|raat))?(?:\\s+(?:ka|ki|ke))?\\b";
 
 // Longest and most specific first; each match is replaced before the next rule runs.
 const DATE_RULES: DateRule[] = [
@@ -172,6 +195,9 @@ const DATE_RULES: DateRule[] = [
   [/\b(?:yesterday|last\s+night)\b/gi, (_, today) => addDays(today, -1)],
   [/\b(?:today|tonight|this\s+(?:morning|afternoon|evening))\b/gi, (_, today) => today],
   [/\btomorrow\b/gi, (_, today) => addDays(today, 1)],
+  [new RegExp(`\\bparson?\\b${HINDI_DAY_TAIL}`, "gi"), (_, today) => addDays(today, -2)],
+  [new RegExp(`\\bkal\\b${HINDI_DAY_TAIL}`, "gi"), (_, today) => addDays(today, -1)],
+  [new RegExp(`\\baaj\\b${HINDI_DAY_TAIL}`, "gi"), (_, today) => today],
   [
     new RegExp(`\\blast\\s+(${WEEKDAYS.join("|")})\\b`, "gi"),
     (m, today) => recentWeekday(m[1]!.toLowerCase(), today, true),
@@ -179,6 +205,11 @@ const DATE_RULES: DateRule[] = [
   [
     new RegExp(`\\b(?:(?:on|this)\\s+)?(${WEEKDAYS.join("|")})\\b`, "gi"),
     (m, today) => recentWeekday(m[1]!.toLowerCase(), today, false),
+  ],
+  [
+    new RegExp(`\\b(on|this|last)\\s+(${Object.keys(SHORT_WEEKDAYS).join("|")})\\b`, "gi"),
+    (m, today) =>
+      recentWeekday(SHORT_WEEKDAYS[m[2]!.toLowerCase()]!, today, m[1]!.toLowerCase() === "last"),
   ],
 ];
 
@@ -283,7 +314,7 @@ const AMOUNT_TOKEN = /^([₹¤]?)(\d[\d,]*(?:\.\d*)?)(k?)([₹¤]?)$/i;
 /** Currency words and symbols become one mark attached to the number. */
 function markCurrency(text: string): string {
   return text
-    .replace(/(?:₹|\brs\b\.?|\binr\b)\s*(?=\d)/gi, "₹")
+    .replace(/(?:₹|\brs\.?|\binr)\s*(?=\d)/gi, "₹")
     .replace(/(\d)\s*(?:₹|\/-|rs\b\.?|inr\b|rupees?\b|bucks?\b)/gi, "$1₹")
     .replace(/[$€£]\s*(?=\d)/g, "¤")
     .replace(/(\d)\s*(?:usd|dollars?|eur|euros?|gbp|pounds?)\b/gi, "$1¤");
@@ -337,7 +368,8 @@ function tokenize(text: string, dates: readonly { raw: string }[]): Token[] {
       i += used - 1;
       continue;
     }
-    tokens.push({ kind: "word", raw: piece.replace(/[.!?]+$/, "") });
+    const word = piece.replace(/[.!?]+$/, "");
+    if (word) tokens.push({ kind: "word", raw: word });
   }
   return tokens;
 }
@@ -407,6 +439,8 @@ const FILLERS = new Set(
     " ",
   ),
 );
+/** Words after a price that only describe it: "tea 15 at canteen", "lunch 40 with friends". */
+const DETAIL_START = new Set("at in from for to with near on by via only each".split(" "));
 const INCOME_START = /^(?:received|recieved|earned|salary|stipend|allowance|pocket\s+money)\b/i;
 const GOT_FROM = /^got\b.*\bfrom\b/i;
 const FULL_FORM_START = /^(?:refund(?:ed)?|transfer(?:red)?|moved|withdrew|withdrawn)\b/i;
@@ -417,6 +451,21 @@ function trimFillers(words: string[]): string[] {
   while (start < end && FILLERS.has(words[start]!.toLowerCase())) start++;
   while (end > start && FILLERS.has(words[end - 1]!.toLowerCase())) end--;
   return words.slice(start, end);
+}
+
+/** "tea 15 bus": items on both sides of one price could be one purchase or a forgotten amount. */
+function isUnclearItem(tokens: readonly Token[]): boolean {
+  const index = tokens.findIndex((t) => t.kind === "amount");
+  if (index === -1) return false;
+  const wordsIn = (part: readonly Token[]) =>
+    part.filter((t) => t.kind === "word").map((t) => t.raw);
+  const after = wordsIn(tokens.slice(index + 1));
+  return (
+    after.length > 0 &&
+    !DETAIL_START.has(after[0]!.toLowerCase()) &&
+    trimFillers(after).length > 0 &&
+    trimFillers(wordsIn(tokens.slice(0, index))).length > 0
+  );
 }
 
 function sentenceCase(text: string): string {
@@ -447,7 +496,17 @@ interface Draft {
   ambiguous: boolean;
 }
 
-function toEntry(draft: Draft, date: LocalDate | null, today: LocalDate): ParsedEntry {
+interface FoundDate {
+  date: LocalDate;
+  raw: string;
+}
+
+function dateWordOf(raw: string): ParsedEntry["dateWord"] {
+  if (/^kal\b/i.test(raw)) return "kal";
+  return /^parson?\b/i.test(raw) ? "parso" : null;
+}
+
+function toEntry(draft: Draft, found: FoundDate | null, today: LocalDate): ParsedEntry {
   const { tokens, ambiguous } = draft;
   const words = tokens.filter((t) => t.kind === "word").map((t) => t.raw);
   const text = words.join(" ");
@@ -459,8 +518,9 @@ function toEntry(draft: Draft, date: LocalDate | null, today: LocalDate): Parsed
   if (!amount) issues.push("missing_amount");
   else if (amount.kind === "amount" && amount.paise === null) issues.push("invalid_amount");
   if (ambiguous) issues.push("ambiguous_amount");
+  else if (!income && isUnclearItem(tokens)) issues.push("unclear_item");
   if (amount?.kind === "amount" && amount.foreign) issues.push("other_currency");
-  const resolved = date ?? today;
+  const resolved = found?.date ?? today;
   if (resolved > today) issues.push("future_date");
 
   return {
@@ -469,16 +529,17 @@ function toEntry(draft: Draft, date: LocalDate | null, today: LocalDate): Parsed
     ...readWords(words, income),
     amountPaise: amount?.kind === "amount" ? amount.paise : null,
     date: resolved,
-    dateFromText: date !== null,
+    dateFromText: found !== null,
+    dateWord: found ? dateWordOf(found.raw) : null,
     issues,
   };
 }
 
 /** Each entry's date: its own, else the nearest earlier one, else the next one. */
-function resolveDates(drafts: readonly Draft[], found: readonly { date: LocalDate }[]) {
+function resolveDates(drafts: readonly Draft[], found: readonly FoundDate[]) {
   const own = drafts.map((d) => {
     const token = d.tokens.findLast((t) => t.kind === "date");
-    return token?.kind === "date" ? found[token.index]!.date : null;
+    return token?.kind === "date" ? found[token.index]! : null;
   });
   return own.map((date, i) => {
     if (date) return date;
