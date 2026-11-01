@@ -47,11 +47,37 @@ const CONFLICT_MESSAGES: Record<string, string> = {
 
 const NOT_FOUND = "That entry doesn’t exist any more.";
 
+/**
+ * Soft-deletes several rows, one RPC each. There is no bulk RPC, so this isn't atomic, but every
+ * delete is idempotent: after a failure, running the same command again finishes the job.
+ */
+async function deleteMany(
+  port: LedgerPort,
+  command: Extract<LedgerCommand, { kind: "delete_many" }>,
+): Promise<LedgerOutcome> {
+  let done = 0;
+  for (const id of command.ids) {
+    const { error } = await port.call(toRpcCall({ kind: "delete", opId: command.opId, id }));
+    if (error) {
+      return {
+        ok: false,
+        status: "rejected",
+        message: `Removed ${done} of ${command.ids.length}. Tap Undo again to finish.`,
+        record: null,
+      };
+    }
+    done += 1;
+  }
+  return { ok: true, status: "applied", record: null, undo: null };
+}
+
 export async function runLedgerCommandWith(
   port: LedgerPort,
   command: LedgerCommand,
   newOpId: () => string = () => crypto.randomUUID(),
 ): Promise<LedgerOutcome> {
+  if (command.kind === "delete_many") return deleteMany(port, command);
+
   // An edit's undo restores the values it replaced, so read them first.
   let before: LedgerRecord | null = null;
   if (command.kind === "update") {
@@ -63,7 +89,16 @@ export async function runLedgerCommandWith(
   }
 
   const { data, error } = await port.call(toRpcCall(command));
-  if (error) return { ok: false, status: "rejected", message: dbErrorMessage(error), record: null };
+  if (error) {
+    const message = dbErrorMessage(error);
+    return {
+      ok: false,
+      status: "rejected",
+      // A batch is one database transaction: any failure rolls every entry back.
+      message: command.kind === "batch" ? `${message} Nothing was saved.` : message,
+      record: null,
+    };
+  }
 
   const result = data as { status: CommandStatus; reason?: string; transaction?: Row };
   const record = result.transaction ? rowToLedgerRecord(result.transaction) : null;

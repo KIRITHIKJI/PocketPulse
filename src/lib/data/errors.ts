@@ -30,6 +30,7 @@ const RULES: Record<string, string> = {
   expense_below_refunds: "The expense can’t be smaller than what was already refunded.",
   transaction_field_immutable:
     "That part of an entry can’t be changed. Delete it and add a new one.",
+  batch_conflict: "One of these entries was already saved with different details.",
   invalid_payload: "Something in that entry isn’t valid. Check it and try again.",
   missing_id: "Something in that entry isn’t valid. Check it and try again.",
 };

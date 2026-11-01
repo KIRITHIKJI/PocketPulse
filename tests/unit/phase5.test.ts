@@ -12,6 +12,7 @@ import { filterHistory, groupByDay, parseHistoryFilters } from "@/lib/history";
 import {
   type LedgerCommand,
   type LedgerRecord,
+  type SingleCallCommand,
   inverseCommand,
   ledgerCommandSchema,
   toRpcCall,
@@ -72,7 +73,7 @@ const record = (tx: ReturnType<typeof expense>, version = 1): LedgerRecord => ({
 describe("ledger commands (the single mutation layer)", () => {
   it("maps a create to create_transaction with the client ids and no owner", () => {
     const command = ledgerCommandSchema.parse({ kind: "create", opId: uuid(2), draft: draft() });
-    const call = toRpcCall(command);
+    const call = toRpcCall(command as SingleCallCommand);
     expect(call.fn).toBe("create_transaction");
     const tx = call.args.p_tx as Record<string, unknown>;
     expect(tx).toMatchObject({
@@ -98,7 +99,7 @@ describe("ledger commands (the single mutation layer)", () => {
       expectedVersion: 2,
       patch: { amountPaise: 2000, subcategoryId: null },
     });
-    expect(toRpcCall(update)).toEqual({
+    expect(toRpcCall(update as SingleCallCommand)).toEqual({
       fn: "update_transaction",
       args: {
         p_id: uuid(1),

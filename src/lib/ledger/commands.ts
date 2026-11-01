@@ -9,9 +9,12 @@
  *   resolves to the same row (`duplicate`), never a second one.
  * - edits quote the row `version` they were based on (optimistic concurrency → `conflict`).
  * - deletes are soft; `restore` undoes them. Repeating either is a harmless `duplicate`.
+ * - `batch` logs several reviewed drafts all-or-nothing; `opId` is the batch id and each draft
+ *   keeps its own id, so replaying the batch can't double anything. `delete_many` is its undo.
  *
  * Commands are plain JSON, validated with Zod at every boundary, and turned into exactly one
- * database RPC call by `toRpcCall`. This module is pure (client, server and tests share it).
+ * database RPC call by `toRpcCall` (`delete_many` is one call per row, run by the executor).
+ * This module is pure (client, server and tests share it).
  */
 import { z } from "zod";
 
@@ -124,6 +127,9 @@ export type EntryPatch = z.output<typeof entryPatchSchema>;
 
 const opId = z.uuid();
 
+/** The most entries one confirmation can save (`log_transactions_batch` enforces it too). */
+export const MAX_BATCH_SIZE = 50;
+
 export const ledgerCommandSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("create"), opId, draft: entryDraftSchema }),
   z.object({
@@ -135,6 +141,27 @@ export const ledgerCommandSchema = z.discriminatedUnion("kind", [
   }),
   z.object({ kind: z.literal("delete"), opId, id: z.uuid() }),
   z.object({ kind: z.literal("restore"), opId, id: z.uuid() }),
+  z.object({
+    kind: z.literal("batch"),
+    opId,
+    drafts: z
+      .array(entryDraftSchema)
+      .min(1)
+      .max(MAX_BATCH_SIZE)
+      .superRefine((drafts, ctx) => {
+        if (drafts.some((d) => d.type !== "expense" && d.type !== "income")) {
+          ctx.addIssue({ code: "custom", message: "A batch holds only expenses and income." });
+        }
+        if (new Set(drafts.map((d) => d.id)).size !== drafts.length) {
+          ctx.addIssue({ code: "custom", message: "Every draft needs its own id." });
+        }
+      }),
+  }),
+  z.object({
+    kind: z.literal("delete_many"),
+    opId,
+    ids: z.array(z.uuid()).min(1).max(MAX_BATCH_SIZE),
+  }),
 ]);
 export type LedgerCommand = z.output<typeof ledgerCommandSchema>;
 export type LedgerCommandInput = z.input<typeof ledgerCommandSchema>;
@@ -157,40 +184,55 @@ const SNAKE: Record<EditableField | "refundOfId", string> = {
 };
 
 export interface RpcCall {
-  fn: "create_transaction" | "update_transaction" | "set_transaction_deleted";
+  fn:
+    | "create_transaction"
+    | "log_transactions_batch"
+    | "update_transaction"
+    | "set_transaction_deleted";
   args: Record<string, unknown>;
 }
 
+/** Every command except `delete_many`, which is one call per row. */
+export type SingleCallCommand = Exclude<LedgerCommand, { kind: "delete_many" }>;
+
+function draftRow(d: EntryDraft, idempotencyKey: string) {
+  return {
+    id: d.id,
+    idempotency_key: idempotencyKey,
+    type: d.type,
+    amount_paise: d.amountPaise,
+    currency: d.currency,
+    occurred_at: d.occurredAt,
+    account_id: d.accountId,
+    from_account_id: d.fromAccountId,
+    to_account_id: d.toAccountId,
+    refund_of_id: d.refundOfId,
+    category_id: d.categoryId,
+    subcategory_id: d.subcategoryId,
+    description: d.description,
+    merchant: d.merchant,
+    note: d.note,
+    tags: d.tags,
+    source: d.source,
+  };
+}
+
 /** The one database RPC a command maps to. The owner always comes from the session, never here. */
-export function toRpcCall(command: LedgerCommand): RpcCall {
+export function toRpcCall(command: SingleCallCommand): RpcCall {
   switch (command.kind) {
-    case "create": {
-      const d = command.draft;
+    case "create":
       return {
         fn: "create_transaction",
+        args: { p_tx: draftRow(command.draft, command.opId) },
+      };
+    case "batch":
+      return {
+        fn: "log_transactions_batch",
         args: {
-          p_tx: {
-            id: d.id,
-            idempotency_key: command.opId,
-            type: d.type,
-            amount_paise: d.amountPaise,
-            currency: d.currency,
-            occurred_at: d.occurredAt,
-            account_id: d.accountId,
-            from_account_id: d.fromAccountId,
-            to_account_id: d.toAccountId,
-            refund_of_id: d.refundOfId,
-            category_id: d.categoryId,
-            subcategory_id: d.subcategoryId,
-            description: d.description,
-            merchant: d.merchant,
-            note: d.note,
-            tags: d.tags,
-            source: d.source,
-          },
+          p_batch_id: command.opId,
+          p_items: command.drafts.map((d) => draftRow(d, d.id)),
         },
       };
-    }
     case "update":
       return {
         fn: "update_transaction",
@@ -240,6 +282,10 @@ export function inverseCommand(
   switch (command.kind) {
     case "create":
       return { kind: "delete", opId: newOpId, id: command.draft.id };
+    case "batch":
+      return { kind: "delete_many", opId: newOpId, ids: command.drafts.map((d) => d.id) };
+    case "delete_many":
+      return null;
     case "delete":
       return { kind: "restore", opId: newOpId, id: command.id };
     case "restore":

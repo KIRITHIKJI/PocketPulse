@@ -29,7 +29,7 @@ const FACTS = [
   {
     icon: Bot,
     title: "No AI services",
-    body: "Category suggestions and text/voice parsing run inside PocketPulse. Expense details are never sent to an external AI.",
+    body: "Category suggestions and reading your typed or spoken entries run inside PocketPulse, and expense details are never sent to an external AI. Voice entry is the one exception to know about: when you tap the microphone, your browser’s speech service turns speech into text, and some browsers send that audio to their maker. PocketPulse only receives the text.",
   },
   {
     icon: Landmark,
