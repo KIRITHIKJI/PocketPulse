@@ -121,14 +121,17 @@ workers for the same reason. Tests that change the test profile (theme, motion, 
 wallets) run on the desktop project only and restore defaults; runs leave archived "E2E …"
 wallets/categories in the test account. Without the credentials it is skipped.
 
-`e2e/transactions.spec.ts` and `e2e/transactions-batch.spec.ts` record real money entries and
-assert exact balance changes, so they run in their own projects (`ledger-desktop`, then
+`e2e/transactions.spec.ts`, `e2e/transactions-batch.spec.ts`, `e2e/insights.spec.ts`,
+`e2e/plan.spec.ts` and `e2e/motion.spec.ts` record real money entries and assert exact balance
+changes, so they run in their own projects (`ledger-desktop`, then
 `ledger-mobile`), one worker each, never in parallel with each other. Every entry they create is
 undone or deleted again (soft delete, like a user delete), so the account's totals end where they
 started; if a run is interrupted mid-test, an entry can be left behind. `ledger-mobile` depends on
 `ledger-desktop` and `-g` doesn't filter dependency projects, so filtering these specs still
 records money unless you add `--no-deps`. Wallets created by the
-Phase 4 test start tracking tomorrow, so they never shift today's totals. Voice tests use a
+Phase 4 test start tracking tomorrow, so they never shift today's totals. A goal with history
+can't be deleted, so the plan and motion specs reuse one archived goal each between runs, and the
+plan spec leaves cancelled bills and archived recurring items behind. Voice tests use a
 stand-in for the browser's speech recognition, so they don't exercise a real microphone or speech
 service. The cross-user 404 check also needs a second account:
 add `E2E_USER_B_EMAIL` / `E2E_USER_B_PASSWORD` (the same variables `test:live` uses); without
@@ -170,7 +173,8 @@ src/
     data/         database row → domain record mappers
   proxy.ts        session refresh + route protection (Next 16 "proxy", formerly middleware)
   domain/         pure financial domain layer: paise money, IST periods, ledger, balances,
-                  aggregation, budgets, savings, safe-to-spend (used by every screen/report)
+                  aggregation, budgets, savings, safe-to-spend, recurring schedules, survival
+                  mode (used by every screen/report)
 supabase/
   migrations/     schema, integrity triggers, RLS, RPCs, per-user defaults
 tests/            Vitest tests (tests/unit/domain: financial invariants)

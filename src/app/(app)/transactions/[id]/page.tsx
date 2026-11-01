@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Info, Pencil, RotateCcw } from "lucide-react";
+import { ArrowLeft, Info, Pencil, PiggyBank, RotateCcw } from "lucide-react";
 
 import { CategoryBadge } from "@/components/categories/category-icon";
 import { PageHeader } from "@/components/layout/page-header";
@@ -16,12 +16,14 @@ import {
   isActive,
   isBeforeOpeningDate,
   occurredAtMs,
+  purchaseRelease,
   refundableAmount,
   refundedAmount,
 } from "@/domain";
 import {
   getAccounts,
   getCategories,
+  getGoals,
   getLedger,
   getLedgerRecord,
   getProfile,
@@ -48,12 +50,13 @@ export default async function TransactionDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [record, profile, accounts, categories, ledger] = await Promise.all([
+  const [record, profile, accounts, categories, ledger, goals] = await Promise.all([
     getLedgerRecord(id),
     getProfile(),
     getAccounts(),
     getCategories(),
     getLedger(),
+    getGoals(),
   ]);
   if (!record) notFound();
   const tz = profile.timeZone;
@@ -113,6 +116,9 @@ export default async function TransactionDetailPage({
       ? [["Last changed", formatDateTime(record.updatedAt, tz)] as [string, string]]
       : []),
   ];
+
+  const release = record.type === "expense" ? purchaseRelease(record, ledger) : null;
+  const releasedFrom = release ? goals.find((g) => g.id === release.goalId) : undefined;
 
   const repeatable = record.type === "expense" || record.type === "income";
   // Savings moves (allocations/releases) are managed from the goal they belong to.
@@ -221,8 +227,17 @@ export default async function TransactionDetailPage({
                 merchant: record.merchant,
                 note: null,
                 tags: record.tags,
+                presetId: record.type === "expense" ? record.presetId : null,
               }}
             />
+          )}
+          {"goalId" in record && (
+            <Button variant="outline" asChild>
+              <Link href={`/goals/${record.goalId}`}>
+                <PiggyBank aria-hidden="true" />
+                Open the goal
+              </Link>
+            </Button>
           )}
           {canRefund && (
             <Button variant="outline" asChild>
@@ -240,6 +255,9 @@ export default async function TransactionDetailPage({
                 ? "This expense has refunds linked to it. Delete the refunds first, so your totals never show a refund without its purchase."
                 : null
             }
+            {...(release && {
+              note: `This was bought with money saved for ${releasedFrom?.title ?? "a goal"}. The ${money(release.amountPaise)} released stays out of the goal. You’ll get the option to set it aside again.`,
+            })}
           />
         </div>
       </Card>

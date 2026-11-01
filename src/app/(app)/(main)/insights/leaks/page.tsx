@@ -25,7 +25,13 @@ import {
   periodScope,
   toLocalDate,
 } from "@/domain";
-import { getAccounts, getCategories, getLedger, getProfile } from "@/lib/data/queries";
+import {
+  getAccounts,
+  getCategories,
+  getLedger,
+  getProfile,
+  getQuickAddPresets,
+} from "@/lib/data/queries";
 import { requestNow } from "@/lib/data/session";
 import { entryView } from "@/lib/entry-view";
 import { formatDayLabel, formatTimeOf } from "@/lib/format";
@@ -48,11 +54,12 @@ export default async function MoneyLeaksPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
-  const [profile, categories, accounts, ledger] = await Promise.all([
+  const [profile, categories, accounts, ledger, presets] = await Promise.all([
     getProfile(),
     getCategories(),
     getAccounts(),
     getLedger(),
+    getQuickAddPresets(),
   ]);
   const now = requestNow();
   const settings = { timeZone: profile.timeZone, weekStartsOn: profile.weekStartsOn };
@@ -75,6 +82,7 @@ export default async function MoneyLeaksPage({
     by,
     thresholdPaise: threshold,
     labelOf: words.labelOf,
+    tileLabels: new Map(presets.map((p) => [p.id, p.label])),
   });
 
   const ctx = {
@@ -205,7 +213,7 @@ export default async function MoneyLeaksPage({
                     </p>
                     <WhatIf
                       group={group}
-                      name={name.toLowerCase()}
+                      name={name}
                       span="a period like this one"
                       currency={profile.currency}
                     />

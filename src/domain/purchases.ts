@@ -60,8 +60,9 @@ function purchaseOf(
 }
 
 /**
- * The group a spending entry belongs to, or null if it has nothing to group by. Quick-add entries
- * don't store which tile made them, so a tile is identified by the label saved as the description.
+ * The group a spending entry belongs to, or null if it has nothing to group by. An entry knows
+ * which tile made it, so renaming the tile keeps its group. Older quick-add entries that couldn't
+ * be linked to one tile fall back to the label saved as their description.
  */
 export function purchaseGroupKey(
   tx: SpendingTx,
@@ -75,7 +76,10 @@ export function purchaseGroupKey(
   const purchase = purchaseOf(tx, byId);
   if (!purchase) return null;
   if (by === "merchant") return purchaseTextKey(purchase.merchant);
-  if (by === "tile" && purchase.source !== "quick_add") return null;
+  if (by === "tile") {
+    if (purchase.source !== "quick_add") return null;
+    if (purchase.presetId) return purchase.presetId;
+  }
   return purchaseTextKey(purchase.description);
 }
 
@@ -128,6 +132,7 @@ function buildPurchaseGroup(
   entries: readonly SpendingEntry[],
   totalNet: Paise,
   labelOf: (key: string) => string,
+  tileLabels?: ReadonlyMap<string, string>,
 ): PurchaseGroup {
   const purchases = entries.flatMap((e) => (e.tx.type === "expense" ? [e.tx] : []));
   const stats = amountStats(purchases.map((tx) => tx.amountPaise));
@@ -139,7 +144,9 @@ function buildPurchaseGroup(
   return {
     by,
     key,
-    label: by !== "category" && texts.length > 0 ? commonestWording(texts) : labelOf(key),
+    label:
+      (by === "tile" ? tileLabels?.get(key) : undefined) ??
+      (by !== "category" && texts.length > 0 ? commonestWording(texts) : labelOf(key)),
     count: stats.count,
     refundCount: entries.length - stats.count,
     grossPaise: stats.totalPaise,
@@ -159,13 +166,15 @@ export interface PurchaseGroupOptions {
   /** Keep only small purchases under this amount. */
   underPaise?: Paise;
   labelOf?: (key: string) => string;
+  /** Current tile names by id: a renamed tile shows its new name on its whole history. */
+  tileLabels?: ReadonlyMap<string, string>;
 }
 
 /** Spending in a period grouped by `by`; entries with nothing to group by are left out. */
 export function purchaseGroups(
   ledger: readonly Transaction[],
   period: Period,
-  { by, underPaise, labelOf = (key) => key }: PurchaseGroupOptions,
+  { by, underPaise, labelOf = (key) => key, tileLabels }: PurchaseGroupOptions,
 ): PurchaseGroup[] {
   const byId = indexById(ledger);
   const groups = new Map<string, SpendingEntry[]>();
@@ -179,7 +188,7 @@ export function purchaseGroups(
   }
   const totalNet = netSpending(ledger, period);
   return [...groups]
-    .map(([key, entries]) => buildPurchaseGroup(by, key, entries, totalNet, labelOf))
+    .map(([key, entries]) => buildPurchaseGroup(by, key, entries, totalNet, labelOf, tileLabels))
     .sort((a, b) => b.count - a.count || b.netPaise - a.netPaise || (a.key < b.key ? -1 : 1));
 }
 
@@ -243,6 +252,7 @@ export interface LeakOptions {
   by: PurchaseGrouping;
   thresholdPaise: Paise;
   labelOf?: (key: string) => string;
+  tileLabels?: ReadonlyMap<string, string>;
   minRepeats?: number;
 }
 
@@ -253,9 +263,10 @@ export function leakReport({
   by,
   thresholdPaise,
   labelOf,
+  tileLabels,
   minRepeats = MIN_REPEATS,
 }: LeakOptions): LeakReport {
-  const options = { by, underPaise: thresholdPaise, labelOf };
+  const options = { by, underPaise: thresholdPaise, labelOf, tileLabels };
   const all = purchaseGroups(ledger, period, options);
   const before = previous ? purchaseGroups(ledger, previous, options) : [];
   const beforeByKey = new Map(before.map((g) => [g.key, g]));
@@ -316,12 +327,10 @@ export function whatIfText(
 ): string {
   const price = money(result.typicalPaise);
   const count = result.fewer === 1 ? "one" : String(result.fewer);
-  const noun = result.fewer === 1 ? "purchase" : "purchases";
-  const what = result.sameAmount
-    ? `${count} fewer ${price} ${label} ${noun}`
-    : `${count} fewer ${label} ${noun} at about ${price}`;
+  const noun = result.fewer === 1 ? "entry" : "entries";
+  const at = result.sameAmount ? `at ${price}` : `at about ${price}`;
   const less = `${result.sameAmount ? "" : "about "}${money(result.savedPaise)}`;
-  return `If you made ${what} in ${span}, you’d spend ${less} less.`;
+  return `If you logged ${count} fewer ${label} ${noun} ${at} in ${span}, you’d spend ${less} less.`;
 }
 
 // --- Recurring signals ----------------------------------------------------------------------

@@ -383,7 +383,7 @@ describe("leak grouping", () => {
     expect(whatIf(group!, 99).fewer).toBe(6);
     expect(whatIf(group!, -2).savedPaise).toBe(0);
     expect(whatIfText("coffee", whatIf(group!, 4), formatINR, "a period like this one")).toBe(
-      "If you made 4 fewer ₹25 coffee purchases in a period like this one, you’d spend ₹100 less.",
+      "If you logged 4 fewer coffee entries at ₹25 in a period like this one, you’d spend ₹100 less.",
     );
   });
 
@@ -393,7 +393,7 @@ describe("leak grouping", () => {
     });
     const text = whatIfText("coffee", whatIf(group!, 2), formatINR, "a period like this one");
     expect(text).toBe(
-      "If you made 2 fewer coffee purchases at about ₹25 in a period like this one, you’d spend about ₹50 less.",
+      "If you logged 2 fewer coffee entries at about ₹25 in a period like this one, you’d spend about ₹50 less.",
     );
     expect(text).not.toMatch(/waste|unnecessary|should|stop|bad/i);
   });
@@ -409,7 +409,7 @@ describe("insight text", () => {
 
   it("writes the spec's example from real entries", () => {
     expect(model(coffees).cards[0]?.text).toBe(
-      "You bought coffee 16 times for ₹25 each: ₹400 this month.",
+      "You logged Coffee 16 times for ₹25 each: ₹400 this month.",
     );
   });
 
@@ -420,11 +420,11 @@ describe("insight text", () => {
       expense(4_000, { description: "Coffee", occurredAt: ist("2026-10-07") }),
     ];
     expect(model(rows).cards[0]?.text).toBe(
-      "You bought coffee 3 times for about ₹30 each: ₹90 this month.",
+      "You logged Coffee 3 times for about ₹30 each: ₹90 this month.",
     );
     const withRefund = [...rows, refund(2_000, rows[0]!.id, { occurredAt: ist("2026-10-08") })];
     expect(model(withRefund).cards[0]?.text).toBe(
-      "You bought coffee 3 times for about ₹30 each: ₹90 this month, or ₹70 after ₹20 in refunds.",
+      "You logged Coffee 3 times for about ₹30 each: ₹90 this month, or ₹70 after ₹20 in refunds.",
     );
   });
 

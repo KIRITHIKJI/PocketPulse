@@ -17,6 +17,7 @@
  */
 import { netSpending } from "./aggregation";
 import { consolidatedBalanceAt, trackingStartMs } from "./balances";
+import { forecastCommitments } from "./recurring";
 import { indexById, isActive } from "./ledger";
 import {
   divRound,
@@ -29,7 +30,7 @@ import {
   type Paise,
 } from "./money";
 import { totalEarmarked } from "./savings";
-import type { Account, Commitment, Transaction } from "./schemas";
+import type { Account, Commitment, RecurringTemplate, Transaction } from "./schemas";
 import {
   DEFAULT_TIME_SETTINGS,
   type Instant,
@@ -53,6 +54,9 @@ export interface SafeToSpendInput {
   reservePaise?: Paise;
   /** Complete days of recent spending used for the pace estimate (default 14). */
   paceLookbackDays?: number;
+  /** How explanations write money and dates (the profile's currency, a readable date). */
+  money?: (paise: Paise) => string;
+  dateText?: (date: LocalDate) => string;
 }
 
 export type MissingInfo = "next_income_date" | "next_income_date_passed";
@@ -118,6 +122,8 @@ export function calculateSafeToSpend(input: SafeToSpendInput): SafeToSpendResult
   const today = toLocalDate(input.now, tz);
   const reservePaise = input.reservePaise ?? 0;
   const lookback = input.paceLookbackDays ?? 14;
+  const money = input.money ?? formatINR;
+  const dateText = input.dateText ?? ((date: LocalDate) => date);
 
   const balancePaise = consolidatedBalanceAt(
     input.accounts,
@@ -181,20 +187,20 @@ export function calculateSafeToSpend(input: SafeToSpendInput): SafeToSpendResult
         afterCommitments,
         multiplyPaise(recentDailySpendingPaise, daysUntilNextIncome),
       );
-      endBalanceAssumption = `Assumes you keep spending about ${formatINR(recentDailySpendingPaise)} a day (your average over the last ${paceDays} day${paceDays === 1 ? "" : "s"}) and pay the listed commitments.`;
+      endBalanceAssumption = `Assumes you keep spending about ${money(recentDailySpendingPaise)} a day (your average over the last ${paceDays} day${paceDays === 1 ? "" : "s"}) and pay the listed commitments.`;
     } else {
       expectedEndBalancePaise = subtractPaise(
         afterCommitments,
         multiplyPaise(suggestedDailyPaise, daysUntilNextIncome),
       );
-      endBalanceAssumption = `Not enough history for a spending pace yet; assumes you spend exactly the suggested ${formatINR(suggestedDailyPaise)} a day and pay the listed commitments.`;
+      endBalanceAssumption = `Not enough history for a spending pace yet; assumes you spend exactly the suggested ${money(suggestedDailyPaise)} a day and pay the listed commitments.`;
     }
     if (recentDailySpendingPaise !== null && recentDailySpendingPaise > 0) {
       runOutInDays =
         flexiblePaise > 0 ? divRound(flexiblePaise, recentDailySpendingPaise, "floor") : 0;
       if (runOutInDays < daysUntilNextIncome) {
         warnings.push(
-          `At your recent pace of ${formatINR(recentDailySpendingPaise)} a day, flexible money would last about ${runOutInDays} day${runOutInDays === 1 ? "" : "s"}, but your next income is ${daysUntilNextIncome} day${daysUntilNextIncome === 1 ? "" : "s"} away.`,
+          `At your recent pace of ${money(recentDailySpendingPaise)} a day, flexible money would last about ${runOutInDays} day${runOutInDays === 1 ? "" : "s"}, but your next income is ${daysUntilNextIncome} day${daysUntilNextIncome === 1 ? "" : "s"} away.`,
         );
       }
     }
@@ -211,24 +217,23 @@ export function calculateSafeToSpend(input: SafeToSpendInput): SafeToSpendResult
     );
   }
 
-  const horizonText = horizonEndDate ? `due by ${horizonEndDate}` : "with any due date";
+  const horizonText = horizonEndDate ? `due by ${dateText(horizonEndDate)}` : "with any due date";
   const explanation = [
-    `Tracked balance now: ${formatINR(balancePaise)} (only what you've recorded, not a verified bank balance).`,
-    `Set aside for savings goals: −${formatINR(earmarkedPaise)}.`,
-    `Unpaid commitments ${horizonText}: −${formatINR(commitmentsDuePaise)} (${due.length} item${due.length === 1 ? "" : "s"}; already-paid bills are in your balance and aren't subtracted again).`,
+    `Tracked balance now: ${money(balancePaise)} (only what you've recorded, not a verified bank balance).`,
+    `Set aside for savings goals: −${money(earmarkedPaise)}.`,
+    `Unpaid commitments ${horizonText}: −${money(commitmentsDuePaise)} (${due.length} item${due.length === 1 ? "" : "s"}; already-paid bills are in your balance and aren't subtracted again).`,
   ];
-  if (reservePaise)
-    explanation.push(`Minimum reserve you chose to keep: −${formatINR(reservePaise)}.`);
-  explanation.push(`Flexible money: ${formatINR(flexiblePaise)}.`);
+  if (reservePaise) explanation.push(`Minimum reserve you chose to keep: −${money(reservePaise)}.`);
+  explanation.push(`Flexible money: ${money(flexiblePaise)}.`);
   if (daysUntilNextIncome !== null && suggestedDailyPaise !== null) {
     explanation.push(
-      `Spread over ${daysUntilNextIncome} day${daysUntilNextIncome === 1 ? "" : "s"} until your next income on ${input.nextIncomeDate}: up to ${formatINR(suggestedDailyPaise)} a day. This is an estimate, not a guarantee.`,
+      `Spread over ${daysUntilNextIncome} day${daysUntilNextIncome === 1 ? "" : "s"} until your next income on ${dateText(input.nextIncomeDate!)}: up to ${money(suggestedDailyPaise)} a day. This is an estimate, not a guarantee.`,
     );
   } else if (missing.includes("next_income_date")) {
     explanation.push("Add your next allowance or income date to get a daily and weekly limit.");
   } else {
     explanation.push(
-      `Your next income date (${input.nextIncomeDate}) is today or has passed. Update it to get a daily and weekly limit.`,
+      `Your next income date (${dateText(input.nextIncomeDate!)}) is today or has passed. Update it to get a daily and weekly limit.`,
     );
   }
 
@@ -257,4 +262,33 @@ export function calculateSafeToSpend(input: SafeToSpendInput): SafeToSpendResult
     warnings,
     explanation,
   };
+}
+
+/** How far ahead recurring bills are forecast when there's no income date to plan up to. */
+const NO_DATE_HORIZON_DAYS = 30;
+
+export interface SafeToSpendPlanInput extends Omit<SafeToSpendInput, "horizonEndDate"> {
+  templates: readonly RecurringTemplate[];
+}
+
+/**
+ * Safe-to-spend from everything planned: saved bills plus the recurring expenses due within the
+ * horizon, as one list. Both Safe-to-spend and Survival Mode call this, so they can't disagree.
+ * The horizon is the next income date; without a usable one it's the next 30 days, and the limits
+ * stay null. Skip markers are cancelled rows, so they only hide an occurrence from the forecast.
+ */
+export function calculatePlan(input: SafeToSpendPlanInput): SafeToSpendResult {
+  const { templates, ...rest } = input;
+  const settings = rest.settings ?? DEFAULT_TIME_SETTINGS;
+  const today = toLocalDate(rest.now, settings.timeZone);
+  const usableDate = rest.nextIncomeDate !== null && rest.nextIncomeDate > today;
+  const horizon = usableDate ? rest.nextIncomeDate! : addDays(today, NO_DATE_HORIZON_DAYS);
+  return calculateSafeToSpend({
+    ...rest,
+    commitments: [
+      ...rest.commitments,
+      ...forecastCommitments(templates, rest.ledger, rest.commitments, horizon),
+    ],
+    horizonEndDate: horizon,
+  });
 }

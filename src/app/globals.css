@@ -220,6 +220,65 @@ html[data-motion="reduce"] *::after {
   scroll-behavior: auto !important;
 }
 
+/*
+ * Goal celebration: a short burst around a static message, played once when a goal is completed.
+ * It never covers the page. Under reduced motion the rules above collapse it, and the burst isn't
+ * drawn at all; the message is what matters.
+ */
+@keyframes pp-celebrate-pop {
+  0% {
+    transform: scale(0.7);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes pp-celebrate-burst {
+  0% {
+    transform: translate(0, 0) scale(0.4);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--pp-x), var(--pp-y)) scale(1);
+    opacity: 0;
+  }
+}
+
+.pp-celebrate-pop {
+  animation: pp-celebrate-pop 500ms ease-out both;
+}
+
+.pp-celebrate-piece {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  opacity: 0;
+  pointer-events: none;
+  animation: pp-celebrate-burst 900ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-motion="full"]) .pp-celebrate-piece {
+    display: none;
+  }
+}
+
+html[data-motion="reduce"] .pp-celebrate-piece {
+  display: none;
+}
+
 /* New-entry feedback: a brief violet wash on the row that was just recorded (no full-screen effects). */
 @keyframes pp-new-entry {
   from {

@@ -1,15 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, Info, ListChecks, PiggyBank, Receipt, Target } from "lucide-react";
+import { ArrowRight, Bell, Info, ListChecks, PiggyBank, Receipt, Target } from "lucide-react";
 
 import { PageHeader } from "@/components/layout/page-header";
+import { BudgetRemaining, Meter } from "@/components/plan/parts";
 import { AnimatedMoney } from "@/components/transactions/animated-money";
 import { EntryCard } from "@/components/transactions/entry-list";
 import { QuickAdd } from "@/components/transactions/quick-add";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
-  type Budget,
+  budgetAlert,
   consolidatedBalanceAt,
   evaluateBudget,
   formatBasisPoints,
@@ -27,12 +28,13 @@ import { loadEntryKit } from "@/lib/data/entry-kit";
 import {
   getAccounts,
   getActiveGoals,
+  getBudgets,
   getLedger,
-  getMonthlyBudgets,
   getProfile,
   getQuickAddPresets,
+  getReminderPreferences,
 } from "@/lib/data/queries";
-import { requestNow, requireSession } from "@/lib/data/session";
+import { requestNow } from "@/lib/data/session";
 import { entryView } from "@/lib/entry-view";
 import { formatDayLabel, formatLocalDate, formatTimeOf } from "@/lib/format";
 import { newestFirst } from "@/lib/history";
@@ -55,29 +57,16 @@ const MONTHS = [
   "December",
 ];
 
-function Progress({ bp, tone }: { bp: number; tone: "primary" | "positive" | "warning" }) {
-  const width = `${Math.min(100, Math.max(0, bp / 100))}%`;
-  const color = { primary: "bg-primary", positive: "bg-positive", warning: "bg-warning" }[tone];
-  return (
-    <div className="h-2 overflow-hidden rounded-full bg-muted" aria-hidden="true">
-      <div
-        className={`h-full rounded-full ${color} transition-[width] duration-500`}
-        style={{ width }}
-      />
-    </div>
-  );
-}
-
 export default async function HomePage() {
-  const session = await requireSession();
   const kit = await loadEntryKit();
-  const [profile, accounts, ledger, presets, budgets, goals] = await Promise.all([
+  const [profile, accounts, ledger, presets, budgets, goals, reminders] = await Promise.all([
     getProfile(),
     getAccounts(),
     getLedger(),
     getQuickAddPresets(),
-    getMonthlyBudgets(),
+    getBudgets(),
     getActiveGoals(),
+    getReminderPreferences(),
   ]);
   const tz = profile.timeZone;
   const now = requestNow();
@@ -105,38 +94,26 @@ export default async function HomePage() {
   };
   const recent = [...ledger].sort(newestFirst).slice(0, 5);
 
-  const totalBudget = budgets.find((b) => b.categoryId === null);
-  const budgetEval = totalBudget
-    ? evaluateBudget(
-        {
-          id: totalBudget.id,
-          ownerId: session.userId,
-          categoryId: null,
-          limitPaise: totalBudget.limitPaise,
-          period: "monthly",
-          customFrom: null,
-          customTo: null,
-          alertThresholdsBp: [5_000, 8_000, 10_000],
-        } satisfies Budget,
-        ledger,
-        now,
-        settings,
-      )
-    : null;
-  const goalCards = goals.slice(0, 2).map((g) => ({
-    goal: g,
-    progress: goalProgress(
-      {
-        id: g.id,
-        ownerId: session.userId,
-        title: g.title,
-        targetPaise: g.targetPaise,
-        targetDate: g.targetDate,
-        status: "active",
-      },
-      ledger,
-      kit.today,
-    ),
+  const monthly = budgets.filter((b) => b.period === "monthly");
+  const evaluate = (budget: (typeof budgets)[number]) =>
+    evaluateBudget(budget, ledger, now, settings, undefined, money);
+  const totalBudget = monthly.find((b) => b.categoryId === null);
+  const budgetEval = totalBudget ? evaluate(totalBudget) : null;
+  // The category budgets closest to their limit, so the snapshot shows what needs a look.
+  const categoryEvals = monthly
+    .filter((b) => b.categoryId !== null)
+    .map(evaluate)
+    .sort((a, b) => b.usedBp - a.usedBp)
+    .slice(0, 2);
+  const alertsOn = !reminders.allDisabled && reminders.budgetAlerts;
+  const alertCount = alertsOn
+    ? budgets.filter((budget) => budgetAlert(evaluate(budget)) !== null).length
+    : 0;
+  const categoryName = (id: string | null) =>
+    kit.categories.find((c) => c.id === id)?.name ?? "Category";
+  const goalCards = goals.slice(0, 2).map((goal) => ({
+    goal,
+    progress: goalProgress(goal, ledger, kit.today, "weekly", money),
   }));
 
   return (
@@ -267,13 +244,24 @@ export default async function HomePage() {
               <Target className="size-4 text-primary" aria-hidden="true" />
               <h2 className="font-semibold">Monthly budget</h2>
             </div>
+            {alertCount > 0 && (
+              <p className="flex items-center gap-2 rounded-lg bg-warning/10 p-2 text-xs">
+                <Bell className="size-3.5 shrink-0 text-warning" aria-hidden="true" />
+                <Link
+                  href="/budgets"
+                  className="inline-flex min-h-8 items-center underline-offset-4 hover:underline"
+                >
+                  {alertCount} budget{alertCount === 1 ? " has" : "s have"} reached an alert level
+                </Link>
+              </p>
+            )}
             {budgetEval ? (
               <>
                 <p className="tabular text-sm">
                   <span className="font-semibold">{money(Math.max(0, budgetEval.spentPaise))}</span>{" "}
                   of {money(budgetEval.limitPaise)} · {formatBasisPoints(budgetEval.usedBp, 0)} used
                 </p>
-                <Progress
+                <Meter
                   bp={budgetEval.usedBp}
                   tone={
                     budgetEval.status === "exceeded" || budgetEval.status === "over_pace"
@@ -281,17 +269,46 @@ export default async function HomePage() {
                       : "primary"
                   }
                 />
-                <p className="text-xs text-muted-foreground">{budgetEval.explanation}</p>
+                <BudgetRemaining remainingPaise={budgetEval.remainingPaise} money={money} />
               </>
             ) : (
-              <>
-                <p className="text-sm text-muted-foreground">
-                  No monthly budget yet. A budget is a spending target, not money set aside.
-                </p>
-                <Button variant="outline" size="sm" asChild className="self-start">
-                  <Link href="/onboarding?step=budgets">Set a monthly budget</Link>
-                </Button>
-              </>
+              budgets.length === 0 && (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    No monthly budget yet. A budget is a target, not reserved money.
+                  </p>
+                  <Button variant="outline" size="sm" asChild className="self-start">
+                    <Link href="/budgets">Set a monthly budget</Link>
+                  </Button>
+                </>
+              )
+            )}
+            {categoryEvals.length > 0 && (
+              <ul className="flex flex-col gap-2 border-t pt-2">
+                {categoryEvals.map((evaluation) => (
+                  <li key={evaluation.budgetId} className="flex flex-col gap-1">
+                    <p className="flex justify-between gap-2 text-sm">
+                      <span className="truncate">{categoryName(evaluation.categoryId)}</span>
+                      <span className="tabular shrink-0 text-muted-foreground">
+                        {formatBasisPoints(evaluation.usedBp, 0)} used
+                      </span>
+                    </p>
+                    <BudgetRemaining
+                      remainingPaise={evaluation.remainingPaise}
+                      money={money}
+                      className="text-xs"
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
+            {budgets.length > 0 && (
+              <Button variant="ghost" size="sm" asChild className="self-start">
+                <Link href="/budgets">
+                  All budgets
+                  <ArrowRight aria-hidden="true" />
+                </Link>
+              </Button>
             )}
           </Card>
 
@@ -303,19 +320,20 @@ export default async function HomePage() {
             {goalCards.length > 0 ? (
               <ul className="flex flex-col gap-3">
                 {goalCards.map(({ goal, progress }) => (
-                  <li key={goal.id} className="flex flex-col gap-1.5">
-                    <p className="flex justify-between gap-2 text-sm">
-                      <span className="truncate font-medium">{goal.title}</span>
-                      <span className="tabular shrink-0 text-muted-foreground">
-                        {money(progress.savedPaise)} of {money(goal.targetPaise)}
+                  <li key={goal.id}>
+                    <Link href={`/goals/${goal.id}`} className="flex flex-col gap-1.5">
+                      <span className="flex justify-between gap-2 text-sm">
+                        <span className="truncate font-medium">{goal.title}</span>
+                        <span className="tabular shrink-0 text-muted-foreground">
+                          {money(progress.savedPaise)} of {money(goal.targetPaise)}
+                        </span>
                       </span>
-                    </p>
-                    <Progress bp={progress.progressBp} tone="positive" />
-                    {goal.targetDate && (
-                      <p className="text-xs text-muted-foreground">
-                        Target date {formatLocalDate(goal.targetDate)}
-                      </p>
-                    )}
+                      <Meter bp={progress.progressBp} tone="positive" />
+                      <span className="text-xs text-muted-foreground">
+                        {money(progress.remainingPaise)} to go
+                        {goal.targetDate ? ` · target ${formatLocalDate(goal.targetDate)}` : ""}
+                      </span>
+                    </Link>
                   </li>
                 ))}
               </ul>
@@ -325,7 +343,7 @@ export default async function HomePage() {
                   No savings goal yet. Money you set aside for a goal isn’t counted as spending.
                 </p>
                 <Button variant="outline" size="sm" asChild className="self-start">
-                  <Link href="/onboarding?step=goal">Add a savings goal</Link>
+                  <Link href="/goals">Add a savings goal</Link>
                 </Button>
               </>
             )}

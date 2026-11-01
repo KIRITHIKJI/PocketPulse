@@ -30,13 +30,22 @@ async function run(command: LedgerCommand): Promise<CommandResult> {
   const outcome = await executeLedgerCommand(supabase, command);
   if (!outcome.ok) return { ok: false, status: outcome.status, message: outcome.message };
   refreshViews();
-  const id =
-    command.kind === "create"
-      ? command.draft.id
-      : command.kind === "batch" || command.kind === "undo_batch"
-        ? null
-        : command.id;
-  return { ok: true, status: outcome.status, id, undo: outcome.undo };
+  return { ok: true, status: outcome.status, id: entryId(command), undo: outcome.undo };
+}
+
+function entryId(command: LedgerCommand): string | null {
+  switch (command.kind) {
+    case "batch":
+    case "undo_batch":
+      return null;
+    case "create":
+    case "goal_purchase":
+    case "pay_commitment":
+    case "confirm_recurring":
+      return command.draft.id;
+    default:
+      return command.id;
+  }
 }
 
 /**

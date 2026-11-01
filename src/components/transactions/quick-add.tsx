@@ -248,6 +248,7 @@ function QuickAddForm({
         note: null,
         tags: [],
         source: "quick_add",
+        presetId: entry.groupPresetId,
       },
     };
     setPending(true);

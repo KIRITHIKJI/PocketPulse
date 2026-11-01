@@ -13,6 +13,10 @@ const UNDONE: Record<LedgerCommand["kind"], string> = {
   restore: "Restored.",
   batch: "Undone.",
   undo_batch: "Undone — those entries are removed.",
+  goal_move: "Undone.",
+  goal_purchase: "Undone.",
+  pay_commitment: "Undone.",
+  confirm_recurring: "Undone.",
 };
 
 const UNREACHABLE = "Couldn’t reach PocketPulse. Check your connection and try again.";
@@ -73,7 +77,7 @@ export function useLedger() {
         show({
           tone: "success",
           message:
-            result.status === "duplicate" && (command.kind === "create" || command.kind === "batch")
+            result.status === "duplicate" && command.kind !== "update"
               ? "Already saved — no duplicate was added."
               : options.success,
           action: reverse ? { label: "Undo", run: () => undo(reverse) } : undefined,

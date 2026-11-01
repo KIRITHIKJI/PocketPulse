@@ -217,6 +217,7 @@ export function commandFromDrafts(input: {
         note: null,
         tags: [],
         source: input.source,
+        presetId: null,
       };
     }),
   };

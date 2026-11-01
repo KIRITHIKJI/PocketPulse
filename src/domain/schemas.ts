@@ -75,6 +75,8 @@ const commonFields = {
   note: optionalText(1000),
   tags: z.array(z.string().trim().min(1).max(40)).max(20).default([]),
   source: z.enum(TRANSACTION_SOURCES).default("manual"),
+  /** Rows saved together share this: a typed batch, or a goal purchase and its release. */
+  batchId: z.uuid().nullable().default(null),
   createdAt: isoDateTimeSchema,
   updatedAt: isoDateTimeSchema,
   /** Soft delete (undo-able). Deleted rows are excluded from every calculation. */
@@ -88,9 +90,16 @@ const categoryFields = {
   subcategoryId: z.uuid().nullable().default(null),
 };
 
+/** Set on an entry confirmed from a recurring template: which template, and which due date. */
+const recurringFields = {
+  recurringTemplateId: z.uuid().nullable().default(null),
+  recurringOccurrence: localDateSchema.nullable().default(null),
+};
+
 export const incomeSchema = z.object({
   ...commonFields,
   ...categoryFields,
+  ...recurringFields,
   type: z.literal("income"),
   accountId: z.uuid(),
 });
@@ -98,8 +107,11 @@ export const incomeSchema = z.object({
 export const expenseSchema = z.object({
   ...commonFields,
   ...categoryFields,
+  ...recurringFields,
   type: z.literal("expense"),
   accountId: z.uuid(),
+  /** The quick-add tile that made it, so renaming the tile can't split its group. */
+  presetId: z.uuid().nullable().default(null),
 });
 
 export const refundSchema = z.object({
@@ -244,11 +256,14 @@ export const savingsGoalSchema = z.object({
   id: z.uuid(),
   ownerId: z.uuid(),
   title: z.string().trim().min(1).max(80),
+  icon: z.string().max(40).nullable().default(null),
   targetPaise: amountPaiseSchema,
   targetDate: localDateSchema.nullable().default(null),
   status: z.enum(GOAL_STATUSES).default("active"),
+  completedAt: isoDateTimeSchema.nullable().default(null),
 });
 export type SavingsGoal = z.output<typeof savingsGoalSchema>;
+export type GoalStatus = (typeof GOAL_STATUSES)[number];
 
 // --- Planned / committed future expenses --------------------------------------
 
@@ -258,11 +273,47 @@ export const commitmentSchema = z.object({
   title: z.string().trim().min(1).max(120),
   amountPaise: amountPaiseSchema,
   dueDate: localDateSchema,
+  categoryId: z.uuid().nullable().default(null),
+  subcategoryId: z.uuid().nullable().default(null),
+  accountId: z.uuid().nullable().default(null),
+  note: z.string().trim().max(500).nullable().default(null),
+  /** With `cancelledAt`, marks a skipped occurrence of a recurring template. */
+  recurringTemplateId: z.uuid().nullable().default(null),
+  recurringOccurrence: localDateSchema.nullable().default(null),
   /** Set when the bill has actually been paid: the expense that paid it. */
   paidTransactionId: z.uuid().nullable().default(null),
   cancelledAt: isoDateTimeSchema.nullable().default(null),
 });
 export type Commitment = z.output<typeof commitmentSchema>;
+
+// --- Recurring templates --------------------------------------------------------------------
+
+export const RECURRING_KINDS = ["income", "expense"] as const;
+export const RECURRING_CADENCES = ["daily", "weekly", "monthly", "yearly"] as const;
+export const RECURRING_MODES = ["confirm", "remind"] as const;
+
+export const recurringTemplateSchema = z.object({
+  id: z.uuid(),
+  ownerId: z.uuid(),
+  kind: z.enum(RECURRING_KINDS),
+  title: z.string().trim().min(1).max(80),
+  amountPaise: amountPaiseSchema,
+  accountId: z.uuid().nullable().default(null),
+  categoryId: z.uuid().nullable().default(null),
+  subcategoryId: z.uuid().nullable().default(null),
+  cadence: z.enum(RECURRING_CADENCES),
+  intervalCount: z.number().int().min(1).max(12).default(1),
+  /** The schedule's reference date: occurrences are counted from here. */
+  anchorDate: localDateSchema,
+  /** Nothing before this date is due (moves forward when a paused template resumes). */
+  nextDueDate: localDateSchema,
+  endDate: localDateSchema.nullable().default(null),
+  /** `confirm` asks to record the entry when due; `remind` is only a reminder. */
+  mode: z.enum(RECURRING_MODES).default("confirm"),
+  pausedAt: isoDateTimeSchema.nullable().default(null),
+  archivedAt: isoDateTimeSchema.nullable().default(null),
+});
+export type RecurringTemplate = z.output<typeof recurringTemplateSchema>;
 
 // --- Budgets -------------------------------------------------------------------
 

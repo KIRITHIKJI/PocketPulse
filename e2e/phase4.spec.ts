@@ -103,7 +103,8 @@ test.describe("onboarding and wallets", () => {
 test.describe("categories", () => {
   test("default hierarchy, rule preview and the uncategorized queue render", async ({ page }) => {
     await page.goto("/categories?tab=spending");
-    const food = page.getByTestId("category-Food & Drinks");
+    // Inside #main: React 19 briefly keeps a hidden copy of streamed content elsewhere.
+    const food = page.locator("#main").getByTestId("category-Food & Drinks");
     await food.locator("summary").click();
     await expect(food.getByText("Tea", { exact: true })).toBeVisible();
 

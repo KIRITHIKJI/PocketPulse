@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Plus, Receipt, SearchX, Zap } from "lucide-react";
 
 import { PageHeader } from "@/components/layout/page-header";
+import { GoalReleaseNotes } from "@/components/plan/goal-release-notes";
 import { StatePanel } from "@/components/states/state-panel";
 import { type ListedDay, EntryList } from "@/components/transactions/entry-list";
 import { HistoryFilterForm } from "@/components/transactions/history-filters";
@@ -16,12 +17,21 @@ import {
   sumPaise,
   toLocalDate,
 } from "@/domain";
-import { getAccounts, getCategories, getLedger, getProfile } from "@/lib/data/queries";
+import {
+  getAccounts,
+  getCategories,
+  getGoals,
+  getLedger,
+  getLedgerVersions,
+  getProfile,
+  getQuickAddPresets,
+} from "@/lib/data/queries";
 import { requestNow } from "@/lib/data/session";
 import { entryView } from "@/lib/entry-view";
 import { formatDayLabel, formatTimeOf } from "@/lib/format";
 import { activeFilterCount, filterHistory, groupByDay, parseHistoryFilters } from "@/lib/history";
 import { pickerTree } from "@/lib/picker-tree";
+import { goalReleaseNotes } from "@/lib/plan-view";
 
 export const metadata: Metadata = { title: "Transactions" };
 
@@ -33,11 +43,14 @@ export default async function TransactionsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
-  const [profile, accounts, categories, ledger] = await Promise.all([
+  const [profile, accounts, categories, ledger, presets, goals, versions] = await Promise.all([
     getProfile(),
     getAccounts(),
     getCategories(),
     getLedger(),
+    getQuickAddPresets(),
+    getGoals(),
+    getLedgerVersions(),
   ]);
   const tz = profile.timeZone;
   const now = requestNow();
@@ -46,6 +59,7 @@ export default async function TransactionsPage({
   const money = (paise: number) => formatMoney(paise, { currency: profile.currency });
 
   const { filters, errors } = parseHistoryFilters(params);
+  const tileNames = new Map(presets.map((p) => [p.id, p.label]));
   const ctx = {
     categoriesById: new Map(categories.map((c) => [c.id, c])),
     accountsById: new Map(accounts.map((a) => [a.id, a])),
@@ -67,7 +81,9 @@ export default async function TransactionsPage({
   const narrowing = [
     filters.noSubcategory ? "entries with no subcategory" : null,
     filters.underPaise !== null ? `small purchases under ${money(filters.underPaise)}` : null,
-    filters.group ? `one repeated purchase (“${filters.group.key}”)` : null,
+    filters.group
+      ? `one repeated purchase (“${tileNames.get(filters.group.key) ?? filters.group.key}”)`
+      : null,
   ]
     .filter(Boolean)
     .join(", ");
@@ -112,6 +128,11 @@ export default async function TransactionsPage({
             </Link>
           </Button>
         }
+      />
+
+      <GoalReleaseNotes
+        notes={goalReleaseNotes(ledger, goals, versions)}
+        currency={profile.currency}
       />
 
       {ledger.length === 0 ? (

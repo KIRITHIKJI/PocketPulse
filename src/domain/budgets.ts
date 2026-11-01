@@ -16,6 +16,9 @@ import {
   resolvePeriod,
 } from "./time";
 
+/** Said wherever a remaining budget amount appears: "left" can sound like money in a pocket. */
+export const BUDGET_TARGET_NOTE = "target, not reserved money";
+
 export function budgetPeriod(
   budget: Pick<Budget, "period" | "customFrom" | "customTo">,
   now: Instant,
@@ -68,6 +71,7 @@ export function evaluateBudget(
   now: Instant,
   settings: TimeSettings = DEFAULT_TIME_SETTINGS,
   periodOverride?: Period,
+  money: (paise: Paise) => string = formatINR,
 ): BudgetEvaluation {
   const period = periodOverride ?? budgetPeriod(budget, now, settings);
   const spentPaise = netSpending(ledger, period, budget.categoryId ?? undefined);
@@ -103,15 +107,13 @@ export function evaluateBudget(
 
   const scope = budget.categoryId ? "this category" : "all spending";
   const pieces = [
-    `${formatINR(Math.max(0, spentPaise))} of ${formatINR(budget.limitPaise)} spent on ${scope}`,
+    `${money(Math.max(0, spentPaise))} of ${money(budget.limitPaise)} spent on ${scope}`,
     remainingPaise >= 0
-      ? `${formatINR(remainingPaise)} left`
-      : `${formatINR(-remainingPaise)} over the target`,
+      ? `${money(remainingPaise)} left`
+      : `${money(-remainingPaise)} over the target`,
   ];
   if (status === "over_pace" && projectedPaise !== null) {
-    pieces.push(
-      `at this pace you'd reach about ${formatINR(projectedPaise)} by the end of the period`,
-    );
+    pieces.push(`at this pace you'd reach about ${money(projectedPaise)} by the end of the period`);
   }
   return {
     budgetId: budget.id,
@@ -126,7 +128,7 @@ export function evaluateBudget(
     dailyAllowancePaise,
     status,
     reachedThresholdsBp,
-    explanation: `${pieces.join("; ")}. A budget is a target, not money set aside.`,
+    explanation: `${pieces.join("; ")}. A budget is a ${BUDGET_TARGET_NOTE}.`,
   };
 }
 
@@ -136,6 +138,29 @@ export function newlyReachedThresholds(
   after: BudgetEvaluation,
 ): number[] {
   return after.reachedThresholdsBp.filter((t) => !before.reachedThresholdsBp.includes(t));
+}
+
+export interface BudgetAlert {
+  budgetId: string;
+  /** The highest threshold reached. */
+  thresholdBp: number;
+  usedBp: number;
+  exceeded: boolean;
+}
+
+/**
+ * The alert a budget is showing now: its highest reached threshold. Worked out from the ledger on
+ * every read, so editing or deleting an entry can take an alert away again. Never blocks anything.
+ */
+export function budgetAlert(evaluation: BudgetEvaluation): BudgetAlert | null {
+  const thresholdBp = evaluation.reachedThresholdsBp.at(-1);
+  if (thresholdBp === undefined || evaluation.status === "ended") return null;
+  return {
+    budgetId: evaluation.budgetId,
+    thresholdBp,
+    usedBp: evaluation.usedBp,
+    exceeded: evaluation.status === "exceeded",
+  };
 }
 
 /**
@@ -151,9 +176,11 @@ export function suggestMonthlyLimit(
     months?: number;
     settings?: TimeSettings;
     trackingStart?: LocalDate;
+    money?: (paise: Paise) => string;
   } = {},
 ): { limitPaise: Paise; basedOnMonths: number; explanation: string } | null {
   const settings = options.settings ?? DEFAULT_TIME_SETTINGS;
+  const money = options.money ?? formatINR;
   const totals: Paise[] = [];
   for (const from of previousMonthStarts(today, options.months ?? 3)) {
     if (options.trackingStart && from < options.trackingStart) break;
@@ -168,6 +195,6 @@ export function suggestMonthlyLimit(
   return {
     limitPaise,
     basedOnMonths: n,
-    explanation: `Typical (median) spending over the last ${n} complete month${n === 1 ? "" : "s"} was ${formatINR(median)}, rounded up to ${formatINR(limitPaise)}.`,
+    explanation: `Typical (median) spending over the last ${n} complete month${n === 1 ? "" : "s"} was ${money(median)}, rounded up to ${money(limitPaise)}.`,
   };
 }
