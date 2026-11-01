@@ -3,6 +3,7 @@ import { AppSidebar } from "@/components/layout/app-sidebar";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { ToastProvider } from "@/components/feedback/toast";
 import { OfflineBanner } from "@/components/layout/offline-banner";
+import { OfflineProvider } from "@/components/offline/offline-provider";
 import { ReminderSync } from "@/components/reminders/reminder-sync";
 import { PreferenceSync } from "@/components/providers/preference-sync";
 import { type Profile, getProfile } from "@/lib/data/queries";
@@ -20,31 +21,33 @@ async function loadProfile(): Promise<Profile | null> {
 }
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const profile = await loadProfile();
+  const [profile, session] = await Promise.all([loadProfile(), optionalSession()]);
   const shell = (
     <ToastProvider>
-      <div className="flex min-h-dvh">
-        <a
-          href="#main"
-          className="sr-only z-50 rounded-lg bg-primary px-4 py-2 text-primary-foreground focus:not-sr-only focus:fixed focus:top-3 focus:left-3"
-        >
-          Skip to content
-        </a>
-        <AppSidebar />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <AppHeader />
-          <OfflineBanner />
-          <main
-            id="main"
-            tabIndex={-1}
-            className="mx-auto w-full max-w-6xl flex-1 px-4 pt-6 pb-[calc(6rem+env(safe-area-inset-bottom))] outline-none sm:px-6 lg:px-8 lg:pb-12"
+      <OfflineProvider ownerId={session?.userId ?? null}>
+        <div className="flex min-h-dvh">
+          <a
+            href="#main"
+            className="sr-only z-50 rounded-lg bg-primary px-4 py-2 text-primary-foreground focus:not-sr-only focus:fixed focus:top-3 focus:left-3"
           >
-            {children}
-          </main>
+            Skip to content
+          </a>
+          <AppSidebar />
+          <div className="flex min-w-0 flex-1 flex-col">
+            <AppHeader />
+            <OfflineBanner />
+            <main
+              id="main"
+              tabIndex={-1}
+              className="mx-auto w-full max-w-6xl flex-1 px-4 pt-6 pb-[calc(6rem+env(safe-area-inset-bottom))] outline-none sm:px-6 lg:px-8 lg:pb-12"
+            >
+              {children}
+            </main>
+          </div>
+          <BottomNav />
+          {profile && <ReminderSync />}
         </div>
-        <BottomNav />
-        {profile && <ReminderSync />}
-      </div>
+      </OfflineProvider>
     </ToastProvider>
   );
   if (!profile) return shell;

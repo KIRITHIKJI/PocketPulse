@@ -1,14 +1,14 @@
 /**
  * The single mutation layer for financial writes. Every create, edit, delete and undo — from
- * quick-add, the full form, repeat shortcuts, history and (Phase 10) the offline queue — is a
- * serialisable `LedgerCommand`:
+ * quick-add, the full form, repeat shortcuts, history and the offline queue — is a serialisable `LedgerCommand`:
  *
  * - `opId`: a client-generated UUID for the operation itself. A create sends it as the row's
  *   `idempotency_key`; the queue will store and replay commands by it.
  * - creates also carry the client-generated transaction `id`, so a retried or replayed create
  *   resolves to the same row (`duplicate`), never a second one.
  * - edits quote the row `version` they were based on (optimistic concurrency → `conflict`).
- * - deletes are soft; `restore` undoes them. Repeating either is a harmless `duplicate`.
+ * - deletes are soft; `restore` undoes them. Repeating either is a harmless `duplicate`. A delete
+ *   queued offline quotes the version it saw, so it can't silently remove a newer edit.
  * - `batch` logs several reviewed drafts all-or-nothing; `opId` is the batch id and each draft
  *   keeps its own id, so replaying the batch can't double anything. `undo_batch` is its undo:
  *   every entry of the batch goes or none does, and replaying it (same `opId`) changes nothing.
@@ -156,7 +156,12 @@ export const ledgerCommandSchema = z.discriminatedUnion("kind", [
     expectedVersion: z.number().int().positive(),
     patch: entryPatchSchema,
   }),
-  z.object({ kind: z.literal("delete"), opId, id: z.uuid() }),
+  z.object({
+    kind: z.literal("delete"),
+    opId,
+    id: z.uuid(),
+    expectedVersion: z.number().int().positive().optional(),
+  }),
   z.object({ kind: z.literal("restore"), opId, id: z.uuid() }),
   z.object({
     kind: z.literal("batch"),

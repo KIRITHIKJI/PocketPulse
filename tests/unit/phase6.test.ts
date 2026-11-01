@@ -222,3 +222,23 @@ describe("the date note for a spoken call", () => {
     );
   });
 });
+
+describe("the date note for other misheard day words", () => {
+  const note = (text: string) => {
+    const [draft] = buildDrafts(
+      parseEntries(text, "2026-11-04", { spoken: true }),
+      { categories: [], rules: [], history: [] },
+      () => "00000000-0000-4000-8000-000000000001",
+    );
+    return dateWordNote(draft!, (date) => date);
+  };
+
+  it("names the word it heard and the day it took it for", () => {
+    expect(note("parsu auto 60")).toBe(
+      "We heard “parsu” and read it as “parso”, the day before yesterday, 2026-11-02. Change the date if you meant another day.",
+    );
+    expect(note("aj chai 15")).toBe(
+      "We heard “aj” and read it as “aaj”, today, 2026-11-04. Change the date if you meant another day.",
+    );
+  });
+});

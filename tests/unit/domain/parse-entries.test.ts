@@ -397,3 +397,95 @@ describe("a spoken \u201ccall\u201d", () => {
     expect(heard("kal chai 15")).toEqual([["Chai", 1500, YESTERDAY, "kal"]]);
   });
 });
+
+describe("what speech writes for a Hindi day word", () => {
+  const YESTERDAY = "2026-11-03";
+  const DAY_BEFORE = "2026-11-02";
+  const spoken = (text: string) => parseEntries(text, TODAY, { spoken: true });
+  const read = (text: string) =>
+    spoken(text).map((e) => [e.description, e.amountPaise, e.date, e.dateWord, e.dateMeaning]);
+
+  it.each([
+    ["cal", YESTERDAY, "kal"],
+    ["kall", YESTERDAY, "kal"],
+    ["kaal", YESTERDAY, "kal"],
+    ["khal", YESTERDAY, "kal"],
+    ["cull", YESTERDAY, "kal"],
+    ["aj", TODAY, "aaj"],
+    ["aja", TODAY, "aaj"],
+    ["aaja", TODAY, "aaj"],
+    ["aaje", TODAY, "aaj"],
+    ["parsu", DAY_BEFORE, "parso"],
+    ["parsoo", DAY_BEFORE, "parso"],
+    ["parsho", DAY_BEFORE, "parso"],
+    ["paarso", DAY_BEFORE, "parso"],
+    ["perso", DAY_BEFORE, "parso"],
+    ["paso", DAY_BEFORE, "parso"],
+  ])("%s dates the entry, and says so", (word, date, meaning) => {
+    expect(read(`${word} chai 15`)).toEqual([["Chai", 1500, date, word, meaning]]);
+    expect(read(`chai 15 ${word.toUpperCase()}`)).toEqual([["Chai", 1500, date, word, meaning]]);
+  });
+
+  it("takes a Hindi time of day with it, like the real word", () => {
+    expect(read("parsu raat ka dinner 200")).toEqual([
+      ["Dinner", 20000, DAY_BEFORE, "parsu", "parso"],
+    ]);
+  });
+
+  it("needs an amount in the same entry", () => {
+    expect(spoken("paso").every((e) => e.dateWord === null)).toBe(true);
+    expect(spoken("aj mom").every((e) => e.dateWord === null)).toBe(true);
+  });
+
+  it("an entry's own date wins", () => {
+    expect(read("paso chai 15 yesterday")[0]![3]).toBeNull();
+    expect(spoken("paso chai 15 yesterday")[0]!.date).toBe(YESTERDAY);
+  });
+
+  it("is only ever a voice reading", () => {
+    for (const word of ["cal", "aj", "parsu", "paso", "perso"]) {
+      const [entry] = parseEntries(`${word} chai 15`, TODAY);
+      expect(entry!.date).toBe(TODAY);
+      expect(entry!.dateWord).toBeNull();
+      expect(entry!.description?.toLowerCase()).toContain(word);
+    }
+  });
+
+  it("only whole words count", () => {
+    for (const text of ["calcium 40", "calendar 150", "ajwain 20", "pasta 90", "personal 30"]) {
+      const [entry] = spoken(text);
+      expect(entry!.date).toBe(TODAY);
+      expect(entry!.dateWord).toBeNull();
+    }
+  });
+
+  it("leaves everyday words that sound alike as what they say", () => {
+    for (const text of ["age proof 50", "person 50", "parcel 100", "cool drink 30"]) {
+      const [entry] = spoken(text);
+      expect(entry!.date).toBe(TODAY);
+      expect(entry!.dateWord).toBeNull();
+    }
+  });
+});
+
+describe("day words in Devanagari", () => {
+  it.each([
+    ["कल चाय 15", "2026-11-03", "kal"],
+    ["चाय 15 कल", "2026-11-03", "kal"],
+    ["कल रात का dinner 200", "2026-11-03", "kal"],
+    ["परसों auto 60", "2026-11-02", "parso"],
+    ["परसो auto 60", "2026-11-02", "parso"],
+    ["आज चाय 15", TODAY, null],
+  ])("%s", (text, date, word) => {
+    const [entry] = parseEntries(text, TODAY);
+    expect(entry!.date).toBe(date);
+    expect(entry!.dateWord).toBe(word);
+    expect(entry!.dateFromText).toBe(true);
+    expect(entry!.description ?? "").not.toMatch(/आज|कल|परस/);
+  });
+
+  it("doesn't match inside a longer word", () => {
+    expect(parseEntries("कलम 20", TODAY)[0]!.dateFromText).toBe(false);
+    expect(parseEntries("आजकल 20", TODAY)[0]!.dateFromText).toBe(false);
+  });
+});

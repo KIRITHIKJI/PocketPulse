@@ -11,6 +11,8 @@ export const metadata: Metadata = {
   title: { default: "PocketPulse", template: "%s · PocketPulse" },
   description: "Track. Understand. Save. Fast expense logging, honest insights and savings goals.",
   applicationName: "PocketPulse",
+  appleWebApp: { capable: true, title: "PocketPulse", statusBarStyle: "black-translucent" },
+  formatDetection: { telephone: false },
 };
 
 export const viewport: Viewport = {

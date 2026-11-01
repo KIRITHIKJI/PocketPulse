@@ -146,8 +146,8 @@ export function BrowserNotifications() {
     <div className="flex flex-wrap items-center gap-3" data-testid="browser-notifications">
       <p className="min-w-0 flex-1 basis-64 text-sm text-muted-foreground">
         {on
-          ? "On for this browser. They show while PocketPulse is open."
-          : "Optional. Shows reminders outside this tab while PocketPulse is open."}
+          ? "On for this browser. They only show while PocketPulse is open, not when it’s closed."
+          : "Optional. Shows reminders outside this tab, but only while PocketPulse is open."}
       </p>
       {on ? (
         <Button variant="outline" onClick={() => remember(false)}>

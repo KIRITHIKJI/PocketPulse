@@ -23,7 +23,12 @@ import {
 } from "@/lib/actions/settings";
 import { type FormState, IDLE } from "@/lib/forms";
 import { paiseToInput } from "@/lib/format";
-import type { IncomeFrequency, ReminderKey, ReminderPreferences } from "@/lib/validation/settings";
+import {
+  type IncomeFrequency,
+  REMINDERS_OPEN_NOTE,
+  type ReminderKey,
+  type ReminderPreferences,
+} from "@/lib/validation/settings";
 
 type Action = (state: FormState, formData: FormData) => Promise<FormState>;
 
@@ -270,7 +275,7 @@ export function RemindersFields({ prefs }: { prefs: ReminderPreferences }) {
         id="reminder-allDisabled"
         name="allDisabled"
         label="Turn off all reminders"
-        description="Nothing is sent while this is on. Reminders appear inside PocketPulse; nothing is emailed."
+        description={`Nothing shows while this is on. ${REMINDERS_OPEN_NOTE}`}
         checked={allDisabled}
         onCheckedChange={setAllDisabled}
       />

@@ -249,6 +249,7 @@ export default async function TransactionDetailPage({
           )}
           <DeleteEntryButton
             id={record.id}
+            version={record.version}
             summary={`${view.amountLabel} · ${view.title} · ${when}`}
             blockedReason={
               refunds.length > 0

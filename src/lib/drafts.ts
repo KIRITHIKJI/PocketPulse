@@ -36,8 +36,9 @@ export type ReviewDraft = {
   merchant: string | null;
   amountText: string;
   date: LocalDate;
-  /** Set while the date is the parser's reading of "kal" or "parso"; editing the date clears it. */
+  /** Set while the date is the parser's reading of a day word; editing the date clears it. */
   dateWord: ParsedEntry["dateWord"];
+  dateMeaning: ParsedEntry["dateMeaning"];
   category: CategoryChoice | null;
   /** Why the category was suggested; null once the user picks one, or when there's none. */
   suggestionReason: string | null;
@@ -75,6 +76,7 @@ export function buildDrafts(
       amountText: paiseToInput(entry.amountPaise),
       date: entry.date,
       dateWord: entry.dateWord,
+      dateMeaning: entry.dateMeaning,
       category: suggestion
         ? { categoryId: suggestion.categoryId, subcategoryId: suggestion.subcategoryId }
         : null,
@@ -162,18 +164,25 @@ export function draftProblems(
   return problems;
 }
 
-/** Says which day "kal", "parso" or a spoken "call" was read as. Not a blocker: past is the default reading. */
+const DAY_WORD_READING = {
+  aaj: "today",
+  kal: "yesterday",
+  parso: "the day before yesterday",
+} as const;
+
+/** Says which day a Hindi day word, or what speech wrote for one, was read as. Never a blocker. */
 export function dateWordNote(
   draft: ReviewDraft,
   formatDate: (date: LocalDate) => string,
 ): string | null {
-  if (!draft.dateWord) return null;
+  if (!draft.dateWord || !draft.dateMeaning) return null;
   const date = formatDate(draft.date);
-  if (draft.dateWord === "call") {
-    return `We heard “call” and read it as “kal”, yesterday, ${date}. Change the date if you meant another day.`;
-  }
-  const day = draft.dateWord === "kal" ? "yesterday" : "the day before yesterday";
-  return `“${draft.dateWord}” is read as ${day}, ${date}. Change the date if you meant another day.`;
+  const day = DAY_WORD_READING[draft.dateMeaning];
+  const reading =
+    draft.dateWord === draft.dateMeaning
+      ? `“${draft.dateWord}” is read as ${day}`
+      : `We heard “${draft.dateWord}” and read it as “${draft.dateMeaning}”, ${day}`;
+  return `${reading}, ${date}. Change the date if you meant another day.`;
 }
 
 /** Entries dated today use the time of confirming; earlier ones use midday, in the user's zone. */

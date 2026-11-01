@@ -220,7 +220,7 @@ export default async function OnboardingPage({
                   ) : (
                     <span aria-hidden="true">{i + 1}</span>
                   )}
-                  <span className={s.id === step ? "" : "sr-only sm:not-sr-only"}>{s.title}</span>
+                  <span className="sr-only sm:not-sr-only">{s.title}</span>
                 </Link>
               </li>
             ))}

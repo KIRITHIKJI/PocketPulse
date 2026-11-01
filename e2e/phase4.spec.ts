@@ -45,7 +45,9 @@ test.describe("onboarding and wallets", () => {
 
     await page.goto("/accounts");
     // Scoped to <main>: while a page streams in, React briefly holds a hidden copy outside it.
-    const wallet = page.locator('#main [data-testid^="wallet-"]').filter({ hasText: "Default" });
+    const wallet = page
+      .locator('#main [data-testid^="wallet-"]')
+      .filter({ has: page.getByText("Default", { exact: true }) });
     await expect(wallet).toContainText("₹1,234.50");
     await expect(
       page.locator("#main").getByText("Tracked total across wallets · now"),

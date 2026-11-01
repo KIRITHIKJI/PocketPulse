@@ -68,7 +68,7 @@ export default async function AccountsPage() {
         <h2 id="active-wallets" className="text-base font-semibold">
           Active wallets
         </h2>
-        <ul className="grid gap-3 md:grid-cols-2">
+        <ul className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {active.map((account) => (
             <AccountCard
               key={account.id}
@@ -90,7 +90,7 @@ export default async function AccountsPage() {
           <p className="text-sm text-muted-foreground">
             Hidden from entry forms. Their history and balances still count toward your total.
           </p>
-          <ul className="grid gap-3 md:grid-cols-2">
+          <ul className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {archived.map((account) => (
               <AccountCard
                 key={account.id}
@@ -172,7 +172,7 @@ function AccountCard({
               action={makeDefaultAccount}
               fields={{ id: account.id }}
               pendingLabel="Saving…"
-              aria-label={`Make ${account.name} the default wallet`}
+              aria-label={`Make default: ${account.name}`}
             >
               <Star aria-hidden="true" />
               Make default

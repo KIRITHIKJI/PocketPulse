@@ -14,7 +14,7 @@ import {
   SubmitButton,
 } from "@/components/forms/form-parts";
 import { useToast } from "@/components/feedback/toast";
-import { useLedger } from "@/components/transactions/use-ledger";
+import { useLedger, withSaveTimeout } from "@/components/transactions/use-ledger";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import {
   type CategoryChoice,
@@ -27,11 +27,16 @@ import {
 import { type EntryFormState, saveEntryForm } from "@/lib/actions/transactions";
 import type { EntryKit } from "@/lib/data/entry-kit";
 import { formatLocalDate, paiseToInput } from "@/lib/format";
-import { IDLE } from "@/lib/forms";
+import { IDLE, invalid } from "@/lib/forms";
 import { newId } from "@/lib/ids";
 import type { EntryType } from "@/lib/ledger/commands";
 import { beforeOpeningText } from "@/lib/opening-note";
-import { ENTRY_TYPE_LABELS } from "@/lib/validation/transactions";
+import {
+  ENTRY_TYPE_LABELS,
+  commandFromForm,
+  entryFormSchema,
+  entryFormValues,
+} from "@/lib/validation/transactions";
 
 export type EntryInitial = {
   id: string;
@@ -81,14 +86,47 @@ export function TransactionForm({
 }) {
   const router = useRouter();
   const { show, setHighlightId } = useToast();
-  const { undo } = useLedger();
+  const { undo, queue } = useLedger();
   const [ids, setIds] = React.useState({ id: initial.id, opId: initialOpId });
   const [formKey, setFormKey] = React.useState(0);
+
+  /** The same checks and the same command as the server, for when the server can't be reached. */
+  async function saveOnDevice(formData: FormData): Promise<EntryFormState> {
+    const parsed = entryFormSchema({ timeZone: kit.timeZone, now: Date.now() }).safeParse(
+      entryFormValues(formData),
+    );
+    if (!parsed.success) return invalid(parsed.error);
+    const result = await queue(
+      commandFromForm(parsed.data, kit.currency),
+      mode === "edit"
+        ? { message: "Change saved on this device. It’ll sync when you’re back online." }
+        : {},
+    );
+    if (!result.ok) return { status: "error", message: result.message, result };
+    return { status: "success", savedAt: Date.now(), result };
+  }
+
   const [state, formAction, pending] = React.useActionState<EntryFormState, FormData>(
     async (previous, formData) => {
-      const next = await saveEntryForm(previous, formData);
+      let next: EntryFormState;
+      try {
+        if (!navigator.onLine) throw new Error("offline");
+        next = await withSaveTimeout(saveEntryForm(previous, formData));
+      } catch {
+        next = await saveOnDevice(formData);
+      }
       if (next.status !== "success" || !next.result?.ok) return next;
       const { status, undo: reverse } = next.result;
+      if (status === "queued") {
+        if (mode === "create") {
+          setIds({ id: newId(), opId: newId() });
+          setFormKey((k) => k + 1);
+        } else {
+          // The entry's own page may not be saved offline. This one is, and shows the change.
+          router.push("/settings/sync");
+        }
+        return next;
+      }
       const action = reverse ? { label: "Undo", run: () => undo(reverse) } : undefined;
       if (mode === "create") {
         setHighlightId(String(formData.get("id")));
@@ -117,7 +155,12 @@ export function TransactionForm({
   );
 
   return (
-    <ActionForm action={formAction} className="flex flex-col gap-5" aria-label="Transaction">
+    <ActionForm
+      action={formAction}
+      className="flex flex-col gap-5"
+      aria-label="Transaction"
+      worksOffline
+    >
       <input type="hidden" name="mode" value={mode} />
       <input type="hidden" name="id" value={ids.id} />
       <input type="hidden" name="opId" value={ids.opId} />

@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { DeleteAccountForm } from "@/components/settings/delete-account-form";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { requireSession } from "@/lib/data/session";
 
 export const metadata: Metadata = { title: "Your data" };
 
@@ -17,7 +18,8 @@ const EXPORT_CONTENTS = [
   "Profile, preferences, reminders and rewards",
 ];
 
-export default function DataSettingsPage() {
+export default async function DataSettingsPage() {
+  const { userId } = await requireSession();
   return (
     <>
       <Button variant="ghost" size="sm" asChild className="-ml-2 self-start">
@@ -79,7 +81,7 @@ export default function DataSettingsPage() {
           <li>Confirm by typing a phrase and re-entering your password.</li>
           <li>You’re signed out, and the account can’t be recovered.</li>
         </ol>
-        <DeleteAccountForm />
+        <DeleteAccountForm ownerId={userId} />
       </Card>
     </>
   );

@@ -12,7 +12,7 @@ import {
   isLocalDate,
   isLocalTime,
 } from "@/domain";
-import { amountField, optionalTextField } from "@/lib/forms";
+import { amountField, optionalTextField, text } from "@/lib/forms";
 import {
   ENTRY_TYPES,
   type EntryDraft,
@@ -58,6 +58,32 @@ const tagsField = z
       .array(z.string().max(40, "Keep each tag under 40 characters."))
       .max(20, "Use at most 20 tags."),
   );
+
+const FORM_FIELDS = [
+  "mode",
+  "id",
+  "opId",
+  "version",
+  "type",
+  "amount",
+  "categoryId",
+  "subcategoryId",
+  "accountId",
+  "fromAccountId",
+  "toAccountId",
+  "refundOfId",
+  "date",
+  "time",
+  "description",
+  "merchant",
+  "note",
+  "tags",
+] as const;
+
+/** The raw form values. The same on the server and in the offline path on the device. */
+export function entryFormValues(formData: FormData) {
+  return Object.fromEntries(FORM_FIELDS.map((f) => [f, text(formData, f)]));
+}
 
 export function entryFormSchema(context: { timeZone: string; now: Instant }) {
   return z

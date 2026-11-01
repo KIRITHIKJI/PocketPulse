@@ -1,8 +1,8 @@
 /**
  * Live checks against the configured Supabase project, using ONLY the publishable key (exactly
- * what a browser has). Needs two real accounts in .env.e2e.local:
- *   E2E_USER_A_EMAIL / E2E_USER_A_PASSWORD and E2E_USER_B_EMAIL / E2E_USER_B_PASSWORD.
- * Writes a few rows to user A's account (a test wallet and one soft-deleted expense per run).
+ * what a browser has). Uses the same two accounts as the browser tests, from .env.e2e.local:
+ *   E2E_EMAIL / E2E_PASSWORD and E2E_USER_B_EMAIL / E2E_USER_B_PASSWORD.
+ * Writes a few rows to the first account (a test wallet and one soft-deleted expense per run).
  */
 import { randomUUID } from "node:crypto";
 
@@ -11,7 +11,7 @@ import { type SupabaseClient, createClient } from "@supabase/supabase-js";
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 const users = {
-  a: { email: process.env.E2E_USER_A_EMAIL, password: process.env.E2E_USER_A_PASSWORD },
+  a: { email: process.env.E2E_EMAIL, password: process.env.E2E_PASSWORD },
   b: { email: process.env.E2E_USER_B_EMAIL, password: process.env.E2E_USER_B_PASSWORD },
 };
 const ready = Boolean(
@@ -55,32 +55,26 @@ describe.skipIf(!ready)("live Supabase project", () => {
 
   it.each(["a", "b"] as const)("user %s was seeded with defaults on sign-up", async (who) => {
     const { sb, id } = who === "a" ? a : b;
-    const profile = await sb.from("profiles").select("id, display_name, currency, time_zone");
-    expect(profile.data).toEqual([
-      {
-        id,
-        display_name: `PP Live ${who.toUpperCase()}`,
-        currency: "INR",
-        time_zone: "Asia/Kolkata",
-      },
-    ]);
+    // Exactly one row: an account sees its own profile and nobody else's.
+    const profile = await sb.from("profiles").select("id, currency, time_zone");
+    expect(profile.data).toEqual([{ id, currency: "INR", time_zone: "Asia/Kolkata" }]);
+    // These accounts are also used by the browser tests, which add categories of their own.
     const cats = await sb.from("categories").select("name, kind, parent_id");
-    expect(cats.data).toHaveLength(52);
+    expect(cats.data!.length).toBeGreaterThanOrEqual(52);
     expect(
-      cats
-        .data!.filter((c) => c.kind === "expense" && !c.parent_id)
-        .map((c) => c.name)
-        .sort(),
-    ).toEqual([
-      "Bills & Subscriptions",
-      "College",
-      "Entertainment",
-      "Food & Drinks",
-      "Health & Fitness",
-      "Other",
-      "Personal",
-      "Transport",
-    ]);
+      cats.data!.filter((c) => c.kind === "expense" && !c.parent_id).map((c) => c.name),
+    ).toEqual(
+      expect.arrayContaining([
+        "Bills & Subscriptions",
+        "College",
+        "Entertainment",
+        "Food & Drinks",
+        "Health & Fitness",
+        "Other",
+        "Personal",
+        "Transport",
+      ]),
+    );
     const tiles = await sb
       .from("quick_add_presets")
       .select("label, amount_paise")

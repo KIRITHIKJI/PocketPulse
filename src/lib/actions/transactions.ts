@@ -6,17 +6,19 @@ import { z } from "zod";
 
 import { getProfile } from "@/lib/data/queries";
 import { requestNow, requireSession } from "@/lib/data/session";
-import { type FormState, invalid, text } from "@/lib/forms";
+import { type FormState, invalid } from "@/lib/forms";
 import { type LedgerCommand, ledgerCommandSchema } from "@/lib/ledger/commands";
 import { executeLedgerCommand } from "@/lib/ledger/execute";
+import { commandEntryId } from "@/lib/offline/ops";
 import { syncRewards } from "@/lib/rewards/sync";
-import { commandFromForm, entryFormSchema } from "@/lib/validation/transactions";
+import { commandFromForm, entryFormSchema, entryFormValues } from "@/lib/validation/transactions";
 
 /** What every ledger write returns to the client: serialisable, no row contents beyond the id. */
 export type CommandResult =
   | {
       ok: true;
-      status: "applied" | "duplicate";
+      /** `queued`: kept on this device, waiting for a connection. Never sent by the server. */
+      status: "applied" | "duplicate" | "queued";
       id: string | null;
       undo: LedgerCommand | null;
     }
@@ -34,22 +36,7 @@ async function run(command: LedgerCommand): Promise<CommandResult> {
   refreshViews();
   // After the response, so rewards never slow down recording an expense.
   after(() => syncRewards().catch(() => undefined));
-  return { ok: true, status: outcome.status, id: entryId(command), undo: outcome.undo };
-}
-
-function entryId(command: LedgerCommand): string | null {
-  switch (command.kind) {
-    case "batch":
-    case "undo_batch":
-      return null;
-    case "create":
-    case "goal_purchase":
-    case "pay_commitment":
-    case "confirm_recurring":
-      return command.draft.id;
-    default:
-      return command.id;
-  }
+  return { ok: true, status: outcome.status, id: commandEntryId(command), undo: outcome.undo };
 }
 
 /**
@@ -97,28 +84,8 @@ export async function saveEntryForm(
   formData: FormData,
 ): Promise<EntryFormState> {
   const profile = await getProfile();
-  const fields = [
-    "mode",
-    "id",
-    "opId",
-    "version",
-    "type",
-    "amount",
-    "categoryId",
-    "subcategoryId",
-    "accountId",
-    "fromAccountId",
-    "toAccountId",
-    "refundOfId",
-    "date",
-    "time",
-    "description",
-    "merchant",
-    "note",
-    "tags",
-  ] as const;
   const parsed = entryFormSchema({ timeZone: profile.timeZone, now: requestNow() }).safeParse(
-    Object.fromEntries(fields.map((f) => [f, text(formData, f)])),
+    entryFormValues(formData),
   );
   if (!parsed.success) return invalid(parsed.error);
 

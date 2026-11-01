@@ -21,11 +21,14 @@ import type { EntryDraft } from "@/lib/ledger/commands";
 /** Delete (soft) after confirming; the toast offers Undo, which restores the same entry. */
 export function DeleteEntryButton({
   id,
+  version,
   summary,
   blockedReason,
   note,
 }: {
   id: string;
+  /** The version on screen. If the entry has changed since, deleting asks first. */
+  version: number;
   /** "−₹15 · Tea on 24 Oct" — repeated in the confirmation so the right entry is deleted. */
   summary: string;
   /** Set when the database would refuse (e.g. the expense has refunds); explains why. */
@@ -41,7 +44,10 @@ export function DeleteEntryButton({
 
   async function confirm() {
     setPending(true);
-    const result = await run({ kind: "delete", opId, id }, { success: "Entry deleted." });
+    const result = await run(
+      { kind: "delete", opId, id, expectedVersion: version },
+      { success: "Entry deleted.", label: `Delete: ${summary}` },
+    );
     setPending(false);
     if (result?.ok) {
       setOpen(false);

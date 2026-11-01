@@ -1,3 +1,4 @@
+import { ForgetDevice } from "@/components/offline/forget-device";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ChartPie, PiggyBank, ShieldCheck, Zap } from "lucide-react";
@@ -38,9 +39,12 @@ export default async function WelcomePage({
   return (
     <div className="flex flex-1 flex-col justify-center gap-12 py-8 lg:py-16">
       {deleted === "1" && (
-        <p role="status" className="rounded-lg border bg-card p-3 text-sm">
-          Your account and everything in it have been deleted.
-        </p>
+        <>
+          <ForgetDevice accountDeleted />
+          <p role="status" className="rounded-lg border bg-card p-3 text-sm">
+            Your account and everything in it have been deleted.
+          </p>
+        </>
       )}
       <section className="flex max-w-3xl flex-col gap-6">
         <p className="w-fit rounded-full border bg-card/60 px-3 py-1 text-sm text-muted-foreground">

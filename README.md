@@ -10,7 +10,8 @@ next steps live in [`PROGRESS.md`](PROGRESS.md).
 
 Next.js 16 (App Router, Turbopack) · React 19 · TypeScript 6 (strict) · Tailwind CSS 4 ·
 shadcn-style components on Radix UI · lucide icons · Motion (Framer Motion) · next-themes ·
-Vitest + Testing Library · Playwright · Supabase (Auth + Postgres + RLS).
+Vitest + Testing Library · Playwright · Supabase (Auth + Postgres + RLS) · Dexie (IndexedDB) and
+a service worker for offline use.
 
 ## Requirements
 
@@ -113,10 +114,18 @@ Without `POCKETPULSE_TEST_DB_URL` the database tests are reported as skipped, no
 ### Live project checks
 
 `npm run test:live` checks the configured project with the **publishable key only**: that each
-of two real accounts got its defaults at sign-up, and that RLS stops one from reading or changing
-the other's rows. It needs `E2E_USER_A_EMAIL`, `E2E_USER_A_PASSWORD`, `E2E_USER_B_EMAIL` and
-`E2E_USER_B_PASSWORD` in the gitignored `.env.e2e.local`. It writes a test wallet and one
-soft-deleted expense to user A per run, so use throwaway accounts. Without them it is skipped.
+of two real accounts has its defaults, and that RLS stops one from reading or changing the other's
+rows. It uses the same two accounts as the browser tests: `E2E_EMAIL`, `E2E_PASSWORD`,
+`E2E_USER_B_EMAIL` and `E2E_USER_B_PASSWORD` in the gitignored `.env.e2e.local`. It writes an
+archived test wallet and one soft-deleted expense to the first account per run, so use test
+accounts. Without them it is skipped.
+
+### Cleaning up the test accounts
+
+`npm run clean:e2e` lists the archived test wallets, goals and categories that test runs have left
+in those two accounts and changes nothing. `npm run clean:e2e -- --apply` removes them. It signs in
+as each account, so it can't touch anyone else's data. It never removes an entry: anything with an
+entry linked to it, deleted entries included, stays.
 
 ### Signed-in browser tests
 
@@ -147,6 +156,10 @@ service. The cross-user 404 check also needs a second account:
 add `E2E_USER_B_EMAIL` / `E2E_USER_B_PASSWORD` (the same variables `test:live` uses); without
 them that one test is skipped.
 
+`e2e/offline.spec.ts` is the only spec that runs with the real service worker; every other spec
+blocks it, so a saved page can never decide a result. `e2e/a11y.spec.ts` checks every screen in both
+themes at 375 and 1440 px with axe. Set `SHOTS_DIR` to a folder to also get a screenshot of each.
+
 ## Scripts
 
 | Command | What it does |
@@ -158,11 +171,46 @@ them that one test is skipped.
 | `npm test` | Vitest unit/integration tests (jsdom) |
 | `npm run test:db` | Schema/RLS/RPC tests on a real Postgres (needs `POCKETPULSE_TEST_DB_URL`) |
 | `npm run test:live` | Defaults + cross-user RLS against the configured Supabase project (needs two test accounts) |
+| `npm run clean:e2e` | Lists leftover test data in the two test accounts; add `-- --apply` to remove it |
 | `npm run test:e2e` | Playwright on desktop Chrome + Pixel 7 viewports (builds and serves on port 3100) |
 | `npm run format` | Prettier (with Tailwind class sorting) |
 | `npm run check` | lint + typecheck + test + build |
 
 First Playwright run needs a browser: `npx playwright install chromium`.
+
+## Using it on a phone
+
+The app has to be on a public `https://` address: phones only install web apps, run service workers
+and allow the microphone over https.
+
+1. Deploy to any Next.js host (for example Vercel) with the four variables from the table in
+   Setup. Set `NEXT_PUBLIC_SITE_URL` to the deployed address.
+2. In Supabase, Authentication → URL Configuration: set Site URL to that address and add
+   `https://<your-domain>/**` to Redirect URLs.
+3. Open the address on the phone and sign in. Android Chrome: menu → Add to Home screen. iPhone
+   Safari: Share → Add to Home Screen. Settings → Sync shows an Install button where the browser
+   offers one.
+4. Open the app once with a connection before relying on it offline: that's when the core screens
+   are saved to the device.
+
+## Offline
+
+- **Works offline:** opening the app; quick add, typed entry, the full form, repeat; editing and
+  deleting entries; goal money, bill and recurring confirmations from a screen that's already open.
+  They wait in IndexedDB (`src/lib/offline/queue.ts`) with their ids, and go to `POST /api/sync`
+  in order.
+- **Needs a connection:** voice entry; changing budgets, goals, wallets, categories and settings;
+  signing in and out; reports. Those forms say so and keep what was typed.
+- **Syncing happens while the app is open.** Entries saved offline go up when it reconnects, or the
+  next time it's opened. There's no background sync.
+- **A retry can't duplicate.** Each operation keeps its ids, so the database answers `duplicate`. An
+  edit or delete that meets a newer change becomes a conflict on Settings → Sync, showing both
+  versions, and nothing changes until the user chooses.
+- **Figures don't include what's still on the device.** Home and Transactions list those entries
+  and say so, rather than adjusting a total.
+- **Saved screens hold the user's figures.** They're network-first, labelled with their age when
+  shown offline, and cleared on sign-out. Unsynced entries stay on the device across a sign-out and
+  sync when the same account signs in again; another account can't see or send them.
 
 ## Project layout
 
@@ -175,12 +223,15 @@ src/
     ui/           accessible primitives (button, card, sheet, dropdown, segmented control…)
     layout/       sidebar, header, bottom nav, section tabs, offline banner
     states/       shared empty / error / offline / permission-denied / loading states
+    offline/      sync provider and screens, install prompt, service worker registration
     preferences/  theme + motion controls
     providers/    theme and motion providers
   lib/            navigation config, env detection, preferences, utilities
     supabase/     server, browser and server-only admin clients
     auth/         route rules, form schemas, server actions, error copy
     data/         database row → domain record mappers
+    ledger/       the one mutation layer: commands, executor, Supabase adapter
+    offline/      IndexedDB queue, conflict choices, transport to /api/sync, saved pages
   proxy.ts        session refresh + route protection (Next 16 "proxy", formerly middleware)
   domain/         pure financial domain layer: paise money, IST periods, ledger, balances,
                   aggregation, budgets, savings, safe-to-spend, recurring schedules, survival
@@ -190,6 +241,8 @@ supabase/
 tests/            Vitest tests (tests/unit/domain: financial invariants)
   db/             PostgreSQL tests: RLS, idempotency, atomicity, domain rules
 e2e/              Playwright tests
+public/           service worker (sw.js) and app icons
+scripts/          app icon generator, test-account cleanup
 ```
 
 ## Design system

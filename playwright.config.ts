@@ -8,7 +8,7 @@ if (existsSync(".env.e2e.local")) process.loadEnvFile(".env.e2e.local");
 const PORT = Number(process.env.PORT ?? 3100);
 const baseURL = `http://localhost:${PORT}`;
 const LEDGER_SPEC =
-  /(transactions(-batch)?|insights|plan|motion|report|rewards|appearance)\.spec\.ts/;
+  /(transactions(-batch)?|insights|plan|motion|report|rewards|appearance|offline)\.spec\.ts/;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -24,6 +24,8 @@ export default defineConfig({
   use: {
     baseURL,
     trace: "on-first-retry",
+    // Only the offline spec runs with the service worker; a saved page must never decide a result.
+    serviceWorkers: "block",
   },
   projects: [
     { name: "setup", testMatch: /auth\.setup\.ts/ },
