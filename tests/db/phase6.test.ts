@@ -120,14 +120,17 @@ describe.skipIf(!ADMIN_URL)("Phase 6: batch confirm of parsed drafts", () => {
       expect(dates.rows.map((r) => r.d)).toEqual(["2026-11-03 12:00:00"]);
 
       if (!first.ok || !first.undo) throw new Error("expected an undo");
-      expect(first.undo.kind).toBe("delete_many");
+      expect(first.undo.kind).toBe("undo_batch");
       expect(await runLedgerCommandWith(pgPort(s), first.undo)).toMatchObject({
         ok: true,
         status: "applied",
       });
       expect(await balance(s)).toBe(START);
-      // Undo is safe to repeat (that's how a partly failed one resumes).
-      expect(await runLedgerCommandWith(pgPort(s), first.undo)).toMatchObject({ ok: true });
+      // Undo is safe to repeat.
+      expect(await runLedgerCommandWith(pgPort(s), first.undo)).toMatchObject({
+        ok: true,
+        status: "duplicate",
+      });
       expect(await balance(s)).toBe(START);
     });
   });

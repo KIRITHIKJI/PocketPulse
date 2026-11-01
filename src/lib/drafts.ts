@@ -36,6 +36,8 @@ export type ReviewDraft = {
   merchant: string | null;
   amountText: string;
   date: LocalDate;
+  /** Set while the date is the parser's reading of "kal" or "parso"; editing the date clears it. */
+  dateWord: ParsedEntry["dateWord"];
   category: CategoryChoice | null;
   /** Why the category was suggested; null once the user picks one, or when there's none. */
   suggestionReason: string | null;
@@ -72,6 +74,7 @@ export function buildDrafts(
       source: entry.source,
       amountText: paiseToInput(entry.amountPaise),
       date: entry.date,
+      dateWord: entry.dateWord,
       category: suggestion
         ? { categoryId: suggestion.categoryId, subcategoryId: suggestion.subcategoryId }
         : null,
@@ -104,6 +107,7 @@ export const AMOUNT_ISSUES: readonly ParseIssue[] = [
   "missing_amount",
   "invalid_amount",
   "ambiguous_amount",
+  "unclear_item",
   "other_currency",
 ];
 
@@ -130,6 +134,11 @@ export function draftProblems(
       message: `There are several numbers here. Is ${money(amount.paise)} the price?`,
       confirm: { label: `Yes, ${money(amount.paise)}`, clears: "ambiguous_amount" },
     });
+  } else if (draft.issues.includes("unclear_item")) {
+    problems.push({
+      message: `Is ${money(amount.paise)} for all of “${draft.description}”? If these are separate, go back and give each one its own amount.`,
+      confirm: { label: `Yes, ${money(amount.paise)}`, clears: "unclear_item" },
+    });
   } else if (draft.issues.includes("other_currency")) {
     problems.push({
       message: `This looks like another currency. Entries are saved as ${money(amount.paise)}, so check the amount.`,
@@ -151,6 +160,16 @@ export function draftProblems(
     });
   }
   return problems;
+}
+
+/** Says which day "kal" or "parso" was read as. Not a blocker: past is the default reading. */
+export function dateWordNote(
+  draft: ReviewDraft,
+  formatDate: (date: LocalDate) => string,
+): string | null {
+  if (!draft.dateWord) return null;
+  const day = draft.dateWord === "kal" ? "yesterday" : "the day before yesterday";
+  return `“${draft.dateWord}” is read as ${day}, ${formatDate(draft.date)}. Change the date if you meant another day.`;
 }
 
 /** Entries dated today use the time of confirming; earlier ones use midday, in the user's zone. */

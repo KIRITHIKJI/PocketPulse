@@ -28,16 +28,12 @@ function refreshViews() {
 async function run(command: LedgerCommand): Promise<CommandResult> {
   const { supabase } = await requireSession();
   const outcome = await executeLedgerCommand(supabase, command);
-  if (!outcome.ok) {
-    // A partly finished bulk delete still changed rows; show the real state.
-    if (command.kind === "delete_many") refreshViews();
-    return { ok: false, status: outcome.status, message: outcome.message };
-  }
+  if (!outcome.ok) return { ok: false, status: outcome.status, message: outcome.message };
   refreshViews();
   const id =
     command.kind === "create"
       ? command.draft.id
-      : command.kind === "batch" || command.kind === "delete_many"
+      : command.kind === "batch" || command.kind === "undo_batch"
         ? null
         : command.id;
   return { ok: true, status: outcome.status, id, undo: outcome.undo };

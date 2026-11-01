@@ -86,7 +86,14 @@ test("Journey A: quick-add tea updates balance, feed and today's spending; Undo 
   await openTile(page, "Tea");
   const sheet = page.getByRole("dialog");
   await expect(sheet.getByRole("heading", { name: "Tea" })).toBeVisible();
-  // The default wallet is preselected; there is nothing else to choose.
+  // The default wallet is preselected; there is nothing else to choose. A picker only appears
+  // when the account has several wallets, and then it starts on the default.
+  const wallet = sheet.getByLabel("Paid from");
+  if (await wallet.isVisible()) {
+    await expect(wallet.locator("option:checked")).toContainText("(default)");
+  } else {
+    await expect(sheet.getByText(/· from \S/)).toBeVisible();
+  }
   await sheet.getByLabel("Amount").fill(amount.text);
   await keepUsualAmount(page);
   await sheet.getByRole("button", { name: `Save ${rupees(amount.paise)}` }).click();
@@ -170,7 +177,7 @@ test("full form → history search → detail → edit → undo edit → delete 
   const label = `E2E lunch ${Date.now()}`;
   await page.goto("/transactions/new");
   await expect(page.getByRole("radio", { name: "Expense" })).toBeChecked();
-  await expect(page.getByLabel("Paid from")).toHaveValue(/.+/); // default wallet preselected
+  await expect(page.getByLabel("Paid from").locator("option:checked")).toContainText("(default)");
 
   // Only amount + category are required: submit without a category first.
   await page.getByLabel("Amount").fill("45.50");

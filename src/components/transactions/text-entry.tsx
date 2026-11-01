@@ -6,7 +6,7 @@ import { ListChecks } from "lucide-react";
 import { DraftReview } from "@/components/transactions/draft-review";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { MAX_PARSE_LENGTH, parseEntries } from "@/domain";
+import { MAX_PARSE_LENGTH, parseEntries, toLocalDate } from "@/domain";
 import type { EntryKit } from "@/lib/data/entry-kit";
 import { type ReviewDraft, buildDrafts } from "@/lib/drafts";
 import { newId } from "@/lib/ids";
@@ -37,16 +37,19 @@ export function TextEntry({
   const [drafts, setDrafts] = React.useState<ReviewDraft[] | null>(null);
   const [message, setMessage] = React.useState<string | null>(null);
   const [reviewCount, setReviewCount] = React.useState(0);
+  const [today, setToday] = React.useState(kit.today);
 
   function review(event: React.FormEvent) {
     event.preventDefault();
-    const entries = parseEntries(text, kit.today);
+    const now = toLocalDate(Date.now(), kit.timeZone);
+    const entries = parseEntries(text, now);
     if (entries.length === 0) {
       setMessage("Write at least one thing you spent, like “tea 15”.");
       return;
     }
     setMessage(null);
     setReviewCount((n) => n + 1);
+    setToday(now);
     setDrafts(
       buildDrafts(
         entries,
@@ -61,6 +64,7 @@ export function TextEntry({
       <DraftReview
         key={reviewCount}
         kit={kit}
+        today={today}
         initial={drafts}
         source={source}
         onBack={() => setDrafts(null)}
@@ -100,8 +104,8 @@ export function TextEntry({
           </p>
         )}
         <p className="text-sm text-muted-foreground">
-          Separate items with commas, or just keep going. You can add “yesterday” or a date, and
-          you’ll check everything before it’s saved.
+          Separate items with commas, or just keep going. You can add “yesterday”, “kal” or a date,
+          and you’ll check everything before it’s saved.
         </p>
         <div className="flex flex-wrap gap-2">
           {EXAMPLES.map((example) => (

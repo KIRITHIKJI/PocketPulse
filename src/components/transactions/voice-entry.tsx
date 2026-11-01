@@ -158,9 +158,10 @@ export function VoiceEntry({ kit }: { kit: EntryKit }) {
             </p>
           )}
           <p className="max-w-md text-xs text-muted-foreground">
-            Your browser will ask for the microphone the first time. Your browser’s speech service
-            turns speech into text, and some browsers (Chrome, for example) send the audio to their
-            maker to do that. PocketPulse only receives the text, and stores no audio.
+            Voice entry depends on your browser and isn’t available in all of them. Your browser
+            will ask for the microphone the first time. Its speech service turns speech into text,
+            and some browsers (Chrome, for example) send the audio to their maker to do that.
+            PocketPulse only receives the text, and stores no audio.
           </p>
         </Card>
       )}

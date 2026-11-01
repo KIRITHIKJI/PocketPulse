@@ -3,7 +3,7 @@
 Durable project state. Update before a context reset or at the end of each work session.
 Source of truth for requirements: `PROJECT_SPEC.md`. Working rules: `CLAUDE.md`.
 
-_Last updated: 2026-11-01 — end of Phase 6 (typed and voice entry). Migrations 0100–0700 are applied on the hosted project; Phases 5 and 6 add no migration._
+_Last updated: 2026-11-01 — end of Phase 6a (review and fixes). Migrations 0100–0800 are applied on the hosted project. Phase 7 is not started and needs its prompt._
 
 ## Build stages
 
@@ -45,7 +45,7 @@ Status key: ⬜ not started · 🟨 partial (detail given) · ✅ done and verif
 - 🟨 PWA works on supported devices; responsive app works on laptop/mobile. — Responsive shell done (sidebar ≥1024px; header + 5-tab bottom nav + "All sections" sheet + add FAB on mobile), Playwright runs at desktop and Pixel 7 sizes. No PWA manifest/service worker yet (Phase 10).
 - ⬜ Offline entries persist and sync without loss or duplication. — Only an online/offline banner exists; it truthfully says changes can't be saved offline.
 - 🟨 Loading, empty, error, permission-denied and offline states are handled. — Shared `StatePanel` (empty/error/offline/denied), `PageSkeleton`, route `loading.tsx`, `error.tsx`, in-shell and global `not-found.tsx`, `global-error.tsx`, offline banner. Each feature must still wire these to its real data states.
-- 🟨 No required action is a placeholder or fake success. — Every Phase 1–5 action is real: saves go through RPCs, and success shows only after the database answers. Screens for Phases 6–10 are still honest empty states.
+- 🟨 No required action is a placeholder or fake success. — Every Phase 1–6 action is real: saves go through RPCs, and success shows only after the database answers. Screens for Phases 7–10 are still honest empty states.
 - 🟨 Lint/typecheck/tests/production build are run and failures are addressed. — All pass for Phase 3 (see Checks).
 - 🟨 Setup documentation accurately describes what needs a real Supabase project/credentials. — README › Setup was followed for the hosted project: init/login/link/db push (login/link/db push must run in an interactive terminal), URL configuration, token-hash email templates, `.env.e2e.local`. Re-check at final delivery.
 
@@ -58,7 +58,7 @@ Every screen has a route; feature screens show a real empty state until their st
 | Welcome / onboarding | `/welcome`, `/onboarding?step=…` | 6-step wizard (region, balance, income, budgets, goal, preferences); every step skippable; "Skip setup" |
 | Register, login, recovery | `/register`, `/login`, `/forgot-password`, `/reset-password`, `/auth/confirm` | Real forms (Phase 3); config panel only when Supabase env is missing |
 | Home | `/home` | Labelled tracked balance (animated), spent today / this month, quick-add row + log-again shortcuts, 5 most recent entries, monthly budget and goal snapshots (real data, or empty states linking to the onboarding steps) |
-| Quick add / type / voice / full form | `/add`, `/add/text`, `/add/voice`, `/transactions/new` | Quick add + tile editor; full form (expense/income/refund/transfer). Text and voice: empty state (Phase 6) |
+| Quick add / type / voice / full form | `/add`, `/add/text`, `/add/voice`, `/transactions/new` | Quick add + tile editor; full form (expense/income/refund/transfer); typed and voice entry with draft review |
 | History, detail, edit | `/transactions`, `/transactions/[id]`, `/transactions/[id]/edit` | History with search and filters; detail (refund links, before-opening note, repeat, record a refund, delete); edit. Real 404s |
 | Wallets | `/accounts` | Create, edit (name/type/opening balance + date), default, archive/restore, balances now |
 | Categories | `/categories?tab=…` | Hierarchy, create/edit/icon/colour, reorder, archive/restore, merge, rules + live tester, Uncategorized queue |
@@ -113,7 +113,7 @@ Every screen has a route; feature screens show a real empty state until their st
   - Immutable after insert: `id`, `owner_id`, `type`, `idempotency_key`, `batch_id`, `created_at`. `version` bumps on every update.
   - Errors use SQLSTATE `P0001` with a machine-readable message (`refund_exceeds_expense`, `currency_mismatch`, …) and a human detail.
 - **Idempotency:** the client UUID `id`, plus `idempotency_key` unique per user (defaulting to the id), plus `(recurring_template_id, recurring_occurrence)` unique. Replays return `duplicate`; same id or key with different content returns `conflict`.
-- **RPCs** (`SECURITY INVOKER`: RLS and triggers apply; the owner is always `auth.uid()`; a payload `owner_id` is ignored): `create_transaction`, `log_transactions_batch` (1–50 income/expense entries, all-or-nothing), `create_transfer`, `move_goal_money` (allocation/release), `record_goal_purchase` (expense + release in one transaction), `pay_commitment` (expense + link), `update_transaction` (optimistic concurrency on `version`), `set_transaction_deleted` (soft delete/undo). Each returns `{status: applied | duplicate | conflict | not_found, …}`.
+- **RPCs** (`SECURITY INVOKER`: RLS and triggers apply; the owner is always `auth.uid()`; a payload `owner_id` is ignored): `create_transaction`, `log_transactions_batch` (1–50 income/expense entries, all-or-nothing), `create_transfer`, `move_goal_money` (allocation/release), `record_goal_purchase` (expense + release in one transaction), `pay_commitment` (expense + link), `update_transaction` (optimistic concurrency on `version`), `set_transaction_deleted` (soft delete/undo), `undo_transactions_batch` (all-or-nothing undo of a batch, migration 0800). Each returns `{status: applied | duplicate | conflict | not_found, …}`.
 - **RLS:** enabled on all 20 tables. Owner-only CRUD on ordinary tables. Ledger: select/insert/update only. Rewards state and profile/notification preferences can't be inserted by clients. Catalogs are read-only. `anon` has no table or RPC access. Helper functions callable from triggers are granted to `authenticated`; seeding is `SECURITY DEFINER` and not callable by clients (`ensure_my_defaults()` seeds only the caller).
 - **Per-user defaults:** the `on_auth_user_created` trigger creates the profile (display name from sign-up metadata), notification preferences (quiet by default; only in-app budget alerts on), streak state, the spec §9 hierarchy (8 expense categories / 39 subcategories) + 5 income categories, and 12 quick-add tiles. **Tiles are seeded without amounts**: the app never invents prices, and a tile remembers the amount the user saves (Phase 5). No wallet is seeded (see Phase 4 notes).
 - **Auth app side:**
@@ -173,15 +173,36 @@ Every screen has a route; feature screens show a real empty state until their st
   - **No separators:** several amounts in one part mean several entries ("tea 15 bus 20"). If that would leave a bare number ("2 samosa 30"), it stays one entry and the amount is flagged. A currency mark settles it ("2 samosa ₹30").
   - **Spoken numbers** count only when the text has no digits ("tea fifteen", "two hundred fifty", and the Indian "one fifty" = 150).
   - **One date applies to every entry.** With several dates, an entry without its own takes the nearest earlier one, else the next. So "tea 15, lunch 40 yesterday" dates both yesterday; each draft shows its date and it can be changed.
-  - A day and month with no year means the most recent past one. Income is recognised from "received / earned / salary / stipend / allowance / pocket money / got … from". English only for now.
+  - A day and month with no year means the most recent past one. Income is recognised from "received / earned / salary / stipend / allowance / pocket money / got … from". English, plus the Hindi day words (see Phase 6a).
 - **Review** (`src/lib/drafts.ts`, `draft-review.tsx`), shared by typed and voice entry. Nothing saves until confirmed.
   - **Blocks saving:** a missing or invalid amount, a future date, and doubts awaiting an answer (several numbers, another currency, reads like a refund/transfer). Editing the field or tapping the confirm button clears a doubt.
   - **Doesn't block:** no category. The draft is marked Uncategorized, saved, and joins the Uncategorized queue.
   - Suggestions refresh as the words change, but never override the user's own pick. Entries dated today use the time of confirming; earlier ones use 12:00 local.
   - Refunds and transfers need the full form, because `log_transactions_batch` takes only income and expenses and a refund must link to its purchase.
-- **Mutation layer:** new command kinds. `batch` calls `log_transactions_batch` (all-or-nothing; `opId` is the batch id; each draft keeps its own id, so a replay is `duplicate`). `delete_many` undoes a batch.
-- **Undo of a batch is not atomic.** There's no bulk-delete RPC and adding one needs a migration, so `delete_many` makes one idempotent `set_transaction_deleted` call per row. On failure it reports how many were removed and the toast keeps Undo, which finishes the job. The save itself is atomic. A `set_batch_deleted` RPC would be a small improvement if a migration ships for another reason.
+- **Mutation layer:** new command kinds. `batch` calls `log_transactions_batch` (all-or-nothing; `opId` is the batch id; each draft keeps its own id, so a replay is `duplicate`). `undo_batch` undoes a batch (see Phase 6a).
 - **Voice honesty:** the old copy said "Audio never leaves your device", which isn't true: Chrome's speech recognition sends audio to Google. It's replaced on `/add/voice` and `/settings/privacy` with an up-front disclosure. Listening starts only from a tap, PocketPulse receives only text, and the transcript is editable. `continuous` is off because it repeats results on Android Chrome, so each tap captures one phrase and appends it. Language is `en-IN`.
+
+### Phase 6a decisions
+
+- **Undo of a batch is one RPC:** `undo_transactions_batch(p_op_id, p_batch_id)`, migration `…0800_undo_batch`. The command `undo_batch` replaces `delete_many`.
+  - **All or nothing:** it locks the batch's rows in id order and soft-deletes each through `set_transaction_deleted`, in one transaction. If a row can't go (an expense refunded since), the error rolls back every row, the toast says "Nothing was removed", and Undo stays on offer.
+  - **A retry can't undo twice:** the undo's `opId` goes into `sync_operations` in the same transaction. A failed undo leaves no record, so it can be retried. A repeat of one that worked is `duplicate` and touches no row, even if an entry was restored in between; checking row state alone would have deleted that entry again. A different opId for an already removed batch is also `duplicate`. An opId reused for another batch is `conflict`.
+  - **It goes by batch id, not a list of ids,** so it can't miss an entry saved by an earlier attempt at the same batch. An entry deleted on its own beforehand doesn't stop the rest.
+- **A failed Undo now always shows something.** `useLedger().undo` didn't catch a network failure, so the error vanished and the toast stayed as if nothing had happened.
+- **The Uncategorized queue goes through the mutation layer.** `assignCategory` called `update_transaction` directly, against Phase 5's "one mutation layer". It's now an ordinary `update` command. `merge_category` stays a category-level RPC by design (Phase 4); it changes no amounts and bumps `version`.
+- **Hindi day words:** `aaj` = today, `kal` = yesterday, `parso` = day before yesterday (also `parson`, as speech often spells it). Any case, whole word only, so "kalakand" is safe. A following subah/dopahar/shaam/raat and ka/ki/ke are absorbed, so "kal raat ka dinner 200" is Dinner.
+  - "kal" and "parso" can also mean future days. Only past purchases are recorded, so they default to the past and the draft says so: "“kal” is read as yesterday, <date>. Change the date if you meant another day." It doesn't block saving, and setting the date clears it. "aaj" has one meaning, so it gets no note.
+- **"Today" for parsing is read at review time,** not from the page's server render, so a tab left open overnight can't date "aaj" or "kal" a day early.
+- **Phase prompts live in `doc/PHASE_PROMPTS.md`.** Phase 6 was first reviewed against the spec because the file wasn't in the repo yet, then again against its Phase 6 prompt, which found the gaps below.
+- **Gaps closed against that prompt:**
+  - **Entry points:** Home and the quick-add sheet now link to Type it and Say it. They were only reachable through the tabs on `/add`.
+  - **Currency:** `rs20` and `inr20` with no space now read as amounts.
+  - **Weekdays:** short names work after on/this/last ("auto 60 on mon"). Bare ones don't, so "sun glasses 200" stays a thing, not a date.
+  - **Never silently guessed:** "tea 15 bus" used to become "Tea bus ₹15" with no question. Items on both sides of one price now raise `unclear_item` and need one tap to confirm. Words after the price that only describe it (at, with, for…) raise nothing.
+  - **Unassigned:** drafts with no category now say "Unassigned". Saved entries still go to the Uncategorized queue, whose name is unchanged.
+  - **Save all:** the button reads "Save all 2 entries · ₹55". One entry reads "Save 1 entry".
+  - **Garbage:** "..." made an empty draft; it now counts as no entry.
+- **"Never upload audio" vs the Web Speech API (open):** the Phase 6 prompt asks for both. PocketPulse never receives or uploads audio, but Chrome's implementation sends it to Google to recognise it. The page says so before listening starts, which meets the spec's "do not silently upload". Meeting the prompt's wording strictly would need on-device recognition only, or dropping voice in browsers that lack it. Your call; nothing is changed yet.
 
 ### Phase 9 notes: account deletion (recorded in Phase 3a)
 
@@ -218,6 +239,37 @@ Hosted project `qzmqvytrekenzciasvph`. Live checks use the publishable key only,
 | Sign-up with "Confirm email" ON (email → `/auth/confirm`) | ⏳ not tested live (built-in email quota was exhausted) | ✅ code path + invalid-link e2e |
 | Forgot / reset password email | ⏳ **pending**: the dashboard test user's address belongs to someone else, so no reset email was sent | ✅ forms, validation, no-session page, invalid link |
 | Transfers, refunds, goal money, batch rollback | — (no UI yet) | ✅ PG 18 |
+
+## Checks run (Phase 6a, 2026-11-01)
+
+The final run is the first block; the second records what was checked before the migration was pushed.
+
+| Command / action | Result |
+| --- | --- |
+| `npx supabase@2.120.0 migration list` | 0100–0800 applied remotely (you ran `db push`; 0800 confirmed) |
+| `npm run lint` / `typecheck` / `format:check` | Pass |
+| `npm test` | Pass, 17 files / 403 tests (65 new: a parser table covering multi-item, currency, dates, ambiguity and garbage; Asia/Kolkata midnight pins; `unclear_item`) |
+| Parser tests under `TZ=` UTC, America/New_York, Asia/Tokyo | Pass, 92/92 each |
+| `npm run test:db` (local PostgreSQL 18) | Pass, 8 files / 73 tests, plus 8 "URL not set" placeholders |
+| `npm run build` | Pass (through Playwright's web server) |
+| `npm run test:e2e` (hosted project, desktop + Pixel 7) | **168 passed, 9 skipped, 0 failed.** An earlier run stopped at 1 failure: the test's locator also matched the "Unassigned" option in the picker. Fixed the locator; the app was right. The account ends with no active entries |
+| The 9 skips, read from that run's results | 6 on `mobile`, which write the shared profile or categories and run on desktop only (onboarding, wallet, threshold, custom category, theme sync, reduced-motion sync). 1 on `ledger-mobile`: the long form journey runs once. 2 on both ledger projects: the cross-user 404 test needs a second account |
+| Date check | "kal" on the live app with the real clock (1 Nov 2026 IST): "read as yesterday, 31 Oct 2026". E2E with a faked clock on a device set to New York: 23:59:59 IST on 31 Oct and 00:00:00 IST on 1 Nov give the right aaj/kal/parso on both viewports. Reading the day in UTC instead makes the pin tests fail with wrong dates. The live app had no date bug. "3 Nov" in the last report was the unit tests' fixed date (`TODAY = 2026-11-04`) quoted as if it were an example |
+| Visual check (Pixel 7) | Quick-add sheet with the new links (321 of 839 px tall, no sideways overflow), Home, draft note. `innerWidth` = device width |
+
+Before the migration was pushed:
+
+| Command / action | Result |
+| --- | --- |
+| `npm run lint` / `typecheck` / `format:check` | Pass |
+| `npm test` | Pass, 17 files / 338 tests (6 new: Hindi day words and the date note; the batch undo mapping is rewritten) |
+| `npm run test:db` (local PostgreSQL 18, throwaway UTF-8 cluster) | Pass, 8 files / 73 tests, plus 8 "URL not set" placeholders. 12 new in `tests/db/phase6a.test.ts`, including a failure forced mid-batch on committed data: a test trigger's notices show two rows soft-deleted before the third raised, then every row is back and no operation is recorded |
+| Mutation check | Swallowing per-row errors: 3 tests fail. Ignoring the recorded op: 6 fail. Removing the row locks: 1 fails. The first concurrency test let the lock removal through because its two calls never overlapped, so it was rewritten to hold a lock until both are provably blocked. Migration restored byte for byte |
+| `npx supabase@2.120.0 db push --dry-run` | Would push only `20261026000800_undo_batch.sql` |
+| `npm run build` | Pass (through Playwright's web server). The real key value is in 0 of 1,398 files under `.next`, and `sb_secret_` is in 0 files under `.next/static`. The prefix does appear in server-only chunks, as help text inside the Supabase library, so the earlier "0 times in the build output" was too broad |
+| Real HTTP status (production build, signed in, desktop + Pixel 7) | `/transactions/does-not-exist`, a random UUID and its `/edit` → **404** with the in-app screen |
+| E2E, `kal` draft (hosted, desktop + Pixel 7) | 2 passed: date is yesterday in IST, note shown, save enabled, note clears when the date is set. Nothing saved |
+| Unplanned e2e run (`ledger-desktop`, hosted) | `-g` doesn't filter dependency projects, so the whole ledger project ran. Journey A, double tap and full form passed with the stricter default-wallet checks. Journey B saved Tea ₹106 + Bus ₹102 and its Undo failed because 0800 isn't pushed, showing the new "Nothing was removed" toast. Those two entries were soft-deleted by id, and the account ends with no active entries |
 
 ## Checks run (Phase 6, 2026-11-01)
 
@@ -341,7 +393,8 @@ Note: because of the `(app)` loading boundary, Next.js streams `notFound()` page
 ## Known blockers / notes
 
 - ✅ Migration 0700 is applied (confirmed by `migration list`); Phase 4 e2e passes live.
-- ⏳ **Try voice on a real phone and laptop.** The e2e tests use a stand-in for the browser's speech recognition, so no real microphone or speech service has been exercised. Check Chrome on Android and desktop: permission prompt, an Indian-English phrase such as "tea fifteen, bus twenty", and a denied microphone.
+- ⏳ **Decide on voice and "never upload audio"** (see Phase 6a decisions).
+- ⏳ **Try voice on a real phone and laptop.** The e2e tests use a stand-in for the browser's speech recognition, so no real microphone or speech service has been exercised. Check Chrome on Android and desktop: permission prompt, an Indian-English phrase such as "tea fifteen, bus twenty", a denied microphone, and whether `en-IN` recognition keeps "kal", "aaj" and "parso" as those words (it may write "call" or similar, which the parser won't read as a date).
 - ⏳ **Cross-user 404 e2e** needs a second test account: add `E2E_USER_B_EMAIL` / `E2E_USER_B_PASSWORD` to `.env.e2e.local`. Until then that test is skipped. Cross-user denial is proven in the DB tests and by the RLS-scoped lookup.
 - ✅ "Confirm email" is back on, 0600 is applied, and the e2e user is on an address you control (your report; 0600 and the user's defaults verified by the agent).
 - ⏳ **Remind at the start of Phase 9: verify the live password-reset email.** Status: built and tested locally; live email test pending. Needs a test user whose address you can open and that Supabase's built-in email will deliver to (a team member's address, or custom SMTP), plus available hourly email quota.
@@ -354,7 +407,7 @@ Note: because of the `(app)` loading boundary, Next.js streams `notFound()` page
 
 ## Next concrete tasks
 
-Phase 7 (insights + charts with drill-down, sparse-data honesty, Money Leak Detector with what-ifs), not started:
+Phase 7 (insights + charts with drill-down, sparse-data honesty, Money Leak Detector with what-ifs), not started and needs its prompt:
 
 1. Build every figure from `categoryBreakdown`, `comparePeriods`, `spendingTrend` and `spendingDisplay`, each drillable to `/transactions` with URL filters.
 2. Later: the Phase 8 goal screens add allocation/release commands (extend `LedgerCommand`); Phase 10 queues `LedgerCommand`s offline and replays them through `runLedgerCommandWith`.
