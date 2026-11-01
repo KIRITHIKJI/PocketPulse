@@ -8,7 +8,12 @@ import { Input } from "@/components/ui/input";
 import type { Account, TransactionType } from "@/domain";
 import { TYPE_LABELS } from "@/lib/entry-view";
 import { paiseToInput } from "@/lib/format";
-import { type FilterErrors, type HistoryFilters, UNCATEGORIZED_FILTER } from "@/lib/history";
+import {
+  type FilterErrors,
+  type HistoryFilters,
+  SPENDING_FILTER,
+  UNCATEGORIZED_FILTER,
+} from "@/lib/history";
 
 const TYPES: TransactionType[] = [
   "expense",
@@ -53,6 +58,17 @@ export function HistoryFilterForm({
 
   return (
     <form method="get" action="/transactions" role="search" className="flex flex-col gap-3">
+      {/* Narrowing set by a link from Insights survives changing the other filters. */}
+      {filters.noSubcategory && <input type="hidden" name="nosub" value="1" />}
+      {filters.underPaise !== null && (
+        <input type="hidden" name="under" value={paiseToInput(filters.underPaise)} />
+      )}
+      {filters.group && (
+        <>
+          <input type="hidden" name="by" value={filters.group.by} />
+          <input type="hidden" name="key" value={filters.group.key} />
+        </>
+      )}
       <div className="flex gap-2">
         <div className="relative min-w-0 flex-1">
           <Search
@@ -80,6 +96,7 @@ export function HistoryFilterForm({
         <div className="grid gap-4 border-t p-4 sm:grid-cols-2 lg:grid-cols-4">
           <SelectField id="filter-type" name="type" label="Type" defaultValue={filters.type ?? ""}>
             <option value="">All types</option>
+            <option value={SPENDING_FILTER}>Spending (expenses and refunds)</option>
             {TYPES.map((t) => (
               <option key={t} value={t}>
                 {TYPE_LABELS[t]}

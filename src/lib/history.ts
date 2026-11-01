@@ -7,13 +7,19 @@ import {
   type Account,
   type Category,
   type LocalDate,
+  PURCHASE_GROUPINGS,
+  type PurchaseGrouping,
   TRANSACTION_TYPES,
   type Transaction,
   type TransactionType,
+  isActive,
   isLocalDate,
+  isSmallPurchase,
   normalizeText,
   occurredAtMs,
   parseAmountInput,
+  purchaseGroupKey,
+  refundCategory,
   startOfLocalDate,
   addDays,
   toLocalDate,
@@ -22,17 +28,25 @@ import {
 import { entryCategory } from "@/lib/entry-view";
 
 export const UNCATEGORIZED_FILTER = "uncategorized";
+/** Expenses and refunds together: what net spending is made of. */
+export const SPENDING_FILTER = "spending";
 
 export interface HistoryFilters {
   q: string;
-  type: TransactionType | null;
+  type: TransactionType | typeof SPENDING_FILTER | null;
   /** A main category or subcategory id, or `UNCATEGORIZED_FILTER`. */
   category: string | null;
+  /** With `category`: only entries with no subcategory. */
+  noSubcategory: boolean;
   account: string | null;
   from: LocalDate | null;
   to: LocalDate | null;
   minPaise: number | null;
   maxPaise: number | null;
+  /** Small purchases under this amount, plus refunds of them (see `isSmallPurchase`). */
+  underPaise: number | null;
+  /** One group of repeated purchases (see `purchaseGroupKey`). */
+  group: { by: PurchaseGrouping; key: string } | null;
 }
 
 export type FilterErrors = Partial<Record<"from" | "to" | "min" | "max", string>>;
@@ -64,17 +78,29 @@ export function parseHistoryFilters(params: Params): {
     errors[key] = parsed.message;
     return null;
   };
+  const under = parseAmountInput(first(params.under));
+  const by = first(params.by);
+  const key = first(params.key);
   const filters: HistoryFilters = {
     q: first(params.q).slice(0, 100),
-    type: (TRANSACTION_TYPES as readonly string[]).includes(type)
-      ? (type as TransactionType)
-      : null,
+    type:
+      type === SPENDING_FILTER
+        ? SPENDING_FILTER
+        : (TRANSACTION_TYPES as readonly string[]).includes(type)
+          ? (type as TransactionType)
+          : null,
     category: first(params.category) || null,
+    noSubcategory: first(params.nosub) === "1",
     account: first(params.account) || null,
     from: date("from"),
     to: date("to"),
     minPaise: amount("min"),
     maxPaise: amount("max"),
+    underPaise: under.ok ? under.paise : null,
+    group:
+      key && (PURCHASE_GROUPINGS as readonly string[]).includes(by)
+        ? { by: by as PurchaseGrouping, key }
+        : null,
   };
   if (filters.from && filters.to && filters.from > filters.to) {
     errors.to = "The end date is before the start date.";
@@ -93,9 +119,17 @@ export function parseHistoryFilters(params: Params): {
 
 /** How many filters (besides search) are active — for the "Filters (2)" label. */
 export function activeFilterCount(f: HistoryFilters): number {
-  return [f.type, f.category, f.account, f.from, f.to, f.minPaise, f.maxPaise].filter(
-    (v) => v !== null,
-  ).length;
+  return [
+    f.type,
+    f.category,
+    f.account,
+    f.from,
+    f.to,
+    f.minPaise,
+    f.maxPaise,
+    f.underPaise,
+    f.group,
+  ].filter((v) => v !== null).length;
 }
 
 export interface HistoryContext {
@@ -110,14 +144,17 @@ function accountIds(tx: Transaction): string[] {
   return "accountId" in tx ? [tx.accountId] : [];
 }
 
-function matchesCategory(tx: Transaction, category: string, ctx: HistoryContext) {
+function matchesCategory(
+  tx: Transaction,
+  category: string,
+  noSubcategory: boolean,
+  ctx: HistoryContext,
+) {
   if (!("categoryId" in tx)) return false;
   // Refunds without their own category count under the original expense's category.
-  let { categoryId, subcategoryId } = tx;
-  if (tx.type === "refund" && !categoryId) {
-    const original = ctx.ledgerById.get(tx.refundOfId);
-    if (original?.type === "expense") ({ categoryId, subcategoryId } = original);
-  }
+  const { categoryId, subcategoryId } =
+    tx.type === "refund" ? refundCategory(tx, ctx.ledgerById) : tx;
+  if (noSubcategory && subcategoryId !== null) return false;
   if (category === UNCATEGORIZED_FILTER) return categoryId === null;
   return categoryId === category || subcategoryId === category;
 }
@@ -149,9 +186,20 @@ export function filterHistory(
   return ledger
     .filter((tx) => {
       if (tx.deletedAt !== null) return false;
-      if (f.type && tx.type !== f.type) return false;
+      if (f.type === SPENDING_FILTER) {
+        // Voided rows stay visible in plain history, but they aren't part of any spending total.
+        if ((tx.type !== "expense" && tx.type !== "refund") || !isActive(tx)) return false;
+      } else if (f.type && tx.type !== f.type) return false;
       if (f.account && !accountIds(tx).includes(f.account)) return false;
-      if (f.category && !matchesCategory(tx, f.category, ctx)) return false;
+      if (f.category && !matchesCategory(tx, f.category, f.noSubcategory, ctx)) return false;
+      if (f.underPaise !== null) {
+        if (tx.type !== "expense" && tx.type !== "refund") return false;
+        if (!isSmallPurchase(tx, f.underPaise, ctx.ledgerById)) return false;
+      }
+      if (f.group) {
+        if (tx.type !== "expense" && tx.type !== "refund") return false;
+        if (purchaseGroupKey(tx, f.group.by, ctx.ledgerById) !== f.group.key) return false;
+      }
       const at = occurredAtMs(tx);
       if (fromMs !== null && at < fromMs) return false;
       if (toMs !== null && at >= toMs) return false;

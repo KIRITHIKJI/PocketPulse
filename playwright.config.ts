@@ -7,7 +7,7 @@ if (existsSync(".env.e2e.local")) process.loadEnvFile(".env.e2e.local");
 
 const PORT = Number(process.env.PORT ?? 3100);
 const baseURL = `http://localhost:${PORT}`;
-const LEDGER_SPEC = /transactions(-batch)?\.spec\.ts/;
+const LEDGER_SPEC = /(transactions(-batch)?|insights)\.spec\.ts/;
 
 export default defineConfig({
   testDir: "./e2e",
