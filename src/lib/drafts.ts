@@ -162,14 +162,18 @@ export function draftProblems(
   return problems;
 }
 
-/** Says which day "kal" or "parso" was read as. Not a blocker: past is the default reading. */
+/** Says which day "kal", "parso" or a spoken "call" was read as. Not a blocker: past is the default reading. */
 export function dateWordNote(
   draft: ReviewDraft,
   formatDate: (date: LocalDate) => string,
 ): string | null {
   if (!draft.dateWord) return null;
+  const date = formatDate(draft.date);
+  if (draft.dateWord === "call") {
+    return `We heard “call” and read it as “kal”, yesterday, ${date}. Change the date if you meant another day.`;
+  }
   const day = draft.dateWord === "kal" ? "yesterday" : "the day before yesterday";
-  return `“${draft.dateWord}” is read as ${day}, ${formatDate(draft.date)}. Change the date if you meant another day.`;
+  return `“${draft.dateWord}” is read as ${day}, ${date}. Change the date if you meant another day.`;
 }
 
 /** Entries dated today use the time of confirming; earlier ones use midday, in the user's zone. */

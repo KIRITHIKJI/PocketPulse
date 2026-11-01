@@ -3,7 +3,7 @@
 Durable project state. Update before a context reset or at the end of each work session.
 Source of truth for requirements: `PROJECT_SPEC.md`.
 
-_Last updated: 2026-11-01 — end of Phase 8. Migrations 0100–0900 are applied on the hosted project. Phase 9 is not started and needs its prompt._
+_Last updated: 2026-11-01 — end of Phase 9. Migrations 0100–1000 are applied on the hosted project. Phase 10 is not started and needs its prompt._
 
 ## Build stages
 
@@ -19,14 +19,14 @@ One integrated product. Stages are an internal build order only; nothing is defe
 | 6 | Natural-language parser + voice entry with draft review and atomic batch confirm | ✅ Done — unit, DB and live e2e pass. Voice UI is tested with a stand-in for speech recognition; a real microphone is not yet tested (see blockers) |
 | 7 | Insights + charts with drill-down, sparse-data honesty, Money Leak Detector with what-ifs | ✅ Done — unit (including figure-by-figure reconciliation with history) and live e2e pass on desktop and Pixel 7 |
 | 8 | Budgets (alerts, pace, suggestions), savings goals + allocation ledger, safe-to-spend, survival mode, recurring templates + commitments | ✅ Done — unit, DB and live e2e pass on desktop and Pixel 7; screens checked at laptop and phone sizes |
-| 9 | Parent report (preview, PDF, CSV, text; reconciled totals), gamification (XP, levels, streaks, quests, achievements; idempotent), reminders, data export + account deletion | ⬜ |
+| 9 | Parent report (preview, PDF, CSV, text; reconciled totals), gamification (XP, levels, streaks, quests, achievements; idempotent), reminders, data export + account deletion | ✅ Done — unit, DB and live e2e pass on desktop and Pixel 7; PDF and screens checked at laptop and phone sizes |
 | 10 | PWA + IndexedDB offline queue, sync states, conflict handling; full e2e at mobile/desktop; a11y/perf pass; docs; final verification | ⬜ |
 
 ## Spec §23 acceptance checklist
 
 Status key: ⬜ not started · 🟨 partial (detail given) · ✅ done and verified.
 
-- 🟨 Registration, login and recovery work with real configured auth. — **Live:** registration through `/register` (2 new accounts, signed in straight to `/onboarding`), login, the signed-in redirect away from `/login`, and logout via the account menu (signed-in e2e, 129 passed). **Recovery:** the forgot/reset forms, `/auth/confirm` (PKCE `code` + `token_hash`), invalid-link handling and the no-session reset page are built and e2e-tested, but the **live reset email is not yet tested** (see blockers). Live sign-up ran with "Confirm email" temporarily off, so the confirmation-email path is built and tested locally only.
+- ✅ Registration, login and recovery work with real configured auth. Forgot password confirmed working by you on the live project (Phase 9). — **Live:** registration through `/register` (2 new accounts, signed in straight to `/onboarding`), login, the signed-in redirect away from `/login`, and logout via the account menu (signed-in e2e, 129 passed). **Recovery:** the forgot/reset forms, `/auth/confirm` (PKCE `code` + `token_hash`), invalid-link handling and the no-session reset page are built and e2e-tested, but the **live reset email is not yet tested** (see blockers). Live sign-up ran with "Confirm email" temporarily off, so the confirmation-email path is built and tested locally only.
 - ✅ All user data is private and protected by tested access rules. — RLS on all 20 tables, owner-only. Proven locally (`tests/db`, 34 tests on PostgreSQL 18) **and live** (`npm run test:live`, publishable key only, 6/6): user B can't read, update, re-own, delete, soft-delete, link to or reuse the ids of user A's rows, and anonymous callers get `42501` on tables and RPCs.
 - ✅ Adding income and expense updates correct balance immediately. — DB tests (income/expense direction, consolidated and per wallet) and live e2e Journey A (Home balance and today's spending change by exactly the amount, and return on Undo), desktop + Pixel 7.
 - ✅ Quick-add presets/custom amounts work. — 12 seeded tiles (no invented amounts); editable label, usual amount, category and icon; add/hide/restore; custom tile with a description and a suggested category; opt-in "remember as usual amount"; repeat-last and frequent shortcuts.
@@ -39,9 +39,9 @@ Status key: ⬜ not started · 🟨 partial (detail given) · ✅ done and verif
 - ✅ Savings allocations do not count as purchases or reduce consolidated total balance. — Domain tests (invariant 4), the real mutation layer on PostgreSQL (`tests/db/phase8.test.ts`), and live Journey D on both viewports.
 - ✅ Transfers between owned accounts do not inflate consolidated income/expense. — Domain invariants 2–3, plus a DB test through the app's mutation layer: a transfer (and an edit of it) moves money between wallets and leaves the consolidated balance unchanged. Transfers are entered from the full form.
 - 🟨 Safe-to-spend and allowance predictions avoid double counting. — `calculatePlan` is the one calculation behind both screens. On PostgreSQL the safe-to-spend figure is compared before and after every save and every retry: paying a bill, confirming a recurring item and buying from a goal each subtract once. Live Journey E passes on both viewports.
-- 🟨 Parent report balances and totals reconcile for the selected historical period. — Domain `summarizePeriod` rebuilds opening/closing from the ledger and is tested to reconcile (invariant 10); report UI/exports in Phase 9.
-- ⬜ PDF/CSV exports are real and contain correct data.
-- ⬜ XP, streaks, quests and achievements work consistently.
+- ✅ Parent report balances and totals reconcile for the selected historical period. — Compared with Insights and History for 4 periods, row for row, and balances rebuilt from dated entries. Journey F passes live on desktop and Pixel 7.
+- ✅ PDF/CSV exports are real and contain correct data. — The PDF is read back and its figures checked, and its pages were looked at. The CSV is checked row by row and guards against spreadsheet formulas.
+- ✅ XP, streaks, quests and achievements work consistently. — Idempotent by source key, proven in memory, on PostgreSQL and live.
 - 🟨 PWA works on supported devices; responsive app works on laptop/mobile. — Responsive shell done (sidebar ≥1024px; header + 5-tab bottom nav + "All sections" sheet + add FAB on mobile), Playwright runs at desktop and Pixel 7 sizes. No PWA manifest/service worker yet (Phase 10).
 - ⬜ Offline entries persist and sync without loss or duplication. — Only an online/offline banner exists; it truthfully says changes can't be saved offline.
 - 🟨 Loading, empty, error, permission-denied and offline states are handled. — Shared `StatePanel` (empty/error/offline/denied), `PageSkeleton`, route `loading.tsx`, `error.tsx`, in-shell and global `not-found.tsx`, `global-error.tsx`, offline banner. Each feature must still wire these to its real data states.
@@ -67,10 +67,11 @@ Every screen has a route; feature screens show a real empty state until their st
 | Savings goals | `/goals`, `/goals/[id]` | Ring, remaining, suggestion, forecast, set aside/release, "I bought it", pause/complete/archive, history. Real 404s |
 | Safe to spend, Survival mode | `/safe-to-spend`, `/survival` | Every input with its explanation; no limit without a next income date |
 | Income & recurring | `/recurring` | Due and upcoming (labelled forecast, reminder or planned), recurring items, skipped, what actually happened |
-| Parent report | `/reports` | Empty state (Phase 9) |
-| Rewards, reminders | `/rewards`, `/reminders` | Empty state (Phase 9) |
+| Parent report | `/reports`, `/reports/export` | Period, what to include, preview, comparison, PDF, CSV, copyable text. Choices live in the URL |
+| Rewards | `/rewards` | Level, streaks, optional quests, achievements |
+| Reminders | `/reminders` | Notification centre, switches, how often, browser notifications. Header bell shows unread |
 | Settings: profile/preferences | `/settings` | Name, theme/motion (synced), currency/timezone/week start, income, small-purchase threshold, reminders, privacy |
-| Privacy, sync, data export/deletion | `/settings/privacy`, `/settings/sync`, `/settings/data` | Privacy: real content + report default. Data: section structure only; export/deletion say "not connected in this build yet" (wired in Phase 9, per your instruction). Sync: Phase 10 |
+| Privacy, sync, data export/deletion | `/settings/privacy`, `/settings/sync`, `/settings/data` | Privacy: real content + report default. Data: JSON and CSV export (`/settings/data/export`), account deletion. Sync: Phase 10 |
 
 `src/proxy.ts` (Next 16's name for middleware): `/` → `/home` (signed in) or `/welcome`; signed-out app routes and `/onboarding` → `/login?next=<path>`; signed-in visits to login/register/forgot → `/home`; `/reset-password` and `/auth/*` are always reachable. Without Supabase env, app routes → `/login`, which explains the missing configuration.
 
@@ -250,6 +251,28 @@ Every screen has a route; feature screens show a real empty state until their st
 - **New-record ids regenerate per dialog opening.** Within one opening a double submit is one record. Keeping one id for the page's life would make a second add overwrite the first.
 - **E2E:** the plan and motion specs join the serial ledger projects. Goals with history can't be deleted, so each spec reuses one archived goal.
 
+### Phase 9 decisions
+
+- **One report model** (`buildReport`) feeds the preview, PDF, CSV and text, so they can't disagree. Choices are URL parameters, read the same way by the page and the export route.
+- **Report totals are the Insights totals.** `summarizePeriod` leaves out entries dated before a wallet's opening date, but Insights and History count them as spending. Using it directly would have made the report disagree. So spending and income come from `categoryBreakdown`, balances from `summarizePeriod`, and the difference is its own labelled line ("Entries already in opening balances").
+- **Hiding a category hides its name and entries, not its money.** It joins an "Other categories" row, so the sums still work.
+- **The preview refuses to look fine if it doesn't add up.** `reportDifferences` is checked on the page, and a mismatch says not to share the report.
+- **PDF:** `pdf-lib` + `@pdf-lib/fontkit`, drawn from the report model, with Geist embedded because the PDF standard fonts have no ₹. Characters the font lacks become "?" rather than failing the export. `outputFileTracingIncludes` keeps the fonts in a deployment.
+- **CSV:** plain decimals, a byte-order mark for Excel, and an apostrophe before any text starting with = + - @ tab or return, so a note can't run as a spreadsheet formula.
+- **Rewards are worked out once, in the domain, and written from the server.** Clients can't write reward tables, so `syncRewards` reads with the user's client and writes with the admin client, always for the verified session's id. A SQL version would have duplicated the logic; an RPC taking events from the browser would have let a user grant themselves XP.
+- **Every award has a stable key** (`logged_day:2026-11-01`), unique in the database. So repeating a sync, or adding and deleting entries, can't earn anything twice, and nothing is taken away by an edit. A day counts by when an entry was logged, so backdating can't fill a streak, and days already awarded stay even if the entries go.
+- **Sync timing:** after each ledger write via `after()`, so it never slows a save, and on opening `/rewards`.
+- **Monthly Budget Achieved** needs a total budget created before the month ended and at least 5 purchases that month, so a budget set afterwards, or a month with nothing logged, can't score. **No Mystery Money** needs a finished week with at least 3 expenses.
+- **Spending Detective** counts distinct filtered History views opened from an insight (`from_insight=1`, stored as a hash of the filters).
+- **Streaks read as a count, not a threat.** One stays current until a whole day passes, longest is kept, and the copy never says lost or broken.
+- **Reminders are created while the app is open** (`ReminderSync`, on load and every 30 minutes). There's no background server and no push service, so nothing arrives while it's closed, and the screens say so. Each has a dedupe key. Browser notifications ask permission only from their button.
+- **Budget alerts now reach the notification centre,** one per budget, period and level.
+- **Account deletion:** the phrase and password are both checked on the server, the password on a throwaway client so the real session isn't touched. The id comes only from the session. Deleting the auth user cascades. No goal images are stored, so there's nothing to clear in Storage.
+- **Exports read through the signed-in client,** so RLS decides what comes back, and they send `Cache-Control: private, no-store`. Deleted entries are included and marked.
+
+- **A spoken "call" can mean "kal".** Voice only: `parseEntries(text, today, { spoken: true })`. In one entry with an amount and no date of its own, "call" reads as "kal" unless the words beside it make it a real call ("phone call 50", "call charges 99", "call taxi 200", "for call"). Typed text is never changed. The draft says "We heard “call” and read it as “kal”", and its date stays editable. The word lists are a judgement call; an unlisted real call ("call mom 50") reads as yesterday with that note showing.
+- **Dropped reads are retried.** ECONNRESET on about 0.3 % of calls to the hosted project, measured from plain Node, was crashing whole screens, since a page makes about ten reads. `retryingFetch` repeats GET/HEAD and the idempotent `ensure_default_account`, up to twice. Writes aren't retried: they may have worked, and money has its own idempotent retry. HTTP errors pass through.
+
 ### Phase 9 notes: account deletion (recorded in Phase 3a)
 
 Clients can't hard-delete transactions (no grant or policy), so account deletion runs **server-side**:
@@ -285,6 +308,31 @@ Hosted project `qzmqvytrekenzciasvph`. Live checks use the publishable key only,
 | Sign-up with "Confirm email" ON (email → `/auth/confirm`) | ⏳ not tested live (built-in email quota was exhausted) | ✅ code path + invalid-link e2e |
 | Forgot / reset password email | ⏳ **pending**: the dashboard test user's address belongs to someone else, so no reset email was sent | ✅ forms, validation, no-session page, invalid link |
 | Transfers, refunds, goal money, batch rollback | — (no UI yet) | ✅ PG 18 |
+
+## Checks run (Phase 9, 2026-11-01)
+
+| Command / action | Result |
+| --- | --- |
+| `npx supabase@2.120.0 migration list` | 0100–1000 applied remotely (you ran `db push`; 1000 confirmed) |
+| `npm run lint` / `typecheck` / `format:check` | Pass |
+| `npm test` | Pass, 25 files / 720 tests (106 new) |
+| `npm run test:db` (local PostgreSQL 18) | Pass, 10 files / 106 tests, plus 10 "URL not set" placeholders. 7 new in `tests/db/phase9.test.ts` |
+| `npm run test:e2e` (hosted project, desktop + Pixel 7, fresh build) | **234 passed, 7 skipped, 0 failed** on the final code. The cross-user 404 test now runs. The 7 are one-viewport tests. Build id changed, and port 3100 was empty first |
+| Mutation check | 18 breaks of the report, reward and reminder rules: 16 fail tests. One showed a missing test for overdue bills, now added, and it fails too. One (repeat sync) changes nothing because the database's unique key also stops it, which the DB tests prove. Spoken "call": 3 more breaks; one survived until its test was tightened |
+| Cross-user | A second user's report, PDF, CSV and JSON exports hold none of the first user's data, and the first user's entry is a 404 |
+| Account deletion | On a throwaway `pp-delete-…@example.test` user from the admin API. Wrong phrase and wrong password refused, then gone from auth and tables, and sign-in fails |
+| PDF and screens looked at | A rendered sample report, and the new screens at 1280 px and Pixel 7, dark and light, with overflow also checked at 360 px. No overflow or console errors. Fixed in the PDF: "1 entries", and a lone "No subcategory" row |
+| `npm run build` | Pass. The secret key value is in 0 files under `.next`; `sb_secret_` is in 0 files under `.next/static` |
+| `npm audit --omit=dev` | 0 vulnerabilities after adding `pdf-lib`, `@pdf-lib/fontkit`. The dev-tooling `minimatch` advisory from Phase 8 is unchanged |
+| Your live checks | Forgot password worked. The microphone works in Chrome and writes speech correctly. "kal" itself isn't tested yet |
+
+Failures on the way, all fixed:
+
+- A bug in my e2e helper: it waited for any server action, and the new reminder check on page load is one, so it could reload mid-save. It now matches the save itself.
+- The appearance tests changed the shared profile while the motion spec depended on it. They moved to `e2e/appearance.spec.ts` in the serial projects.
+- A race in the reminder test, between clearing rows and a check still running.
+- Heavy PDF tests hit the default 5-second timeout under load.
+- The PDF tests have to run in the Node environment, as the export does.
 
 ## Checks run (Phase 8, 2026-11-01)
 
@@ -480,10 +528,11 @@ Note: because of the `(app)` loading boundary, Next.js streams `notFound()` page
 - ✅ Migration 0700 is applied (confirmed by `migration list`); Phase 4 e2e passes live.
 - ⏳ **`npm audit` reports a moderate `minimatch` advisory.** See Phase 8 checks. Re-check when `eslint` or `typescript-eslint` ship a fix. Don't run `npm audit fix --force`: it would install eslint 4.
 - ⏳ **Decide on voice and "never upload audio"** (see Phase 6a decisions).
-- ⏳ **Try voice on a real phone and laptop.** The e2e tests use a stand-in for the browser's speech recognition, so no real microphone or speech service has been exercised. Check Chrome on Android and desktop: permission prompt, an Indian-English phrase such as "tea fifteen, bus twenty", a denied microphone, and whether `en-IN` recognition keeps "kal", "aaj" and "parso" as those words (it may write "call" or similar, which the parser won't read as a date).
-- ⏳ **Cross-user 404 e2e** needs a second test account: add `E2E_USER_B_EMAIL` / `E2E_USER_B_PASSWORD` to `.env.e2e.local`. Until then that test is skipped. Cross-user denial is proven in the DB tests and by the RLS-scoped lookup.
+- ⏳ **Say "kal" to the real microphone.** You confirmed the mic works and writes speech correctly in Chrome. Still to check: what `en-IN` writes for "kal", "aaj" and "parso". A spoken "call" is now read as "kal" (see Phase 9 decisions); "parso" or "aaj" misheard as something else aren't handled.
+- ✅ Cross-user 404 e2e runs and passes with your second account.
+- `npm run test:live` expects the old pp-a/pp-b accounts and `E2E_USER_A_*`, which no longer exist, so it skips. The cross-user checks now live in `e2e/report.spec.ts` and `e2e/transactions.spec.ts`.
 - ✅ "Confirm email" is back on, 0600 is applied, and the e2e user is on an address you control (your report; 0600 and the user's defaults verified by the agent).
-- ⏳ **Remind at the start of Phase 9: verify the live password-reset email.** Status: built and tested locally; live email test pending. Needs a test user whose address you can open and that Supabase's built-in email will deliver to (a team member's address, or custom SMTP), plus available hourly email quota.
+- ✅ Forgot password confirmed working on the live project (your report, Phase 9).
 - Supabase's built-in email service only delivers to team-member addresses and allows a few emails per hour. Configure custom SMTP (Authentication → Emails → SMTP) before real users sign up.
 - The Supabase CLI's `login`, `link` and `db push` need an interactive terminal (or `SUPABASE_ACCESS_TOKEN` + `SUPABASE_DB_PASSWORD`), so they run in your terminal, not the agent's.
 - Docker isn't installed, so `supabase start` isn't available. DB tests run on local PostgreSQL 18 with `tests/db/supabase-shim.sql`; hosted-project behaviour is covered by the live checks above.
@@ -493,4 +542,4 @@ Note: because of the `(app)` loading boundary, Next.js streams `notFound()` page
 
 ## Next concrete tasks
 
-Phase 9 needs its prompt. Carry over: write budget alerts to `notifications` for the notification centre; Phase 10 queues `LedgerCommand`s, including the new goal and bill commands, and replays them through `runLedgerCommandWith`.
+Phase 10 needs its prompt. Carry over: Phase 10 queues `LedgerCommand`s, including the new goal and bill commands, and replays them through `runLedgerCommandWith`.

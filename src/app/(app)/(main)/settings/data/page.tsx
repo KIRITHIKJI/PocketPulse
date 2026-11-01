@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft, Download, TriangleAlert } from "lucide-react";
+import { ArrowLeft, Download, FileJson, FileSpreadsheet, TriangleAlert } from "lucide-react";
 
 import { PageHeader } from "@/components/layout/page-header";
+import { DeleteAccountForm } from "@/components/settings/delete-account-form";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -13,7 +14,7 @@ const EXPORT_CONTENTS = [
   "Wallets with opening balances and dates",
   "Categories, subcategories and rules",
   "Budgets, savings goals, recurring templates and planned expenses",
-  "Profile and preferences",
+  "Profile, preferences, reminders and rewards",
 ];
 
 export default function DataSettingsPage() {
@@ -37,8 +38,8 @@ export default function DataSettingsPage() {
             <CardTitle id="data-export">Export your data</CardTitle>
           </div>
           <CardDescription>
-            A spreadsheet-friendly copy of everything in your account, generated when you ask and
-            downloaded to this device only.
+            A copy of everything in your account, generated when you ask and downloaded to this
+            device only. Deleted entries are included and marked as deleted.
           </CardDescription>
         </CardHeader>
         <ul className="flex list-disc flex-col gap-1 pl-5 text-sm text-muted-foreground">
@@ -46,10 +47,20 @@ export default function DataSettingsPage() {
             <li key={item}>{item}</li>
           ))}
         </ul>
-        <p className="rounded-lg bg-muted/60 p-3 text-sm text-muted-foreground">
-          The export download isn’t connected in this build yet. Your data stays complete in your
-          account in the meantime.
-        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild>
+            <a href="/settings/data/export?format=json" download>
+              <FileJson aria-hidden="true" />
+              Everything (JSON)
+            </a>
+          </Button>
+          <Button variant="outline" asChild>
+            <a href="/settings/data/export?format=csv" download>
+              <FileSpreadsheet aria-hidden="true" />
+              Entries (CSV)
+            </a>
+          </Button>
+        </div>
       </Card>
 
       <Card role="region" aria-labelledby="data-delete" className="border-destructive/30">
@@ -68,10 +79,7 @@ export default function DataSettingsPage() {
           <li>Confirm by typing a phrase and re-entering your password.</li>
           <li>You’re signed out, and the account can’t be recovered.</li>
         </ol>
-        <p className="rounded-lg bg-muted/60 p-3 text-sm text-muted-foreground">
-          Account deletion isn’t connected in this build yet. Nothing about your account changes
-          from this page.
-        </p>
+        <DeleteAccountForm />
       </Card>
     </>
   );

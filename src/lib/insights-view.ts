@@ -120,6 +120,7 @@ export function historyHref(scope: SpendingScope): Route {
     params.set("by", scope.by);
     params.set("key", scope.key);
   }
+  params.set("from_insight", "1");
   return `/transactions?${params.toString()}` as Route;
 }
 

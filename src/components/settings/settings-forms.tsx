@@ -253,7 +253,7 @@ const REMINDER_LABELS: Record<ReminderKey, { label: string; description: string 
   },
   budgetAlerts: {
     label: "Budget thresholds",
-    description: "When a budget reaches 50 %, 80 % or 100 %.",
+    description: "When a budget reaches one of its alert levels.",
   },
   upcomingCommitments: {
     label: "Bills and planned expenses",

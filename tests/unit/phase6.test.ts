@@ -208,3 +208,17 @@ describe("batch command", () => {
     expect(accepts([{ ...first, type: "refund", refundOfId: id(1) }])).toBe(false);
   });
 });
+
+describe("the date note for a spoken call", () => {
+  it("says what was heard, which day it became, and that it can change", () => {
+    const [draft] = buildDrafts(
+      parseEntries("call chai 15", "2026-11-04", { spoken: true }),
+      { categories: [], rules: [], history: [] },
+      () => "00000000-0000-4000-8000-000000000001",
+    );
+    expect(draft!.date).toBe("2026-11-03");
+    expect(dateWordNote(draft!, (date) => date)).toBe(
+      "We heard “call” and read it as “kal”, yesterday, 2026-11-03. Change the date if you meant another day.",
+    );
+  });
+});

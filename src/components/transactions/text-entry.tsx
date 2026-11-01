@@ -42,7 +42,7 @@ export function TextEntry({
   function review(event: React.FormEvent) {
     event.preventDefault();
     const now = toLocalDate(Date.now(), kit.timeZone);
-    const entries = parseEntries(text, now);
+    const entries = parseEntries(text, now, { spoken: source === "voice" });
     if (entries.length === 0) {
       setMessage("Write at least one thing you spent, like “tea 15”.");
       return;
