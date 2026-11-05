@@ -36,6 +36,22 @@ export function savePagesForOffline({ force = false }: { force?: boolean } = {})
   post({ type: "save-pages", urls: OFFLINE_PAGES });
 }
 
+/**
+ * Hands the worker every build file this page has loaded, so code fetched before the worker took
+ * over (the offline queue loads on demand) is still there with no network.
+ */
+export function saveLoadedAssets() {
+  try {
+    const urls = performance
+      .getEntriesByType("resource")
+      .map((entry) => entry.name)
+      .filter((name) => name.includes("/_next/static/"));
+    if (urls.length > 0) post({ type: "save-assets", urls });
+  } catch {
+    // Without resource timing, the worker still saves what passes through it.
+  }
+}
+
 let afterWrite: ReturnType<typeof setTimeout> | undefined;
 
 /** Keeps the saved screens close to what the ledger says, without a refresh per tap. */

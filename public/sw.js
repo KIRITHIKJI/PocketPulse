@@ -34,17 +34,37 @@ async function trim(cacheName, limit) {
   );
 }
 
-async function saveAssets(html) {
+async function cacheAssets(urls) {
   const cache = await caches.open(STATIC_CACHE);
-  const urls = [...new Set(html.match(ASSETS_IN_HTML) ?? [])];
   await Promise.all(
-    urls.map(async (url) => {
+    [...new Set(urls)].map(async (url) => {
       if (await cache.match(url)) return;
       const response = await fetch(url).catch(() => null);
       if (response?.ok) await cache.put(url, response);
     }),
   );
   await trim(STATIC_CACHE, MAX_STATIC);
+}
+
+async function saveAssets(html) {
+  await cacheAssets(html.match(ASSETS_IN_HTML) ?? []);
+}
+
+/**
+ * Build files a page loaded before this worker controlled it, such as the offline queue's code,
+ * which is loaded on demand and never named in a page's HTML. Only this app's build files.
+ */
+function ownBuildFiles(urls) {
+  return urls.flatMap((value) => {
+    try {
+      const url = new URL(value, self.location.origin);
+      return url.origin === self.location.origin && url.pathname.startsWith("/_next/static/")
+        ? [url.pathname + url.search]
+        : [];
+    } catch {
+      return [];
+    }
+  });
 }
 
 /** Saves a finished screen, with the time, unless it's an error screen. */
@@ -94,6 +114,9 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("message", (event) => {
   if (event.data?.type === "save-pages") event.waitUntil(fetchAndSave(event.data.urls ?? []));
+  if (event.data?.type === "save-assets") {
+    event.waitUntil(cacheAssets(ownBuildFiles(event.data.urls ?? [])));
+  }
   if (event.data?.type === "clear-pages") {
     generation += 1;
     event.waitUntil(caches.delete(PAGES_CACHE));

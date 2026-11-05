@@ -9,7 +9,7 @@ import { type LedgerCommand, inverseCommand } from "@/lib/ledger/commands";
 import { newId } from "@/lib/ids";
 import { type RememberAmount, commandEntryId } from "@/lib/offline/ops";
 import { savePagesSoon } from "@/lib/offline/pwa";
-import { discardOp } from "@/lib/offline/queue";
+import { loadQueue } from "@/lib/offline/load-queue";
 
 const UNDONE: Record<LedgerCommand["kind"], string> = {
   create: "Undone.",
@@ -84,7 +84,7 @@ export function useLedger() {
   /** Undo of something still in the queue: it never needs to reach the server at all. */
   const cancelQueued = React.useCallback(
     async (command: LedgerCommand) => {
-      if (await discardOp(command.opId)) {
+      if (await (await loadQueue()).discardOp(command.opId)) {
         show({ tone: "success", message: "Removed. It was never sent." });
         return;
       }

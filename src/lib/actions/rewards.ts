@@ -50,3 +50,15 @@ export async function noteInsightExplored(scope: unknown): Promise<void> {
     // Rewards are never worth an error on a page someone is reading.
   }
 }
+
+/**
+ * Called by the rewards page once it's on screen, only when it showed something newly earned. The
+ * server works it out again from the user's own data, so the browser can't choose what's saved.
+ */
+export async function saveEarnedRewards(): Promise<void> {
+  try {
+    await syncRewards();
+  } catch {
+    // Saved on the next entry or visit instead; keys make that the same result.
+  }
+}

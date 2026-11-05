@@ -220,6 +220,22 @@ html[data-motion="reduce"] *::after {
   scroll-behavior: auto !important;
 }
 
+/* Page change: the same 180 ms fade and 6 px rise the app used before, in CSS. */
+@keyframes pp-page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.pp-page-enter {
+  animation: pp-page-enter 180ms ease-out both;
+}
+
 /*
  * Goal celebration: a short burst around a static message, played once when a goal is completed.
  * It never covers the page. Under reduced motion the rules above collapse it, and the burst isn't

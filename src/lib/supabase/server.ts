@@ -30,12 +30,3 @@ export async function createSupabaseServerClient() {
     },
   });
 }
-
-/** The verified signed-in user's id and email, or null. */
-export async function getCurrentUser() {
-  const supabase = await createSupabaseServerClient();
-  if (!supabase) return null;
-  const { data, error } = await supabase.auth.getClaims();
-  if (error || !data?.claims.sub) return null;
-  return { id: data.claims.sub, email: (data.claims.email as string | undefined) ?? null };
-}

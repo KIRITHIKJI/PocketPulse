@@ -5,14 +5,14 @@ import { InlineAction } from "@/components/forms/inline-action";
 import { PageHeader } from "@/components/layout/page-header";
 import { Meter, PlanNote } from "@/components/plan/parts";
 import { AchievementCelebration } from "@/components/rewards/achievement-celebration";
+import { SaveEarnedRewards } from "@/components/rewards/save-earned-rewards";
 import { StatePanel } from "@/components/states/state-panel";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { DETECTIVE_INSIGHTS, levelFor, totalXp } from "@/domain";
 import { changeQuest, completeWeeklyReview } from "@/lib/actions/rewards";
-import { requireSession } from "@/lib/data/session";
 import { factsFrom } from "@/lib/rewards/engine";
-import { rewardCatalog, syncRewards } from "@/lib/rewards/sync";
+import { previewRewards, rewardCatalog } from "@/lib/rewards/sync";
 
 export const metadata: Metadata = { title: "Rewards" };
 
@@ -20,15 +20,14 @@ const CADENCE = { daily: "Today", weekly: "This week", once: "Once" } as const;
 
 async function loadRewards() {
   try {
-    return await syncRewards();
+    return await previewRewards();
   } catch {
     return null;
   }
 }
 
 export default async function RewardsPage() {
-  const session = await requireSession();
-  const [catalog, outcome] = await Promise.all([rewardCatalog(session), loadRewards()]);
+  const [catalog, outcome] = await Promise.all([rewardCatalog(), loadRewards()]);
   const header = (
     <PageHeader
       title="Rewards"
@@ -65,6 +64,7 @@ export default async function RewardsPage() {
     <>
       {header}
       <AchievementCelebration unlocked={fresh} />
+      {outcome.earnedSomething && <SaveEarnedRewards />}
 
       {xp === 0 && (
         <StatePanel

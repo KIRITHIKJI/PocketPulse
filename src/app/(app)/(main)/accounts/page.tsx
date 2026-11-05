@@ -17,12 +17,11 @@ import {
 import { makeDefaultAccount, setAccountArchived } from "@/lib/actions/accounts";
 import {
   type AccountRecord,
-  ensureDefaultAccount,
-  getAccounts,
+  getAccountsWithDefault,
   getLedger,
   getProfile,
 } from "@/lib/data/queries";
-import { requestNow, requireSession } from "@/lib/data/session";
+import { requestNow } from "@/lib/data/session";
 import { formatLocalDate } from "@/lib/format";
 import { entriesBeforeOpeningText } from "@/lib/opening-note";
 import { ACCOUNT_KIND_LABELS } from "@/lib/validation/accounts";
@@ -30,10 +29,12 @@ import { ACCOUNT_KIND_LABELS } from "@/lib/validation/accounts";
 export const metadata: Metadata = { title: "Wallets" };
 
 export default async function AccountsPage() {
-  const session = await requireSession();
   // Every user has a default wallet to preselect, even one who skipped onboarding.
-  await ensureDefaultAccount(session);
-  const [profile, accounts, ledger] = await Promise.all([getProfile(), getAccounts(), getLedger()]);
+  const [profile, { accounts }, ledger] = await Promise.all([
+    getProfile(),
+    getAccountsWithDefault(),
+    getLedger(),
+  ]);
   const tz = profile.timeZone;
   const now = requestNow();
   const today = toLocalDate(now, tz);

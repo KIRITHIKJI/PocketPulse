@@ -3,7 +3,7 @@
 import * as React from "react";
 
 import { clearSavedPages } from "@/lib/offline/pwa";
-import { forgetOwner } from "@/lib/offline/queue";
+import { loadQueue } from "@/lib/offline/load-queue";
 
 /** Set just before an account deletion is requested. It only acts once that has really happened. */
 export const DELETING_OWNER_KEY = "pp-deleting-owner";
@@ -18,7 +18,11 @@ export function ForgetDevice({ accountDeleted = false }: { accountDeleted?: bool
     if (!accountDeleted) return;
     try {
       const ownerId = window.sessionStorage.getItem(DELETING_OWNER_KEY);
-      if (ownerId) void forgetOwner(ownerId).catch(() => undefined);
+      if (ownerId) {
+        void loadQueue()
+          .then(({ forgetOwner }) => forgetOwner(ownerId))
+          .catch(() => undefined);
+      }
       window.sessionStorage.removeItem(DELETING_OWNER_KEY);
     } catch {
       // Blocked storage has no queue to clear either.

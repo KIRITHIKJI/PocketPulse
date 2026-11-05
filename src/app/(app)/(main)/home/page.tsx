@@ -59,8 +59,9 @@ const MONTHS = [
 ];
 
 export default async function HomePage() {
-  const kit = await loadEntryKit();
-  const [profile, accounts, ledger, presets, budgets, goals, reminders] = await Promise.all([
+  // All at once: the loaders share cached reads, so nothing here waits for anything else.
+  const [kit, profile, accounts, ledger, presets, budgets, goals, reminders] = await Promise.all([
+    loadEntryKit(),
     getProfile(),
     getAccounts(),
     getLedger(),

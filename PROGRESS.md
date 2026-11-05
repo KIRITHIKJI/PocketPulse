@@ -3,7 +3,7 @@
 Durable project state. Update before a context reset or at the end of each work session.
 Source of truth for requirements: `PROJECT_SPEC.md`.
 
-_Last updated: 2026-11-01 — end of Phase 10, the last build phase. Migrations 0100–1000 are applied on the hosted project; Phase 10 needs no new migration. The app is not deployed yet, so nothing has been tried on a real phone._
+_Last updated: 2026-11-05 — Speed fixes 1. Migrations 0100–1000 and 20261105000100 (ledger keyset index) are applied on the hosted project. The app is not deployed yet, so nothing has been tried on a real phone._
 
 ## Build stages
 
@@ -331,6 +331,38 @@ Hosted project `qzmqvytrekenzciasvph`. Live checks use the publishable key only,
 - **Kept:** `scripts/make-icons.mjs`, which redraws the app icons if the mark changes. No files were moved.
 - **`.gitignore`:** now also ignores `*.log`, `logs/` and `screenshots/` (`test-results/` and `playwright-report/` were already ignored).
 - **Checks:** `npm run lint` ✅, `npm run typecheck` ✅, `npm test` ✅ 26 files / 786 tests (two clean runs; the first run after the deletions ended early with 12 files / 228 tests passing and 14 unexplained errors, which did not happen again), `npm run build` ✅. DB and e2e suites not run in this cleanup.
+
+## Speed fixes 1 (2026-11-05)
+
+From `doc/CODEBASE_REPORT.md` §8. Money results are unchanged (checked below).
+
+- **#1 Region:** `vercel.json` runs functions in `bom1` (Mumbai), next to the Supabase project (AWS ap-south-1). README says so.
+- **#3 Not done, on purpose.** Next 16.4 clears the whole client cache and re-renders the current page from the root after *any* `revalidatePath` from a server action (`server-action-reducer.js`: "TODO: Evict only segments with matching tags and/or paths"), and this app has no server data cache. Narrower paths would change nothing. The report is corrected. The real cost is that full re-render in every save's response.
+- **#4 Reward sync:** `planRewardSync` works out the new rows and the resulting state from one read; `saveRewardPlan` writes the four tables at once; no read-back. `syncRewards` reads stored rewards and the ledger together. The catalog read is `cache`d per request.
+- **#5 Reminder check:** at most once per 30 minutes per account per device (`pp-reminders-checked` in localStorage, shared by tabs and reloads). Saving reminder settings clears it (`CheckRemindersAgain`), so a reminder just switched on still shows on the next opening. Without storage it checks on every opening, as before.
+- **#6 Default wallet:** `getAccountsWithDefault` finds the default in the wallets already read; the `ensure_default_account` RPC runs only when there's none. Home also loads everything in one `Promise.all` (it used to wait for the entry kit first).
+- **#7 `/rewards` writes nothing while it loads:** it renders `previewRewards()` (stored state + what's newly earned, unsaved). When something new was earned, `SaveEarnedRewards` calls `saveEarnedRewards` after the page is on screen; the server works it out again, so the browser can't choose what's saved.
+- **#9 Keyset paging:** the ledger is read with `fetchLedgerPages` (`src/lib/data/paging.ts`): each page continues after the last row (`occurred_at desc, id`). Migration `20261105000100_ledger_keyset_index` adds `(owner_id, occurred_at desc, id) where deleted_at is null` and drops `transactions_owner_time` (same columns first, same condition). No query reads transactions by `occurred_at` without `deleted_at is null` (checked by grep before the push).
+- **#11:** one read of `notification_preferences`; `getCurrentUser` removed (`/reset-password` uses `optionalSession`).
+- **#12:** Dexie and the queue load on first use (`src/lib/offline/load-queue.ts`). The page posts the build files it loaded to the service worker (`save-assets`), so the queue's code is saved even when it loaded before the worker took over on a first visit. The page fade is CSS (`pp-page-enter`, same 180 ms / 6 px); `motion` still loads for `MotionConfig` and the animated balance.
+
+**Money check:** the previous commit (`3c13dd6`) and this code, built side by side and reading the same live data. 792 ₹ figures across 34 screens and both report CSVs were identical (the CSVs byte for byte). On 5 screens the raw HTML listed them in a different order. That's streaming order: two renders of the old build also differed. On screen, the order matched on all 11 screens checked in a browser.
+
+**Timing** (production builds on this machine; old and new alternated in the same session; server render = median of 12, full load = median of 9 alternating hard loads, sidebar nav = median of 6):
+
+| Page | Server render old → new | DB calls | Full load old → new | Sidebar nav old → new |
+| --- | --- | --- | --- | --- |
+| Home | 542 → 398 ms | 11 in 3 rounds → 10 in 2 | 672 → 368 ms | 646 → 372 ms |
+| Transactions | 383 → 396 ms | 7 → 7 | 453 → 457 ms | 419 → 377 ms |
+| Insights | 344 → 365 ms | 4 → 4 | 356 → 487 ms | 384 → 378 ms |
+
+JS per page (uncompressed, as loaded): Home 1.07 → 0.94 MB, Transactions 1.06 → 0.93 MB, Insights 1.37 → 1.24 MB.
+
+**Insights full load got slower (+130 ms).** The queries are no slower. The old build's reminder check ran 8 database calls on every page load, and that kept the server's connections to Supabase open. Without it, the first call after a ~2 s idle gap (the profile read) pays for a new connection, about +120 ms. Proof: forcing the reminder check on every load brings the new build's Insights back to 265 ms first byte. In production every page's first call after a pause pays this either way; making the 8 extra calls just to keep connections open isn't worth it.
+
+**Checks:** lint ✅, typecheck ✅, format ✅, `npm test` ✅ 28 files / 806 tests (20 new: paging, reminder timing, reward plan), `npm run test:db` ✅ 117 + 11 placeholders (PostgreSQL 18, all migrations including the new one), `npm run test:live` ✅ 7 + 1 placeholder (new read-only test: keyset pages of 37 equal one full read on the real ledger), `npm run build` ✅. E2E: `offline.spec.ts` + `rewards.spec.ts` on ledger-desktop, 16/16, before the last small Home change. The full e2e suite wasn't run.
+
+**Next speed steps (not done):** the header's unread-reminders count waits for the layout's profile read, so every page has a second round. Starting it early (cached, preloaded in the layout) would remove that round. After that: the full re-render on every save, and reading only the period a screen needs.
 
 ## Checks run (Phase 10, 2026-11-01)
 

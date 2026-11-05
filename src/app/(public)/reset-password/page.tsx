@@ -6,13 +6,13 @@ import { AuthFrame } from "@/components/auth/auth-frame";
 import { ResetPasswordForm } from "@/components/auth/auth-forms";
 import { StatePanel } from "@/components/states/state-panel";
 import { Button } from "@/components/ui/button";
-import { getCurrentUser } from "@/lib/supabase/server";
+import { optionalSession } from "@/lib/data/session";
 
 export const metadata: Metadata = { title: "Choose a new password" };
 
 export default async function ResetPasswordPage() {
   // The recovery link signs the user in for this one purpose; without it there's nothing to reset.
-  const user = await getCurrentUser();
+  const user = await optionalSession();
   return (
     <AuthFrame
       title="Choose a new password"

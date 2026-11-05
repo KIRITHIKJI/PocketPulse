@@ -184,7 +184,9 @@ The app has to be on a public `https://` address: phones only install web apps, 
 and allow the microphone over https.
 
 1. Deploy to any Next.js host (for example Vercel) with the four variables from the table in
-   Setup. Set `NEXT_PUBLIC_SITE_URL` to the deployed address.
+   Setup. Set `NEXT_PUBLIC_SITE_URL` to the deployed address. On Vercel, `vercel.json` runs the
+   server code in Mumbai (`bom1`), next to the Supabase project. If your project is in another
+   region, change it to the nearest one, since every screen makes several database calls.
 2. In Supabase, Authentication → URL Configuration: set Site URL to that address and add
    `https://<your-domain>/**` to Redirect URLs.
 3. Open the address on the phone and sign in. Android Chrome: menu → Add to Home screen. iPhone
