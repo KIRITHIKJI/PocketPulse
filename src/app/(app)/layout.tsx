@@ -45,7 +45,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </main>
           </div>
           <BottomNav />
-          {profile && <ReminderSync />}
+          {profile && session && <ReminderSync ownerId={session.userId} />}
         </div>
       </OfflineProvider>
     </ToastProvider>

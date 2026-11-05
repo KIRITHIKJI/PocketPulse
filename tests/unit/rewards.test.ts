@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  OPT_OUT_PERIOD,
   type AchievementDefinition,
   type QuestDefinition,
   type ReminderSettings,
@@ -19,6 +20,7 @@ import {
   type RewardData,
   type RewardState,
   type RewardStore,
+  planRewardSync,
   syncRewardsWith,
 } from "@/lib/rewards/engine";
 
@@ -521,5 +523,53 @@ describe("reminder preferences", () => {
       .map((r) => `${r.title} ${r.body}`)
       .join(" ");
     expect(text).not.toMatch(/\b(failed|missed|broke|lost|should|must|don['’]t forget)\b/i);
+  });
+});
+
+describe("sync without reading back", () => {
+  const entries = Array.from({ length: 12 }, (_, i) => logged(day(i < 8 ? i + 1 : 8)));
+  // What a fresh read shows, without the timestamps the database (or the plan) stamps.
+  const shape = (state: RewardState) => ({
+    events: state.events.map((e) => `${e.sourceKey}:${e.xp}:${e.revokedAt}`).sort(),
+    achievements: state.achievements.map((a) => a.code).sort(),
+    quests: state.quests
+      .map(
+        (q) => `${q.questCode}:${q.periodKey}:${q.completedAt !== null}:${q.optedOutAt !== null}`,
+      )
+      .sort(),
+  });
+
+  it.each([
+    ["an empty store", [] as Transaction[], 0],
+    ["a first sync", entries, 0],
+    ["a later sync with new entries", [...entries, logged(day(10)), logged(day(11))], 1],
+  ])(
+    "returns the state a fresh read would show after %s, reading once",
+    async (_, ledger, prior) => {
+      const store = memoryStore();
+      if (prior) await syncRewardsWith(store, data(entries));
+      // An opted-out quest row is stored state that a sync must carry over untouched.
+      store.state.quests.push({
+        questCode: "set_a_goal",
+        periodKey: OPT_OUT_PERIOD,
+        completedAt: null,
+        optedOutAt: ist("2026-11-02"),
+      });
+      let reads = 0;
+      const counted: RewardStore = { ...store, read: () => (reads++, store.read()) };
+      const outcome = await syncRewardsWith(counted, data(ledger));
+      expect(reads).toBe(1);
+      expect(shape(outcome.state)).toEqual(shape(await store.read()));
+      expect(totalXp(outcome.state.events)).toBe(totalXp(store.state.events));
+    },
+  );
+
+  it("a plan says whether there's anything to save, and saves nothing itself", async () => {
+    const store = memoryStore();
+    const plan = planRewardSync(await store.read(), data(entries));
+    expect(plan.earnedSomething).toBe(true);
+    expect(store.state.events).toEqual([]);
+    await syncRewardsWith(store, data(entries));
+    expect(planRewardSync(await store.read(), data(entries)).earnedSomething).toBe(false);
   });
 });

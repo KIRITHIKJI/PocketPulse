@@ -34,7 +34,7 @@ import { useOnlineStatus } from "@/hooks/use-online-status";
 import { formatDateTime, paiseToInput } from "@/lib/format";
 import type { LedgerCommand, LedgerRecord } from "@/lib/ledger/commands";
 import type { OpStatus, QueuedOp } from "@/lib/offline/ops";
-import { replaceOp, retryOp } from "@/lib/offline/queue";
+import { loadQueue } from "@/lib/offline/load-queue";
 import {
   type Resolution,
   type ResolutionKey,
@@ -144,7 +144,9 @@ function EditQueuedEntry({ op }: { op: QueuedOp }) {
       return;
     }
     const text = description.trim() || null;
-    await replaceOp(op.opId, {
+    await (
+      await loadQueue()
+    ).replaceOp(op.opId, {
       ...command,
       draft: { ...command.draft, amountPaise: parsed.paise, description: text },
     });
@@ -257,12 +259,12 @@ function OpRow({
       show({ tone: "error", message: "That choice isn’t available for this entry." });
       return;
     }
-    await replaceOp(op.opId, choice.command, { label: op.label }, choice.then);
+    await (await loadQueue()).replaceOp(op.opId, choice.command, { label: op.label }, choice.then);
     await syncNow();
   }
 
   async function retry() {
-    await retryOp(op.opId);
+    await (await loadQueue()).retryOp(op.opId);
     await syncNow();
   }
 

@@ -17,6 +17,7 @@ import type {
 } from "@/domain";
 import { ensureDefaults } from "@/lib/auth/defaults";
 import { DataLoadError } from "@/lib/data/errors";
+import { afterLedgerRow, fetchAll, fetchLedgerPages } from "@/lib/data/paging";
 import {
   rowToAccount,
   rowToBudget,
@@ -55,25 +56,7 @@ export interface Profile {
 
 type Row = Record<string, unknown>;
 
-const PAGE = 1000; // PostgREST's default max rows per request
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** Reads every row of a query, page by page, so large ledgers are never silently truncated. */
-async function fetchAll(
-  build: (
-    from: number,
-    to: number,
-  ) => PromiseLike<{ data: Row[] | null; error: { code?: string } | null }>,
-  what: string,
-): Promise<Row[]> {
-  const rows: Row[] = [];
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await build(from, from + PAGE - 1);
-    if (error) throw new DataLoadError(what, error.code);
-    rows.push(...(data ?? []));
-    if (!data || data.length < PAGE) return rows;
-  }
-}
 
 function toProfile(row: Row): Profile {
   return {
@@ -110,10 +93,16 @@ export const getProfile = cache(async (): Promise<Profile> => {
   return toProfile(data);
 });
 
-export const getReminderPreferences = cache(async (): Promise<ReminderPreferences> => {
+/** The one read of the reminder settings row; both views below are built from it. */
+const getNotificationPreferencesRow = cache(async () => {
   const { supabase } = await requireSession();
   const { data, error } = await supabase.from("notification_preferences").select("*").maybeSingle();
   if (error) throw new DataLoadError("reminder preferences", error.code);
+  return data;
+});
+
+export const getReminderPreferences = cache(async (): Promise<ReminderPreferences> => {
+  const data = await getNotificationPreferencesRow();
   return {
     allDisabled: Boolean(data?.all_disabled),
     missedLogging: Boolean(data?.missed_logging),
@@ -126,11 +115,12 @@ export const getReminderPreferences = cache(async (): Promise<ReminderPreference
 });
 
 export const getReminderSettings = cache(async (): Promise<ReminderSettings> => {
-  const { supabase } = await requireSession();
-  const { data, error } = await supabase.from("notification_preferences").select("*").maybeSingle();
-  if (error) throw new DataLoadError("reminder preferences", error.code);
+  const [data, preferences] = await Promise.all([
+    getNotificationPreferencesRow(),
+    getReminderPreferences(),
+  ]);
   return {
-    ...(await getReminderPreferences()),
+    ...preferences,
     missedLoggingTime: String(data?.missed_logging_time ?? "21:00").slice(0, 5),
     missedLoggingDays: data?.missed_logging_days ?? "daily",
     weeklyReviewDay: Number(data?.weekly_review_day ?? 0),
@@ -200,6 +190,28 @@ export async function ensureDefaultAccount(session?: Session): Promise<Account> 
   return rowToAccount(data as Row);
 }
 
+/**
+ * All wallets and the default one. The default is found in the wallets already read, so only a
+ * user who has none yet pays for the call that creates it; that wallet then joins the list.
+ */
+export const getAccountsWithDefault = cache(
+  async (): Promise<{ accounts: AccountRecord[]; defaultAccount: Account }> => {
+    const accounts = await getAccounts();
+    const existing = accounts.find((account) => account.isDefault);
+    if (existing) return { accounts, defaultAccount: existing };
+    const created = await ensureDefaultAccount();
+    const promoted = accounts.find((account) => account.id === created.id);
+    return {
+      // Listed first, as the database orders the default wallet.
+      accounts: [
+        { ...created, sortOrder: promoted?.sortOrder ?? 0 },
+        ...accounts.filter((account) => account.id !== created.id),
+      ],
+      defaultAccount: created,
+    };
+  },
+);
+
 export const getCategories = cache(async (): Promise<Category[]> => {
   const { supabase } = await requireSession();
   const rows = await fetchAll(
@@ -227,17 +239,13 @@ export const getCategoryRules = cache(async (): Promise<CategoryRule[]> => {
 
 const getLedgerRows = cache(async (): Promise<Row[]> => {
   const { supabase } = await requireSession();
-  return fetchAll(
-    (from, to) =>
-      supabase
-        .from("transactions")
-        .select("*")
-        .is("deleted_at", null)
-        .order("occurred_at", { ascending: false })
-        .order("id")
-        .range(from, to),
-    "your entries",
-  );
+  return fetchLedgerPages((after, limit) => {
+    const query = supabase.from("transactions").select("*").is("deleted_at", null);
+    return (after ? query.or(afterLedgerRow(after)) : query)
+      .order("occurred_at", { ascending: false })
+      .order("id")
+      .limit(limit);
+  }, "your entries");
 });
 
 /** Every non-deleted ledger row. Balances and history are rebuilt from these by `@/domain`. */

@@ -2,13 +2,13 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { liveQuery } from "dexie";
 
 import { useToast } from "@/components/feedback/toast";
 import type { LedgerCommand } from "@/lib/ledger/commands";
 import type { QueuedOp } from "@/lib/offline/ops";
-import { savePagesForOffline, savePagesSoon } from "@/lib/offline/pwa";
-import { type EnqueueOptions, enqueue, flushQueue, listOps } from "@/lib/offline/queue";
+import { loadQueue } from "@/lib/offline/load-queue";
+import { saveLoadedAssets, savePagesForOffline, savePagesSoon } from "@/lib/offline/pwa";
+import type { EnqueueOptions } from "@/lib/offline/queue";
 import { sendToServer } from "@/lib/offline/transport";
 
 /** How often a waiting queue tries again while the app stays open. */
@@ -64,11 +64,27 @@ export function OfflineProvider({
 
   React.useEffect(() => {
     if (!ownerId) return;
-    const subscription = liveQuery(() => listOps(ownerId)).subscribe({
-      next: setOps,
-      error: () => setOps([]),
-    });
-    return () => subscription.unsubscribe();
+    let cancelled = false;
+    let subscription: { unsubscribe: () => void } | undefined;
+    // Loaded after the page is up, so Dexie isn't part of every page's first JavaScript.
+    void Promise.all([import("dexie"), loadQueue()])
+      .then(([{ liveQuery }, { listOps }]) => {
+        if (cancelled) return;
+        subscription = liveQuery(() => listOps(ownerId)).subscribe({
+          next: setOps,
+          error: () => setOps([]),
+        });
+        saveLoadedAssets();
+      })
+      .catch(() => {
+        // The code couldn't load (offline, never saved). Show an empty queue, as when
+        // IndexedDB is unavailable; each save still tries the queue itself.
+        if (!cancelled) setOps([]);
+      });
+    return () => {
+      cancelled = true;
+      subscription?.unsubscribe();
+    };
   }, [ownerId]);
 
   const flush = React.useCallback(
@@ -85,6 +101,7 @@ export function OfflineProvider({
       try {
         do {
           again.current = false;
+          const { flushQueue } = await loadQueue();
           const { synced, stopped } = await flushQueue(ownerId, sendToServer, { force });
           total += synced;
           setSignedOut(stopped === "signed_out");
@@ -135,7 +152,10 @@ export function OfflineProvider({
 
   React.useEffect(() => {
     if (!ownerId || !("serviceWorker" in navigator)) return;
-    const save = () => savePagesForOffline();
+    const save = () => {
+      savePagesForOffline();
+      saveLoadedAssets();
+    };
     save();
     // On the first visit the worker takes over a moment after the page has loaded.
     navigator.serviceWorker.addEventListener("controllerchange", save);
@@ -155,7 +175,7 @@ export function OfflineProvider({
       syncNow: () => flush(true),
       enqueue(command, options) {
         if (!ownerId) throw new Error("No signed-in account to save this for.");
-        return enqueue(ownerId, command, options);
+        return loadQueue().then(({ enqueue }) => enqueue(ownerId, command, options));
       },
       mustFollowQueue(command) {
         const keys = new Set(

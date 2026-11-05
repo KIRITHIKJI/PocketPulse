@@ -10,14 +10,13 @@ import {
   toLocalDate,
 } from "@/domain";
 import {
-  ensureDefaultAccount,
-  getAccounts,
+  getAccountsWithDefault,
   getCategories,
   getCategoryRules,
   getLedger,
   getProfile,
 } from "@/lib/data/queries";
-import { requestNow, requireSession } from "@/lib/data/session";
+import { requestNow } from "@/lib/data/session";
 import { type PickerNode, pickerTree } from "@/lib/picker-tree";
 
 /** Everything an entry screen needs on the client: wallets, categories and suggestion inputs. */
@@ -39,12 +38,10 @@ export interface EntryKit {
 const HISTORY_FOR_SUGGESTIONS = 400;
 
 export async function loadEntryKit(): Promise<EntryKit> {
-  const session = await requireSession();
   // Every entry form preselects the default wallet, created ("Cash") if the user has none.
-  const defaultAccount = await ensureDefaultAccount(session);
-  const [profile, accounts, categories, rules, ledger] = await Promise.all([
+  const [profile, { accounts, defaultAccount }, categories, rules, ledger] = await Promise.all([
     getProfile(),
-    getAccounts(),
+    getAccountsWithDefault(),
     getCategories(),
     getCategoryRules(),
     getLedger(),

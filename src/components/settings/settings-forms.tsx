@@ -11,6 +11,7 @@ import {
   SelectField,
   SubmitButton,
 } from "@/components/forms/form-parts";
+import { CheckRemindersAgain } from "@/components/reminders/reminder-sync";
 import { SwitchRow } from "@/components/ui/switch";
 import { SUPPORTED_CURRENCIES, type CurrencyCode } from "@/domain";
 import {
@@ -309,7 +310,12 @@ export function RemindersFields({ prefs }: { prefs: ReminderPreferences }) {
 export function RemindersForm({ prefs, ...step }: { prefs: ReminderPreferences } & StepProps) {
   return (
     <SettingsForm action={saveReminders} {...step}>
-      {() => <RemindersFields prefs={prefs} />}
+      {(state) => (
+        <>
+          <RemindersFields prefs={prefs} />
+          <CheckRemindersAgain savedAt={state.status === "success" ? state.savedAt : undefined} />
+        </>
+      )}
     </SettingsForm>
   );
 }

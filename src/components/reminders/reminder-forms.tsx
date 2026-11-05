@@ -9,7 +9,10 @@ import {
   SelectField,
   SubmitButton,
 } from "@/components/forms/form-parts";
-import { BROWSER_NOTIFICATIONS_KEY } from "@/components/reminders/reminder-sync";
+import {
+  BROWSER_NOTIFICATIONS_KEY,
+  CheckRemindersAgain,
+} from "@/components/reminders/reminder-sync";
 import { Button } from "@/components/ui/button";
 import type { ReminderSettings } from "@/domain";
 import { saveBrowserNotifications, saveReminderSchedule } from "@/lib/actions/reminders";
@@ -24,6 +27,7 @@ export function ReminderScheduleForm({ prefs }: { prefs: ReminderSettings }) {
   return (
     <ActionForm action={formAction} className="flex flex-col gap-4">
       <FormMessage state={state} />
+      <CheckRemindersAgain savedAt={state.status === "success" ? state.savedAt : undefined} />
       <div className="grid gap-4 sm:grid-cols-2">
         <Field
           id="schedule-time"
