@@ -31,6 +31,9 @@ supabase/.branches/
 Thumbs.db
 *.pem
 npm-debug.log*
+*.log
+logs/
+screenshots/
 .vercel
 
 # Local test database (npm run test:db) and Supabase CLI state

@@ -206,7 +206,7 @@ Every screen has a route; feature screens show a real empty state until their st
   - **Unassigned:** drafts with no category now say "Unassigned". Saved entries still go to the Uncategorized queue, whose name is unchanged.
   - **Save all:** the button reads "Save all 2 entries · ₹55". One entry reads "Save 1 entry".
   - **Garbage:** "..." made an empty draft; it now counts as no entry.
-- **"Never upload audio" vs the Web Speech API (open):** the Phase 6 prompt asks for both. PocketPulse never receives or uploads audio, but Chrome's implementation sends it to Google to recognise it. The page says so before listening starts, which meets the spec's "do not silently upload". Meeting the prompt's wording strictly would need on-device recognition only, or dropping voice in browsers that lack it. Your call; nothing is changed yet.
+- **"Never upload audio" vs the Web Speech API (settled):** the Phase 6 prompt asks for both. PocketPulse never receives or uploads audio, but Chrome's implementation sends it to Google to recognise it. The page says so before listening starts, which meets the spec's "do not silently upload". Decided by you: voice stays as it is.
 
 ### Phase 7 decisions
 
@@ -324,6 +324,13 @@ Hosted project `qzmqvytrekenzciasvph`. Live checks use the publishable key only,
 | Sign-up with "Confirm email" ON (email → `/auth/confirm`) | ⏳ not tested live (built-in email quota was exhausted) | ✅ code path + invalid-link e2e |
 | Forgot / reset password email | ⏳ **pending**: the dashboard test user's address belongs to someone else, so no reset email was sent | ✅ forms, validation, no-session page, invalid link |
 | Transfers, refunds, goal money, batch rollback | — (no UI yet) | ✅ PG 18 |
+
+## Project cleanup (2026-11-05)
+
+- **Removed:** `src/lib/supabase/client.ts` (browser Supabase client; nothing imported it, since all data goes through the server). Untracked output also removed: `test-results/`, `.pgtest/` and `.pgtest.log` (`npm run test:db` setup in the README recreates them; the `.pgtest` server was not running).
+- **Kept:** `scripts/make-icons.mjs`, which redraws the app icons if the mark changes. No files were moved.
+- **`.gitignore`:** now also ignores `*.log`, `logs/` and `screenshots/` (`test-results/` and `playwright-report/` were already ignored).
+- **Checks:** `npm run lint` ✅, `npm run typecheck` ✅, `npm test` ✅ 26 files / 786 tests (two clean runs; the first run after the deletions ended early with 12 files / 228 tests passing and 14 unexplained errors, which did not happen again), `npm run build` ✅. DB and e2e suites not run in this cleanup.
 
 ## Checks run (Phase 10, 2026-11-01)
 
@@ -566,7 +573,7 @@ Note: because of the `(app)` loading boundary, Next.js streams `notFound()` page
 
 - ✅ Migration 0700 is applied (confirmed by `migration list`); Phase 4 e2e passes live.
 - ⏳ **`npm audit` reports a moderate `minimatch` advisory.** See Phase 8 checks. Re-check when `eslint` or `typescript-eslint` ship a fix. Don't run `npm audit fix --force`: it would install eslint 4.
-- ⏳ **Decide on voice and "never upload audio"** (see Phase 6a decisions).
+- ✅ Voice and "never upload audio" is settled: voice stays as it is (see Phase 6a decisions).
 - ⏳ **What Chrome writes for "kal", "aaj" and "parso" is still unknown.** The Phase 10 message left the three results blank. Likely spellings are handled; any other is a one-line addition to `HEARD_DAY_WORDS` plus a test.
 - ⏳ **Not deployed.** Real-phone install, offline on a phone, Safari/iOS and speech on a phone are all unverified until it is.
 - ✅ Cross-user 404 e2e runs and passes with your second account.
@@ -588,4 +595,3 @@ All 10 build phases are done. What's left is yours, because it needs accounts or
 2. Install on your phone and try Journey G for real: airplane mode, add, reopen, reconnect.
 3. Tell me what Chrome writes for "kal", "aaj" and "parso".
 4. Set up custom SMTP in Supabase before anyone else signs up.
-5. Decide on voice and "never upload audio".
