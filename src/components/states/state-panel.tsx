@@ -5,8 +5,16 @@ import { cn } from "@/lib/utils";
 
 const VARIANTS = {
   empty: { icon: Sparkles, tone: "bg-primary-soft text-primary", role: undefined },
-  error: { icon: CircleAlert, tone: "bg-destructive/15 text-destructive", role: "alert" },
-  offline: { icon: WifiOff, tone: "bg-warning/15 text-warning", role: "status" },
+  error: {
+    icon: CircleAlert,
+    tone: "bg-feedback-error/15 text-feedback-error",
+    role: "alert",
+  },
+  offline: {
+    icon: WifiOff,
+    tone: "bg-feedback-offline/15 text-feedback-offline",
+    role: "status",
+  },
   denied: { icon: Lock, tone: "bg-muted text-muted-foreground", role: "alert" },
 } as const satisfies Record<string, { icon: LucideIcon; tone: string; role?: string }>;
 
@@ -14,17 +22,24 @@ type StateVariant = keyof typeof VARIANTS;
 
 type StatePanelProps = {
   variant?: StateVariant;
+  /** `page`: the whole view is empty (centred). `section`: one part of a view, inside its card. */
+  size?: "page" | "section";
   title: string;
+  /** What will appear here, and how to make it appear. One or two short lines. */
   description?: React.ReactNode;
   icon?: LucideIcon;
-  /** Buttons or links; each must perform a real action. */
+  /** Buttons or links, inside the panel; each must perform a real action. */
   actions?: React.ReactNode;
   className?: string;
 };
 
-/** Shared empty / error / offline / permission-denied presentation. */
+/**
+ * The shared empty / error / offline / permission-denied presentation (doc/DESIGN_PLAN.md §3).
+ * A new user's empty state says what will appear here and offers the action that makes it appear.
+ */
 export function StatePanel({
   variant = "empty",
+  size = "page",
   title,
   description,
   icon,
@@ -33,26 +48,41 @@ export function StatePanel({
 }: StatePanelProps) {
   const config = VARIANTS[variant];
   const Icon = icon ?? config.icon;
+  const page = size === "page";
   return (
     <section
       role={config.role}
       data-state={variant}
+      data-size={size}
       className={cn(
-        "flex flex-col items-center gap-3 rounded-2xl border border-dashed bg-card/50 px-6 py-12 text-center",
+        "flex gap-3",
+        page
+          ? "flex-col items-center rounded-2xl border bg-card/60 px-6 py-12 text-center"
+          : "items-start text-left",
         className,
       )}
     >
       <span
-        className={cn("flex size-12 items-center justify-center rounded-2xl", config.tone)}
+        className={cn(
+          "flex shrink-0 items-center justify-center rounded-xl",
+          page ? "size-12" : "size-10",
+          config.tone,
+        )}
         aria-hidden="true"
       >
-        <Icon className="size-6" />
+        <Icon className={page ? "size-6" : "size-5"} />
       </span>
-      <h2 className="text-base font-semibold">{title}</h2>
-      {description ? (
-        <div className="max-w-md text-sm text-balance text-muted-foreground">{description}</div>
-      ) : null}
-      {actions ? <div className="mt-2 flex flex-wrap justify-center gap-2">{actions}</div> : null}
+      <div className={cn("flex min-w-0 flex-col gap-1", page && "items-center")}>
+        <h2 className="type-heading">{title}</h2>
+        {description ? (
+          <div className={cn("type-body text-muted-foreground", page && "max-w-md text-balance")}>
+            {description}
+          </div>
+        ) : null}
+        {actions ? (
+          <div className={cn("mt-2 flex flex-wrap gap-2", page && "justify-center")}>{actions}</div>
+        ) : null}
+      </div>
     </section>
   );
 }
