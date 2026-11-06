@@ -49,6 +49,52 @@ export function money(paise: number, kit: EntryKit) {
   return formatMoney(paise, { currency: kit.currency });
 }
 
+/**
+ * The expense a tile, shortcut or the sheet records. The ids come from the caller and stay fixed
+ * for one save, so a double tap or a retry replays the same entry instead of adding another.
+ */
+export function quickEntryCommand(
+  entry: QuickEntry,
+  kit: EntryKit,
+  values: {
+    ids: { id: string; opId: string };
+    amountPaise: number;
+    occurredAt: string;
+    accountId?: string;
+    category?: CategoryChoice;
+    description?: string | null;
+  },
+): LedgerCommand {
+  const active = kit.accounts.some((a) => a.id === entry.accountId && !a.archivedAt);
+  const category = values.category ?? {
+    categoryId: entry.categoryId!,
+    subcategoryId: entry.subcategoryId,
+  };
+  return {
+    kind: "create",
+    opId: values.ids.opId,
+    draft: {
+      id: values.ids.id,
+      type: "expense",
+      amountPaise: values.amountPaise,
+      currency: kit.currency,
+      occurredAt: values.occurredAt,
+      accountId: values.accountId ?? (active ? entry.accountId! : kit.defaultAccountId),
+      fromAccountId: null,
+      toAccountId: null,
+      refundOfId: null,
+      categoryId: category.categoryId,
+      subcategoryId: category.subcategoryId,
+      description: values.description !== undefined ? values.description : entry.description,
+      merchant: entry.merchant,
+      note: null,
+      tags: [],
+      source: "quick_add",
+      presetId: entry.groupPresetId,
+    },
+  };
+}
+
 /** The ways in for several entries at once, or for anything a tile doesn't cover. */
 
 export function QuickAddForm({
@@ -121,29 +167,14 @@ export function QuickAddForm({
     }
     firstSubmitAt.current ??= new Date().toISOString();
     const text = entry.askDetails ? description.trim() || null : entry.description;
-    const command: LedgerCommand = {
-      kind: "create",
-      opId: ids.opId,
-      draft: {
-        id: ids.id,
-        type: "expense",
-        amountPaise: parsed.paise,
-        currency: kit.currency,
-        occurredAt: firstSubmitAt.current,
-        accountId,
-        fromAccountId: null,
-        toAccountId: null,
-        refundOfId: null,
-        categoryId: category.categoryId,
-        subcategoryId: category.subcategoryId,
-        description: text,
-        merchant: entry.merchant,
-        note: null,
-        tags: [],
-        source: "quick_add",
-        presetId: entry.groupPresetId,
-      },
-    };
+    const command = quickEntryCommand(entry, kit, {
+      ids,
+      amountPaise: parsed.paise,
+      occurredAt: firstSubmitAt.current,
+      accountId,
+      category,
+      description: text,
+    });
     setPending(true);
     const usual =
       remember && canRemember && entry.presetId
@@ -259,7 +290,8 @@ export function QuickAddForm({
             onChange={(e) => setRemember(e.target.checked)}
             className="size-4 accent-[var(--primary)]"
           />
-          Make {money(amountPaise!, kit)} the usual amount for {entry.title}
+          Save {money(amountPaise!, kit)} as the usual amount for {entry.title}. Next time, one tap
+          saves it.
         </label>
       )}
 

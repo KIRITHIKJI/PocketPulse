@@ -4,9 +4,11 @@
  *
  * Every award has a stable `sourceKey` that says what earned it ("logged_day:2026-11-01"), and the
  * database keeps one row per key. So awards are idempotent by construction: working them out again
- * changes nothing, adding and deleting entries can't earn a day twice, and editing or deleting an
- * entry later takes nothing away. A day counts by when the entry was logged (`createdAt`), not the
- * date on it, so backdating entries can't fill in a streak.
+ * changes nothing, and adding, undoing and adding an entry again can't earn a day twice.
+ * Awards that come from entries follow the entries that exist now: undoing or deleting the entry
+ * behind one revokes it, and earning it again restores the same row (see `lib/rewards/engine.ts`).
+ * Editing an entry's amount or date changes nothing. A day counts by when the entry was logged
+ * (`createdAt`), not the date on it, so backdating entries can't fill in a streak.
  */
 import { netSpending, spendingEntries } from "./aggregation";
 import { isActive, occurredAtMs } from "./ledger";
@@ -81,8 +83,6 @@ interface RewardFacts {
   /** Distinct insights whose entries were opened. */
   insightsExplored: number;
   optedOutQuests: readonly string[];
-  /** Days already awarded. They stay logged even if the entries behind them are deleted. */
-  awardedDays: readonly LocalDate[];
 }
 
 export interface RewardInput extends RewardFacts {
@@ -158,6 +158,19 @@ export function calculateStreaks(
     longestWeekly: weekly.longest,
     lastLoggedWeek: lastWeek,
   };
+}
+
+/** A plain word for a range of levels. No letter grades, no fantasy titles. */
+const RANKS: readonly { from: number; name: string }[] = [
+  { from: 1, name: "Starter" },
+  { from: 3, name: "Tracker" },
+  { from: 5, name: "Planner" },
+  { from: 8, name: "Strategist" },
+  { from: 12, name: "Steward" },
+];
+
+export function rankFor(level: number): string {
+  return RANKS.findLast((rank) => level >= rank.from)?.name ?? RANKS[0]!.name;
 }
 
 interface Level {
@@ -239,7 +252,7 @@ export function calculateRewards(input: RewardInput): RewardResult {
   const events: RewardEvent[] = [];
   const add = (kind: string, xp: number, sourceKey: string) => events.push({ kind, xp, sourceKey });
 
-  const days = [...new Set([...input.awardedDays, ...loggedDays(ledger, tz)])].sort();
+  const days = loggedDays(ledger, tz);
   for (const day of days) add("logged_day", XP.loggedDay, `logged_day:${day}`);
 
   const weeks = expensesByWeek(input);
@@ -304,7 +317,7 @@ export function calculateRewards(input: RewardInput): RewardResult {
   return { events, achievementCodes, quests, loggedDays: days };
 }
 
-/** Sums non-revoked XP. Stored events, not current entries: rewards don't shrink with an edit. */
+/** Sums non-revoked XP from stored events. */
 export function totalXp(events: readonly { xp: number; revokedAt?: string | null }[]): number {
   return events.reduce((sum, e) => (e.revokedAt ? sum : sum + e.xp), 0);
 }

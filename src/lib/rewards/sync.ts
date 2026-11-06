@@ -77,6 +77,31 @@ function supabaseStore(session: Session): RewardStore {
       );
       if (error) throw new DataLoadError("your rewards", error.code);
     },
+    async revokeEvents(keys) {
+      const { error } = await admin
+        .from("xp_events")
+        .update({ revoked_at: new Date().toISOString() })
+        .eq("owner_id", userId)
+        .in("source_key", keys)
+        .is("revoked_at", null);
+      if (error) throw new DataLoadError("your rewards", error.code);
+    },
+    async restoreEvents(keys) {
+      const { error } = await admin
+        .from("xp_events")
+        .update({ revoked_at: null })
+        .eq("owner_id", userId)
+        .in("source_key", keys);
+      if (error) throw new DataLoadError("your rewards", error.code);
+    },
+    async removeAchievements(codes) {
+      const { error } = await admin
+        .from("user_achievements")
+        .delete()
+        .eq("owner_id", userId)
+        .in("achievement_code", codes);
+      if (error) throw new DataLoadError("your rewards", error.code);
+    },
     async addAchievements(codes) {
       const { error } = await admin.from("user_achievements").upsert(
         codes.map((code) => ({ owner_id: userId, achievement_code: code })),
@@ -155,8 +180,9 @@ export async function syncRewards(): Promise<SyncOutcome> {
 
 /**
  * What the rewards page shows: the stored rewards plus anything newly earned, worked out the same
- * way as a sync but without saving, so opening the page writes nothing. When `earnedSomething`
- * is true the page asks the server to save it afterwards (`saveEarnedRewards`).
+ * way as a sync but without saving, so opening the page writes nothing. When `changed`
+ * is true (something earned, or something no longer earned) the page asks the server to save it
+ * afterwards (`saveEarnedRewards`).
  */
 export async function previewRewards(): Promise<RewardPlan> {
   const session = await requireSession();

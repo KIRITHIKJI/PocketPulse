@@ -86,7 +86,10 @@ export const NAV_GROUPS: readonly NavGroup[] = [
   },
 ];
 
-/** The five primary mobile tabs (spec §5). */
+/**
+ * The mobile bottom bar (doc/DESIGN_PLAN.md §5): Home · Activity · Add · Insights · Plan · You.
+ * These are the four link tabs; Add is docked in the middle and You opens the `YOU_ITEMS` sheet.
+ */
 export const MOBILE_TABS: readonly NavItem[] = [
   { href: "/home", label: "Home", icon: House },
   {
@@ -102,7 +105,14 @@ export const MOBILE_TABS: readonly NavItem[] = [
     icon: Target,
     also: ["/goals", "/safe-to-spend", "/survival"],
   },
-  { href: "/reports", label: "Reports", icon: FileText },
+];
+
+/** The "You" tab's sheet: progress first, then the secondary screens. Reports is two taps away. */
+export const YOU_ITEMS: readonly NavItem[] = [
+  { href: "/rewards", label: "Player status", icon: Trophy },
+  { href: "/reports", label: "Parent report", icon: FileText },
+  { href: "/reminders", label: "Reminders", icon: Bell },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 /** Section tabs shown at the top of related screens so siblings are one tap away on mobile. */

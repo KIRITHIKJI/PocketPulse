@@ -61,7 +61,14 @@ async function deleteEntries(page: Page) {
   }
 }
 
-test("logging earns a stable reward that editing and deleting can't change", async ({ page }) => {
+test("rewards follow the entries: deleting one takes back what it earned, re-adding never earns twice", async ({
+  page,
+}) => {
+  await deleteEntries(page);
+  await page.goto("/rewards");
+  await expect(main(page).getByTestId("reward-xp")).toBeVisible();
+  const without = await xpOf(page);
+
   await logEntry(page, `${WORD} 50`);
   await page.goto("/rewards");
   await expect(main(page).getByRole("heading", { name: "Quests" })).toBeVisible();
@@ -75,16 +82,20 @@ test("logging earns a stable reward that editing and deleting can't change", asy
   await expect(main(page).getByTestId("reward-xp")).toBeVisible();
   expect(await xpOf(page)).toBe(xp);
 
-  // Deleting and re-adding today's entry can't earn today again.
-  await deleteEntries(page);
-  await logEntry(page, `${WORD} 50`);
-  await page.goto("/rewards");
-  await expect(main(page).getByTestId("reward-xp")).toBeVisible();
-  expect(await xpOf(page)).toBe(xp);
-  await deleteEntries(page);
-  await page.goto("/rewards");
-  await expect(main(page).getByTestId("reward-xp")).toBeVisible();
-  expect(await xpOf(page)).toBe(xp);
+  // Deleting the entry puts XP back where it was without it; re-adding earns it once more, not
+  // twice; deleting again goes back again.
+  for (let round = 0; round < 2; round += 1) {
+    await deleteEntries(page);
+    await page.goto("/rewards");
+    await expect(main(page).getByTestId("reward-xp")).toBeVisible();
+    expect(await xpOf(page)).toBe(without);
+    if (round === 0) {
+      await logEntry(page, `${WORD} 50`);
+      await page.goto("/rewards");
+      await expect(main(page).getByTestId("reward-xp")).toBeVisible();
+      expect(await xpOf(page)).toBe(xp);
+    }
+  }
   await expect(main(page)).not.toContainText(/broke|lost your|don.t lose/i);
 });
 

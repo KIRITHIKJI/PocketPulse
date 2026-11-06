@@ -3,13 +3,12 @@ import { Bell, Plus } from "lucide-react";
 
 import { Logo } from "@/components/brand/logo";
 import { AccountMenu } from "@/components/layout/account-menu";
-import { MobileMoreSheet } from "@/components/layout/mobile-more-sheet";
 import { ThemeSwitcher } from "@/components/preferences/theme-switcher";
 import { Button } from "@/components/ui/button";
 import { getUnreadCount } from "@/lib/data/queries";
 import { optionalSession } from "@/lib/data/session";
 
-/** Top bar: brand + section menu on mobile; quick actions on desktop (sidebar holds navigation). */
+/** Top bar: brand on mobile (the bottom bar holds navigation); quick actions on desktop. */
 export async function AppHeader() {
   const [user, unread] = await Promise.all([optionalSession(), getUnreadCount()]);
   return (
@@ -48,9 +47,6 @@ export async function AppHeader() {
         )}
         <ThemeSwitcher />
         {user && <AccountMenu email={user.email} />}
-        <div className="lg:hidden">
-          <MobileMoreSheet />
-        </div>
       </div>
     </header>
   );

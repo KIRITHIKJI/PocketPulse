@@ -64,7 +64,7 @@ export default async function RewardsPage() {
     <>
       {header}
       <AchievementCelebration unlocked={fresh} />
-      {outcome.earnedSomething && <SaveEarnedRewards />}
+      {outcome.changed && <SaveEarnedRewards />}
 
       {xp === 0 && (
         <StatePanel
@@ -139,7 +139,7 @@ export default async function RewardsPage() {
                       <Badge variant="outline">{quest.xp} XP</Badge>
                     )}
                   </div>
-                  <p className="mt-auto flex flex-wrap items-center gap-1 border-t pt-2 text-xs text-muted-foreground">
+                  <div className="mt-auto flex flex-wrap items-center gap-1 border-t pt-2 text-xs text-muted-foreground">
                     <span className="mr-auto">{CADENCE[quest.cadence]}</span>
                     {quest.code === "weekly_review" && !reviewed && (
                       <InlineAction
@@ -159,7 +159,7 @@ export default async function RewardsPage() {
                     >
                       Skip
                     </InlineAction>
-                  </p>
+                  </div>
                 </Card>
               </li>
             );

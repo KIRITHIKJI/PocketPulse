@@ -71,7 +71,7 @@ Every screen is ranked by how much it serves this job. Logging and "where did it
 
 | Element | What it rewards | How it serves the job | Guard rail |
 | --- | --- | --- | --- |
-| XP | Logging, categorising, reviewing, setting aside on purpose | Makes the boring habit feel noticed | Never for spending less or saving more. Never taken away. Server-awarded only |
+| XP | Logging, categorising, reviewing, setting aside on purpose | Makes the boring habit feel noticed | Never for spending less or saving more. Server-awarded only. Follows the entries that exist: undoing or deleting the entry behind an award revokes it, and earning it again restores the same row (Design 2) |
 | Level and rank | Total XP over time | A long-term sense of consistency | Rank names are plain words, no letter grades, no fantasy titles |
 | Streak (days, weeks) | Days and weeks with something logged | Shows the habit, the North Star in disguise | Only a count. No "lost", "broken" or "at risk" wording, no reminders about it |
 | Missions | Daily: log today, look at today. Weekly: clear Uncategorized, weekly review, move money to a goal | Each mission is a step of the job: record, then understand | Optional, skippable, no penalty. Never "buy" or "save X" |
@@ -214,8 +214,8 @@ Empty state = what a brand-new user (no entries, no budgets, no goals) sees.
 ### Home (`/home`)
 
 - **Hierarchy:** 1 balance · 2 log · 3 today and this month · 4 progress · 5 plan · 6 recent.
-- **Desktop:** two columns, 8 : 4. Left: a `hero` surface with the tracked balance (`display`), and under it two `stat` figures, Spent today and Spent this month, side by side; then Quick Add, a full-width tile grid of 6 per row (no horizontal scroll), with Type it and Say it as small buttons in its header. Then Recent (5 rows). Right rail: PlayerChip (level, rank, XP bar, streak), Safe to Spend (estimate colour), the monthly budget with Progress, the top goal with Progress, and one featured mission.
-- **Mobile:** a compact hero (balance, then today and month on one line, about 160 px tall) → Quick Add tiles, 3 per row, the first two rows visible without scrolling → a PlayerChip strip → Safe to Spend and budget as one combined card → Recent → goal. The Add button is docked in the bottom bar, so nothing floats over the tiles.
+- **Desktop:** two columns, 8 : 4. Left: a `hero` surface with the tracked balance (`display`), and under it two `stat` figures, Spent today and Spent this month, side by side; then Quick Add, a full-width tile grid of 6 per row (no horizontal scroll), with Type it and Say it as small buttons in its header. Then Recent (5 rows). Right rail: PlayerChip (level, rank, XP bar, streak), the monthly budget with Progress, the top goals with Progress, and a Safe to Spend link labelled as an estimate. (Design 2: Home links to Safe to Spend instead of computing it, because its reads would make Home slower; the featured mission arrives with Missions in Design 3.)
+- **Mobile:** a compact hero (balance, then today and month on one line, about 160 px tall) → Quick Add tiles, 3 per row, the first two rows visible without scrolling → the PlayerChip → budget and goals → the Safe to Spend link → Recent. The Add button is docked in the bottom bar, so nothing floats over the tiles.
 - **Empty:** the hero says "₹0 · Add your starting balance" with that action. Tiles show "Set amount". The right rail (or lower cards) shows one section StatePanel: "Set a monthly budget" and "Add a goal" as two actions in one card, not two empty cards. The PlayerChip shows Level 1 and "Log your first expense to start".
 
 ### Quick Add (`/add`)

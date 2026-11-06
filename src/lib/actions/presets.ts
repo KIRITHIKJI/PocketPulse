@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 import { dbErrorMessage } from "@/lib/data/errors";
 import { requireSession } from "@/lib/data/session";
@@ -69,4 +70,27 @@ export async function setPresetArchived(_prev: FormState, formData: FormData): P
   if (error) return { status: "error", message: dbErrorMessage(error) };
   if (!data?.length) return { status: "error", message: "That tile doesn’t exist any more." };
   return done(archive ? `Hid the ${data[0]!.label} tile.` : `Restored the ${data[0]!.label} tile.`);
+}
+
+const orderSchema = z.array(z.uuid()).min(1).max(100);
+
+/**
+ * Saves the order of the visible tiles: each id gets its position. Hidden tiles keep theirs.
+ * RLS limits the updates to the user's own tiles, so a foreign id changes nothing.
+ */
+export async function reorderPresets(ids: unknown): Promise<{ ok: boolean; message?: string }> {
+  const parsed = orderSchema.safeParse(ids);
+  if (!parsed.success || new Set(parsed.data).size !== parsed.data.length) {
+    return { ok: false, message: "That order isn’t valid. Reload and try again." };
+  }
+  const { supabase } = await requireSession();
+  const results = await Promise.all(
+    parsed.data.map((id, index) =>
+      supabase.from("quick_add_presets").update({ sort_order: index }).eq("id", id),
+    ),
+  );
+  const error = results.find((r) => r.error)?.error;
+  if (error) return { ok: false, message: dbErrorMessage(error) };
+  revalidatePath("/", "layout");
+  return { ok: true };
 }

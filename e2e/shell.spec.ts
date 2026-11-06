@@ -73,7 +73,7 @@ test("unknown transaction ids get a real 404 with the in-app not-found state", a
   }
 });
 
-test("navigation: sidebar on desktop, bottom tabs + section sheet on mobile", async ({
+test("navigation: sidebar on desktop, bottom tabs + You sheet on mobile", async ({
   page,
   isMobile,
 }) => {
@@ -88,7 +88,7 @@ test("navigation: sidebar on desktop, bottom tabs + section sheet on mobile", as
     await expect(page).toHaveURL(/\/budgets$/);
     await expect(tabs.getByRole("link", { name: "Plan" })).toHaveAttribute("aria-current", "page");
 
-    await page.getByRole("button", { name: "Open all sections" }).click();
+    await tabs.getByRole("button", { name: "You" }).click();
     await page.getByRole("dialog").getByRole("link", { name: "Money leaks" }).click();
     await expect(page).toHaveURL(/\/insights\/leaks$/);
     await expect(page.getByRole("dialog")).toBeHidden();

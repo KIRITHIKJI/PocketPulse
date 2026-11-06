@@ -128,6 +128,71 @@ test("Journey A: quick-add tea updates balance, feed and today's spending; Undo 
   expect(errors).toEqual([]);
 });
 
+/** Sets (or, with null, clears) the Tea tile's usual amount through the tile editor. */
+async function setTeaUsualAmount(page: Page, amount: string | null) {
+  await page.goto("/add?tab=edit");
+  await page.getByRole("button", { name: "Edit the Tea tile" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Usual amount").fill(amount ?? "");
+  await dialog.getByRole("button", { name: "Save tile" }).click();
+  await expect(page.getByTestId("tile-Tea")).toContainText(
+    amount === null ? "No usual amount" : rupees(Math.round(Number(amount) * 100)),
+  );
+}
+
+test("Design 2: a returning user logs Tea in one tap; a double tap saves once; Undo reverses it", async ({
+  page,
+}) => {
+  const amount = uniqueAmount();
+  await setTeaUsualAmount(page, amount.text);
+  try {
+    await page.goto("/home");
+    const balanceBefore = await paiseOf(page, "home-balance");
+    const todayBefore = await paiseOf(page, "home-spent-today");
+
+    const tea = page.getByRole("list", { name: "Quick-add tiles" }).getByRole("button", {
+      name: new RegExp(`^Tea, ${rupees(amount.paise).replace(".", "\\.")}\\. Saves in one tap`),
+    });
+    // A tap before hydration does nothing. Wait for the page to answer with the harmless pencil
+    // (it opens the sheet), so the double tap below is the only one.
+    await expect(async () => {
+      await page.getByRole("button", { name: "Change the amount for Tea" }).click();
+      await expect(page.getByRole("dialog")).toBeVisible({ timeout: 1_000 });
+    }).toPass();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toBeHidden();
+
+    await tea.dblclick();
+    await expect(toast(page)).toContainText(`Saved ${rupees(amount.paise)} · Tea`);
+    await expect(page.getByRole("dialog")).toBeHidden();
+    await expect(main(page).getByTestId("home-balance")).toHaveAttribute(
+      "data-paise",
+      String(balanceBefore - amount.paise),
+    );
+    await expect(main(page).getByTestId("home-spent-today")).toHaveAttribute(
+      "data-paise",
+      String(todayBefore + amount.paise),
+    );
+
+    // Undo straight away (it lasts 5 seconds for a one-tap save).
+    await toast(page).getByRole("button", { name: "Undo" }).click();
+    await expect(toast(page)).toContainText("Undone");
+    await expect(main(page).getByTestId("home-balance")).toHaveAttribute(
+      "data-paise",
+      String(balanceBefore),
+    );
+    await expect(main(page).getByTestId("home-spent-today")).toHaveAttribute(
+      "data-paise",
+      String(todayBefore),
+    );
+    // The double tap made one entry (the figures moved by one amount), and Undo removed it.
+    await page.goto(historyFor(amount.text));
+    await expectNothingListed(page);
+  } finally {
+    await setTeaUsualAmount(page, null);
+  }
+});
+
 test("a double tap saves once; delete asks first and Undo restores the same entry", async ({
   page,
 }) => {
