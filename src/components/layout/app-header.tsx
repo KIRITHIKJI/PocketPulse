@@ -6,21 +6,12 @@ import { AccountMenu } from "@/components/layout/account-menu";
 import { MobileMoreSheet } from "@/components/layout/mobile-more-sheet";
 import { ThemeSwitcher } from "@/components/preferences/theme-switcher";
 import { Button } from "@/components/ui/button";
-import { type Session, optionalSession } from "@/lib/data/session";
-
-async function unreadCount({ supabase }: Session) {
-  const { count } = await supabase
-    .from("notifications")
-    .select("id", { count: "exact", head: true })
-    .is("read_at", null)
-    .is("dismissed_at", null);
-  return count ?? 0;
-}
+import { getUnreadCount } from "@/lib/data/queries";
+import { optionalSession } from "@/lib/data/session";
 
 /** Top bar: brand + section menu on mobile; quick actions on desktop (sidebar holds navigation). */
 export async function AppHeader() {
-  const user = await optionalSession();
-  const unread = user ? await unreadCount(user) : 0;
+  const [user, unread] = await Promise.all([optionalSession(), getUnreadCount()]);
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-2 border-b bg-background/75 px-4 pt-[env(safe-area-inset-top)] backdrop-blur-xl sm:px-6 lg:px-8">
       <Link href="/home" className="rounded-lg lg:hidden" aria-label="PocketPulse home">

@@ -20,7 +20,7 @@ import {
   type Change,
   transactionsInPeriod,
 } from "./aggregation";
-import { type PeriodSummary, summarizePeriod } from "./balances";
+import { type LedgerBalances, type PeriodSummary, summarizePeriod } from "./balances";
 import { categoryLabel, resolveCategoryChoice } from "./categorize";
 import { csvDocument } from "./csv";
 import { indexById, occurredAtMs, refundCategory } from "./ledger";
@@ -226,6 +226,8 @@ function transactionRows(
 export interface ReportInput {
   accounts: readonly Account[];
   ledger: readonly Transaction[];
+  /** Opening and closing balances from `wallet_balances`; see `summarizePeriod`. */
+  balances?: LedgerBalances;
   categories: readonly Category[];
   period: Period;
   periodLabel: string;
@@ -244,7 +246,7 @@ export function buildReport(input: ReportInput): ParentReport {
   const categoriesById = new Map(input.categories.map((c) => [c.id, c]));
   const accountsById = new Map(accounts.map((a) => [a.id, a]));
 
-  const summary: PeriodSummary = summarizePeriod(accounts, ledger, period, now, tz);
+  const summary: PeriodSummary = summarizePeriod(accounts, ledger, period, now, tz, input.balances);
   const breakdown = categoryBreakdown(ledger, period);
   const income = transactionsInPeriod(ledger, period).filter((tx) => tx.type === "income");
   const incomePaise = sumPaise(income.map((tx) => tx.amountPaise));

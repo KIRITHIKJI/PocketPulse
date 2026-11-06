@@ -11,11 +11,12 @@ import { QuickAdd } from "@/components/transactions/quick-add";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
+  type TimeSettings,
   budgetAlert,
-  consolidatedBalanceAt,
   evaluateBudget,
   formatBasisPoints,
   formatMoney,
+  frequentExpensesSince,
   goalProgress,
   indexById,
   netSpending,
@@ -27,15 +28,20 @@ import {
 } from "@/domain";
 import { loadEntryKit } from "@/lib/data/entry-kit";
 import {
-  getAccounts,
   getActiveGoals,
   getBudgets,
-  getLedger,
+  getGoalLedger,
+  getLatestExpense,
+  getLedgerSince,
   getProfile,
   getQuickAddPresets,
+  getRecentEntries,
   getReminderPreferences,
+  getWalletBalances,
+  withBudgetPeriods,
 } from "@/lib/data/queries";
 import { requestNow } from "@/lib/data/session";
+import { earliestStart, isoInstant, mergeLedger, startForAnyZone } from "@/lib/data/slices";
 import { entryView } from "@/lib/entry-view";
 import { formatDayLabel, formatLocalDate, formatTimeOf } from "@/lib/format";
 import { newestFirst } from "@/lib/history";
@@ -58,25 +64,45 @@ const MONTHS = [
   "December",
 ];
 
+const RECENT = 5;
+
 export default async function HomePage() {
-  // All at once: the loaders share cached reads, so nothing here waits for anything else.
-  const [kit, profile, accounts, ledger, presets, budgets, goals, reminders] = await Promise.all([
+  const now = requestNow();
+  // The rows this screen's periods can need, whatever the profile's zone: today, this week and
+  // this month (budgets), and the "frequent" look-back. Read alongside everything else.
+  const periodsFor = (s: TimeSettings) =>
+    (["today", "this_week", "this_month"] as const).map((kind) => resolvePeriod({ kind }, now, s));
+  const since = earliestStart(startForAnyZone(periodsFor), frequentExpensesSince(now));
+  const [
+    kit,
+    profile,
+    window,
+    latestExpense,
+    goalLedger,
+    balances,
+    presets,
+    budgets,
+    goals,
+    reminders,
+  ] = await Promise.all([
     loadEntryKit(),
     getProfile(),
-    getAccounts(),
-    getLedger(),
+    getLedgerSince(isoInstant(since!)),
+    getLatestExpense(),
+    getGoalLedger(),
+    getWalletBalances(isoInstant(now)),
     getQuickAddPresets(),
     getBudgets(),
     getActiveGoals(),
     getReminderPreferences(),
   ]);
+  const ledger = await withBudgetPeriods(window, since!, budgets, now);
   const tz = profile.timeZone;
-  const now = requestNow();
   const settings = { timeZone: tz, weekStartsOn: profile.weekStartsOn };
   const money = (paise: number) => formatMoney(paise, { currency: profile.currency });
 
   // Every figure below comes from the ledger through the domain layer; nothing is stored.
-  const balance = consolidatedBalanceAt(accounts, ledger, now, tz);
+  const balance = balances.closing;
   const today = resolvePeriod({ kind: "today" }, now, settings);
   const month = resolvePeriod({ kind: "this_month" }, now, settings);
   const spentToday = netSpending(ledger, today);
@@ -88,13 +114,16 @@ export default async function HomePage() {
   );
   const monthName = MONTHS[Number(month.startDate!.slice(5, 7)) - 1];
 
+  // The newest entries are in the window, unless it holds fewer than five: only then read them.
+  const inWindow = window.filter((tx) => occurredAtMs(tx) >= since!).length;
+  const seen = inWindow >= RECENT ? ledger : mergeLedger(ledger, await getRecentEntries(RECENT));
   const ctx = {
     categoriesById: new Map(kit.categories.map((c) => [c.id, c])),
-    accountsById: new Map(accounts.map((a) => [a.id, a])),
-    ledgerById: indexById(ledger),
+    accountsById: new Map(kit.accounts.map((a) => [a.id, a])),
+    ledgerById: indexById(seen),
     currency: profile.currency,
   };
-  const recent = [...ledger].sort(newestFirst).slice(0, 5);
+  const recent = [...seen].sort(newestFirst).slice(0, RECENT);
 
   const monthly = budgets.filter((b) => b.period === "monthly");
   const evaluate = (budget: (typeof budgets)[number]) =>
@@ -115,7 +144,7 @@ export default async function HomePage() {
     kit.categories.find((c) => c.id === id)?.name ?? "Category";
   const goalCards = goals.slice(0, 2).map((goal) => ({
     goal,
-    progress: goalProgress(goal, ledger, kit.today, "weekly", money),
+    progress: goalProgress(goal, goalLedger, kit.today, "weekly", money),
   }));
 
   return (
@@ -201,7 +230,7 @@ export default async function HomePage() {
         <QuickAdd
           kit={kit}
           tiles={tileEntries(presets, kit.categories)}
-          shortcuts={shortcutEntries(ledger, kit.categories, now)}
+          shortcuts={shortcutEntries(mergeLedger(ledger, latestExpense), kit.categories, now)}
           compact
         />
       </section>

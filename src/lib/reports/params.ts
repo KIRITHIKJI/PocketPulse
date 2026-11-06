@@ -4,7 +4,9 @@
  */
 import {
   type Category,
+  type LedgerBalances,
   type ParentReport,
+  type Period,
   type ReportOptions,
   type TimeSettings,
   buildReport,
@@ -63,15 +65,23 @@ function periodLabel(selection: InsightSelection) {
     : `${formatLocalDate(period.startDate)} to ${formatLocalDate(period.endDate)}`;
 }
 
+/** The periods a report reads: the chosen one, and the one it's compared with. */
+export function reportPeriods(params: Params, now: number, settings: TimeSettings): Period[] {
+  const { period } = parseInsightSelection(params, now, settings);
+  const previous = comparisonWindows(period, toLocalDate(now, settings.timeZone), 1)?.previous[0];
+  return previous ? [period, previous] : [period];
+}
+
 export function reportFor(input: {
   params: Params;
   profile: Profile;
   accounts: readonly AccountRecord[];
   ledger: Parameters<typeof buildReport>[0]["ledger"];
+  balances?: LedgerBalances;
   categories: readonly Category[];
   now: number;
 }): { report: ParentReport; selection: InsightSelection; options: ReportOptions } {
-  const { params, profile, accounts, ledger, categories, now } = input;
+  const { params, profile, accounts, ledger, balances, categories, now } = input;
   const settings: TimeSettings = {
     timeZone: profile.timeZone,
     weekStartsOn: profile.weekStartsOn,
@@ -84,6 +94,7 @@ export function reportFor(input: {
   const report = buildReport({
     accounts,
     ledger,
+    balances,
     categories,
     period: selection.period,
     periodLabel: periodLabel(selection),

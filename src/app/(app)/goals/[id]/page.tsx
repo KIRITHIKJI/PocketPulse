@@ -25,7 +25,8 @@ import {
 } from "@/domain";
 import { loadEntryKit } from "@/lib/data/entry-kit";
 import { loadPlan } from "@/lib/data/plan";
-import { getGoal, getGoals, getLedgerVersions } from "@/lib/data/queries";
+import { getGoal, getGoalLedgerVersions, getGoals, getSpendingLedger } from "@/lib/data/queries";
+import { mergeLedger } from "@/lib/data/slices";
 import { formatDateTime, formatLocalDate } from "@/lib/format";
 import { goalReleaseNotes } from "@/lib/plan-view";
 
@@ -38,12 +39,14 @@ const CADENCE_WORD = { weekly: "week", monthly: "month" } as const;
 
 export default async function GoalDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [goal, plan, kit, goals, versions] = await Promise.all([
+  // Purchases too: a release is only left behind when its purchase is gone from them.
+  const [goal, plan, kit, goals, spending, versions] = await Promise.all([
     getGoal(id),
     loadPlan(),
     loadEntryKit(),
     getGoals(),
-    getLedgerVersions(),
+    getSpendingLedger(),
+    getGoalLedgerVersions(),
   ]);
   if (!goal) notFound();
   const { profile, ledger, today, now, money, result } = plan;
@@ -75,7 +78,9 @@ export default async function GoalDetailPage({ params }: { params: Promise<{ id:
       />
 
       <GoalReleaseNotes
-        notes={goalReleaseNotes(ledger, goals, versions).filter((n) => n.goalId === goal.id)}
+        notes={goalReleaseNotes(mergeLedger(ledger, spending), goals, versions).filter(
+          (n) => n.goalId === goal.id,
+        )}
         currency={profile.currency}
       />
 

@@ -25,6 +25,8 @@ import {
 } from "@/lib/actions/recurring";
 import { loadEntryKit } from "@/lib/data/entry-kit";
 import { loadPlan } from "@/lib/data/plan";
+import { getSpendingLedger } from "@/lib/data/queries";
+import { mergeLedger } from "@/lib/data/slices";
 import { formatLocalDate } from "@/lib/format";
 import { dueItems, occurredItems } from "@/lib/plan-view";
 
@@ -38,7 +40,12 @@ function everyText(t: RecurringTemplate) {
 }
 
 export default async function RecurringPage() {
-  const [plan, kit] = await Promise.all([loadPlan(), loadEntryKit()]);
+  // "Looks recurring" reads all purchases; the rest of the screen uses the plan's rows.
+  const [plan, kit, spending] = await Promise.all([
+    loadPlan(),
+    loadEntryKit(),
+    getSpendingLedger(),
+  ]);
   const { commitments, templates, ledger, today, money, result, settings } = plan;
 
   const horizon = result.inputs.horizonEndDate ?? addDays(today, LOOK_AHEAD_DAYS);
@@ -57,7 +64,7 @@ export default async function RecurringPage() {
     (c) => c.recurringTemplateId && c.cancelledAt && c.dueDate >= addDays(today, -31),
   );
   const named = new Set(active.map((t) => t.title.toLowerCase()));
-  const signals = recurringSignals(ledger, today, settings)
+  const signals = recurringSignals(mergeLedger(ledger, spending), today, settings)
     .filter((s) => s.cadence !== "regular" && !named.has(s.label.toLowerCase()))
     .slice(0, 3);
   const empty = due.length === 0 && active.length === 0 && occurred.length === 0;

@@ -122,6 +122,54 @@ export function consolidatedBalanceAt(
   };
 }
 
+/**
+ * Wallet balances at a closing instant and, optionally, an opening one: what the database's
+ * `wallet_balances` function returns, so screens needn't read every ledger row for a balance.
+ */
+export interface LedgerBalances {
+  opening: ConsolidatedBalance | null;
+  closing: ConsolidatedBalance;
+  /** Per wallet id: active entries dated before its opening date (`entriesBeforeOpening`). */
+  entriesBeforeOpening: ReadonlyMap<string, number>;
+}
+
+/**
+ * The rule `wallet_balances` mirrors, computed from the ledger. The database tests require the
+ * two to agree on the same data.
+ */
+export function ledgerBalances(
+  accounts: readonly Account[],
+  ledger: readonly Transaction[],
+  closingMs: Instant,
+  openingMs: Instant | null,
+  timeZone = DEFAULT_TIMEZONE,
+): LedgerBalances {
+  return {
+    opening:
+      openingMs === null ? null : consolidatedBalanceAt(accounts, ledger, openingMs, timeZone),
+    closing: consolidatedBalanceAt(accounts, ledger, closingMs, timeZone),
+    entriesBeforeOpening: new Map(
+      accounts.map((a) => [a.id, entriesBeforeOpening(a, ledger, timeZone).length]),
+    ),
+  };
+}
+
+/**
+ * The instants a period's balances are taken at: its start (null for all time), and its end or
+ * `now`, whichever is first. A period that hasn't started yet closes at its start.
+ */
+export function periodBalanceInstants(
+  period: Period,
+  now: Instant,
+): { openingMs: Instant | null; closingMs: Instant } {
+  const openingMs = period.startMs;
+  const closingMs = Math.max(
+    openingMs ?? Number.NEGATIVE_INFINITY,
+    period.endMs === null ? now : Math.min(period.endMs, now),
+  );
+  return { openingMs, closingMs };
+}
+
 export interface PeriodSummary {
   period: Period;
   opening: { balancePaise: Paise; asOfMs: Instant | null };
@@ -147,6 +195,9 @@ export interface PeriodSummary {
  * Opening/closing balance and money flows for a period, reconstructed from the ledger.
  * `closing` is as of the period end, or `now` when the period hasn't ended (then provisional).
  * For all-time the opening balance is the sum of every account's opening balance.
+ *
+ * With `balances` (from `wallet_balances`, taken at `periodBalanceInstants`), the opening and
+ * closing balances come from there, and `ledger` only needs the period's own rows.
  */
 export function summarizePeriod(
   accounts: readonly Account[],
@@ -154,14 +205,20 @@ export function summarizePeriod(
   period: Period,
   now: Instant,
   timeZone = period.timeZone,
+  balances?: LedgerBalances,
 ): PeriodSummary {
-  const openingMs = period.startMs;
-  // A period that hasn't started yet has no activity: closing collapses onto its start.
-  const closingMs = Math.max(
-    openingMs ?? Number.NEGATIVE_INFINITY,
-    period.endMs === null ? now : Math.min(period.endMs, now),
-  );
+  const { openingMs, closingMs } = periodBalanceInstants(period, now);
   const provisional = period.endMs === null || period.endMs > now;
+  if (
+    balances &&
+    (balances.closing.asOfMs !== closingMs || (balances.opening?.asOfMs ?? null) !== openingMs)
+  ) {
+    throw new Error("Balances were taken at different instants from this period's");
+  }
+  const openingOf = (account: Account) =>
+    balances
+      ? (balances.opening!.accounts.find((b) => b.accountId === account.id)?.balancePaise ?? 0)
+      : (accountBalanceAt(account, ledger, openingMs!, timeZone).balancePaise ?? 0);
 
   let openingBalance = 0;
   let newlyTracked = 0;
@@ -171,10 +228,7 @@ export function summarizePeriod(
     if (openingMs === null) {
       openingBalance = addPaise(openingBalance, account.openingBalancePaise);
     } else if (trackStart <= openingMs) {
-      openingBalance = addPaise(
-        openingBalance,
-        accountBalanceAt(account, ledger, openingMs, timeZone).balancePaise ?? 0,
-      );
+      openingBalance = addPaise(openingBalance, openingOf(account));
     } else {
       newlyTracked = addPaise(newlyTracked, account.openingBalancePaise);
     }
@@ -230,7 +284,9 @@ export function summarizePeriod(
     }
   }
 
-  const closing = consolidatedBalanceAt(accounts, ledger, closingMs, timeZone).balancePaise;
+  const closing = balances
+    ? balances.closing.balancePaise
+    : consolidatedBalanceAt(accounts, ledger, closingMs, timeZone).balancePaise;
   return {
     period,
     opening: { balancePaise: openingBalance, asOfMs: openingMs },

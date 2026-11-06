@@ -7,7 +7,7 @@ import { TransactionForm } from "@/components/transactions/transaction-form";
 import { Card } from "@/components/ui/card";
 import { indexById, toLocalTime } from "@/domain";
 import { loadEntryKit } from "@/lib/data/entry-kit";
-import { getLedger } from "@/lib/data/queries";
+import { getSpendingLedger } from "@/lib/data/queries";
 import { requestNow } from "@/lib/data/session";
 import { refundOptions } from "@/lib/entry-view";
 import { formatDateTime } from "@/lib/format";
@@ -21,7 +21,8 @@ export default async function NewTransactionPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
-  const [kit, ledger] = await Promise.all([loadEntryKit(), getLedger()]);
+  // Refund choices: purchases and the refunds already against them.
+  const [kit, ledger] = await Promise.all([loadEntryKit(), getSpendingLedger()]);
   const ctx = {
     categoriesById: new Map(kit.categories.map((c) => [c.id, c])),
     accountsById: new Map(kit.accounts.map((a) => [a.id, a])),

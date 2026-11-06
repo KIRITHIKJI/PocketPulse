@@ -23,7 +23,8 @@ import {
   periodScope,
   toLocalDate,
 } from "@/domain";
-import { getCategories, getLedger, getProfile } from "@/lib/data/queries";
+import { loadInsightsLedger } from "@/lib/data/insights";
+import { getCategories, getProfile } from "@/lib/data/queries";
 import { requestNow } from "@/lib/data/session";
 import { formatLocalDate } from "@/lib/format";
 import {
@@ -45,12 +46,12 @@ export default async function InsightsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
+  const now = requestNow();
   const [profile, categories, ledger] = await Promise.all([
     getProfile(),
     getCategories(),
-    getLedger(),
+    loadInsightsLedger(params, now),
   ]);
-  const now = requestNow();
   const settings = { timeZone: profile.timeZone, weekStartsOn: profile.weekStartsOn };
   const today = toLocalDate(now, settings.timeZone);
   const money = (paise: number) => formatMoney(paise, { currency: profile.currency });

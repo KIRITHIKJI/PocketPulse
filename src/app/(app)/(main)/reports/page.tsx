@@ -22,12 +22,12 @@ import {
   reportSubcategories,
   reportText,
 } from "@/domain";
-import { getAccounts, getCategories, getLedger, getProfile } from "@/lib/data/queries";
-import { requestNow } from "@/lib/data/session";
+import { hasLedgerEntries } from "@/lib/data/queries";
 import { formatLocalDate } from "@/lib/format";
 import { periodQuery } from "@/lib/insights-view";
 import { mainExpenseCategories } from "@/lib/plan-view";
-import { reportFor, reportQuery } from "@/lib/reports/params";
+import { loadReport } from "@/lib/reports/load";
+import { reportQuery } from "@/lib/reports/params";
 
 export const metadata: Metadata = { title: "Parent report" };
 
@@ -115,26 +115,16 @@ export default async function ReportsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
-  const [profile, accounts, ledger, categories] = await Promise.all([
-    getProfile(),
-    getAccounts(),
-    getLedger(),
-    getCategories(),
+  const [{ profile, categories, report, selection, options }, anyEntries] = await Promise.all([
+    loadReport(params),
+    hasLedgerEntries(),
   ]);
-  const { report, selection, options } = reportFor({
-    params,
-    profile,
-    accounts,
-    ledger,
-    categories,
-    now: requestNow(),
-  });
   const money = (paise: number) => formatMoney(paise, { currency: profile.currency });
   const query = reportQuery(selection, options);
   const exportHref = (format: "pdf" | "csv") =>
     `/reports/export?format=${format}&${query}` as Route;
   const largest = Math.max(1, ...report.categories.map((c) => Math.max(0, c.netPaise)));
-  const empty = ledger.length === 0;
+  const empty = !anyEntries;
   const differences = reportDifferences(report);
   const balanced = Object.values(differences).every((d) => d === 0);
 

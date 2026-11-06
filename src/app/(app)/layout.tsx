@@ -6,7 +6,7 @@ import { OfflineBanner } from "@/components/layout/offline-banner";
 import { OfflineProvider } from "@/components/offline/offline-provider";
 import { ReminderSync } from "@/components/reminders/reminder-sync";
 import { PreferenceSync } from "@/components/providers/preference-sync";
-import { type Profile, getProfile } from "@/lib/data/queries";
+import { type Profile, getProfile, getUnreadCount } from "@/lib/data/queries";
 import { optionalSession } from "@/lib/data/session";
 
 async function loadProfile(): Promise<Profile | null> {
@@ -21,6 +21,8 @@ async function loadProfile(): Promise<Profile | null> {
 }
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
+  // Started now, alongside the profile, so the header's count doesn't wait for it.
+  void getUnreadCount();
   const [profile, session] = await Promise.all([loadProfile(), optionalSession()]);
   const shell = (
     <ToastProvider>

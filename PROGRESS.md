@@ -3,7 +3,7 @@
 Durable project state. Update before a context reset or at the end of each work session.
 Source of truth for requirements: `PROJECT_SPEC.md`. Working rules: `CLAUDE.md`.
 
-_Last updated: 2026-11-05 — Speed fixes 1. Migrations 0100–1000 and 20261105000100 (ledger keyset index) are applied on the hosted project. The app is not deployed yet, so nothing has been tried on a real phone._
+_Last updated: 2026-11-06 — Speed fixes 2. Migrations 0100–1000, 20261105000100 (ledger keyset index) and 20261106000100 (`wallet_balances`) are applied on the hosted project (you ran `db push`; `migration list` confirmed). The app is not deployed yet, so nothing has been tried on a real phone._
 
 ## Build stages
 
@@ -362,7 +362,67 @@ JS per page (uncompressed, as loaded): Home 1.07 → 0.94 MB, Transactions 1.06 
 
 **Checks:** lint ✅, typecheck ✅, format ✅, `npm test` ✅ 28 files / 806 tests (20 new: paging, reminder timing, reward plan), `npm run test:db` ✅ 117 + 11 placeholders (PostgreSQL 18, all migrations including the new one), `npm run test:live` ✅ 7 + 1 placeholder (new read-only test: keyset pages of 37 equal one full read on the real ledger), `npm run build` ✅. E2E: `offline.spec.ts` + `rewards.spec.ts` on ledger-desktop, 16/16, before the last small Home change. The full e2e suite wasn't run.
 
-**Next speed steps (not done):** the header's unread-reminders count waits for the layout's profile read, so every page has a second round. Starting it early (cached, preloaded in the layout) would remove that round. After that: the full re-render on every save, and reading only the period a screen needs.
+**Next speed steps:** both done in Speed fixes 2 (header count; reading only the period a screen needs), except the full re-render on every save.
+
+## Speed fixes 2 (2026-11-06)
+
+From `doc/CODEBASE_REPORT.md` §8 #2, plus the header count from Speed fixes 1's next steps. Money results are unchanged (checked below).
+
+- **Balances from one database function.** Migration `20261106000100_wallet_balances` adds `wallet_balances(p_closing, p_opening default null)`. It returns each wallet's balance at both instants (null before the wallet's tracking starts), the two totals, and how many of each wallet's entries are dated before its opening date. Money is sent as text.
+  - **Security:** `SECURITY INVOKER`, no user parameter, the owner is always `auth.uid()`, RLS applies, `anon` can't execute it.
+  - **Used by:** Home, Wallets, Safe to spend, Survival, Goals, Recurring, goal detail (all through `loadPlan`), and Reports (opening and closing).
+  - **It's called with GET** (read-only, so `retryingFetch` can repeat it). A GET sends arguments as text, so `null` would arrive as `"null"`. No opening is therefore left out rather than sent as null. The live test found this.
+- **The domain still holds the rule.** `ledgerBalances` in `src/domain/balances.ts` is the reference the function mirrors; `periodBalanceInstants` gives the instants. `summarizePeriod` and `calculateSafeToSpend` take the function's balances as an optional input and throw if they were taken at another instant.
+- **Each screen reads only its rows** (`src/lib/data/queries.ts`, helpers in `src/lib/data/slices.ts`). Explicit columns instead of `select *` (everything but `idempotency_key` and `void_reason`).
+  - **Window start without waiting for the profile:** `startForAnyZone` takes the earliest start a screen's periods could have in any zone and week start: dates from UTC−12, minus 14 h (UTC+14), minus a day for DST. In the hours around a period boundary that includes the period before. The domain then filters to the real periods.
+  - **Refunds:** a refund of a purchase older than the window brings that purchase in with one extra read, only when one exists. PostgREST can't embed the self-referencing composite key.
+  - **All-time side reads:** goal money (`getGoalLedger`), recurring entries, bill payments (embedded in the bills read), the newest 400 categorised entries (suggestions), the expense recorded last ("Repeat last"), and every purchase and refund (`getSpendingLedger`).
+  - **Per screen:**
+
+    | Screen | Reads |
+    | --- | --- |
+    | Home | This day/week/month and the 60-day "frequent" look-back; goal money; the last expense. Budgets reaching further back (custom ones) get a second read only then. The newest five get their own read only when the window has fewer than five rows |
+    | Budgets | This and last week, this month and the 3 before it (suggestions); custom budgets as on Home |
+    | Plan screens | The last month (pace, today, the income cycle), goal money, recurring entries, bill payments |
+    | Insights, category insights | Every purchase and refund (the "looks recurring" card and the history baseline span all of it) + income for the period only |
+    | Money leaks | The period and the one before it |
+    | Reports, PDF/CSV | The period and its comparison. The balance call waits for the profile, because its instants depend on the time zone; the other reads start at once |
+    | Wallets | Balances and counts from the function; no ledger rows |
+    | Add | The 60-day look-back + the last expense |
+    | Entry detail, edit, full form | Purchases and refunds (+ goal money on detail) |
+    | Transactions | From the date filter's start when one is set; otherwise every row, because the list, its count and its totals are all of history |
+    | Categories | Every row (usage counts, the Uncategorized queue) |
+
+  - **Not screens, unchanged:** the reminder check and reward sync still read every row (streaks and achievements span all history).
+- **Header bell:** `getUnreadCount` is cached and started by the layout with the profile read. Every page lost its second round.
+- **Repaired:** `node_modules/pdf-lib` and `@pdf-lib/fontkit` were empty folders, which broke the typecheck and would have broken PDF export. `npm install` restored them from the lockfile (unchanged).
+
+**Money check:** the previous commit (`a989e00`) and this code, built side by side, reading the same live data. 52 screens (including the period, filter and id variants) with 532 ₹ figures and every `data-paise` value: identical, in the same order. 5 CSVs byte for byte: the report for this month (with entries and notes), the previous month, all time (with entries), a custom range, and the data export. **Caveat:** the test account has little spending (2 purchases, 90 goal moves), so the money check covers less than it looks. The unit and DB equivalence tests below carry the rest.
+
+**Timing** (production builds on this machine, alternated; server render = median of 12, full load = median of 9 hard loads, nav = 16 clicks; DB calls counted from a fetch log on the server):
+
+| Page | Server render old → new | DB calls (rounds) | Full load old → new | Sidebar nav p25 old → new |
+| --- | --- | --- | --- | --- |
+| Home | 441 → 298 ms | 10 (2) → 14 (1) | 553 → 396 ms | 513 → 529 ms |
+| Transactions | 430 → 289 ms | 7 (2) → 7 (1) | 592 → 383 ms | 543 → 545 ms |
+| Insights | 420 → 252 ms | 4 (2) → 5 (1) | 536 → 388 ms | 564 → 567 ms |
+
+- Most of the gain is the header's round. On this account the ledger is small (92 active rows), so reading fewer rows saves little per query yet; the gain grows with the ledger.
+- **Sidebar navigation is bimodal on both builds** (about 520 ms or about 1,000 ms per click), so its median depends on how the clicks fall. The fast mode is the same on both, and I found no regression. The cause of the slow mode isn't known.
+- **A first version made Home slower:** 16 calls in 2 rounds, 542 ms. With no budgets, `withBudgetPeriods` read "no periods" as "everything" and re-read the whole ledger. The figures were still right, but the read was wasted. That's fixed, and the newest-five read became conditional.
+
+**Checks:** lint ✅, typecheck ✅, format ✅, `npm test` ✅ 29 files / 817 tests (11 new: `tests/unit/ledger-slices.test.ts`), `npm run test:db` ✅ 123 + 11 placeholders (6 new in `tests/db/wallet-balances.test.ts`), new read-only live test `tests/live/wallet-balances.test.ts` ✅ and `ledger-paging` ✅, `npm run build` ✅.
+- **What the DB test proves:**
+  - The function equals `ledgerBalances` at 14 instants. Those include IST midnight and 1 ms either side, an instant exactly on an entry, and every opening/closing pair.
+  - Its data has transfers (including into a wallet before it starts), allocation and release, a refund, a deleted and a voided row, entries before the opening date, and a wallet that starts later. It runs in IST and again with the profile in New York, and some figures are checked by hand.
+  - `summarizePeriod` from window rows + the function's balances equals it from every row, for 6 periods.
+  - Cross-user: B sees only B's wallet and total, after A's entry is committed. No user parameter, `SECURITY INVOKER`. Anonymous calls are refused (`42501`).
+  - Mutation check: tracking start made exclusive, voided rows counted, the profile's zone ignored. Each break failed 2–3 tests.
+- **The unit tests prove:** the window start is never after the real period start, across 8 zones, 3 week starts and 8 boundary instants. Home spending and budgets, Insights and the safe-to-spend plan give the same result from the partial reads as from every row. A plan without the balance would be wrong, and a balance from another instant is refused.
+- **Live:** the function equals the domain on both test accounts' real rows, and the accounts share no wallet.
+- **E2E** (desktop: `shell`, plus `transactions` (Journey A), `insights`, `offline` and `report` on ledger-desktop): **48 passed, 1 failed, 5 did not run.** The failure is `insights.spec.ts` "with no spending, both screens say so honestly". It expects an account with no purchases, but the account has two active quick-add Tea entries: ₹52.35 on 1 Nov and ₹10.00 on 5 Nov, both saved before this session. The old build shows the same Insights page (money check), so this isn't a code change. The 5 that didn't run are the rest of that serial spec. Not deleted, since they may be yours.
+
+**Next speed steps (not done):** the full re-render on every save; Transactions' default view and Categories still read every row (they'd need SQL aggregates for all-time counts and totals); Reports could save its second round if the function took the period's local dates instead of instants.
 
 ## Checks run (Phase 10, 2026-11-01)
 
