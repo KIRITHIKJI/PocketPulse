@@ -3,7 +3,7 @@
 Durable project state. Update before a context reset or at the end of each work session.
 Source of truth for requirements: `PROJECT_SPEC.md`. Working rules: `CLAUDE.md`.
 
-_Last updated: 2026-11-06 — Design 1 of 4 (audit, `doc/DESIGN_PLAN.md`, design foundation; see "Design 1"). Before that, Code tidy (no behaviour change). Before that, Speed fixes 2. Migrations 0100–1000, 20261105000100 (ledger keyset index) and 20261106000100 (`wallet_balances`) are applied on the hosted project (you ran `db push`; `migration list` confirmed). The app is not deployed yet, so nothing has been tried on a real phone._
+_Last updated: 2026-11-06 — Design 2 of 4 (Home, Quick Add, mobile bar, rewards that follow Undo; see "Design 2"). Before that, Design 1 (audit, `doc/DESIGN_PLAN.md`, foundation). Before that, Code tidy (no behaviour change). Before that, Speed fixes 2. Migrations 0100–1000, 20261105000100 (ledger keyset index) and 20261106000100 (`wallet_balances`) are applied on the hosted project (you ran `db push`; `migration list` confirmed). The app is not deployed yet, so nothing has been tried on a real phone._
 
 ## Build stages
 
@@ -481,6 +481,37 @@ Redesign phase 1 of 4, from `doc/REDESIGN_BRIEF.md` with your overrides (no spee
 **Found, not fixed (not design):** `next dev` reports a hydration error on some signed-in screens ("3 issues" on `/rewards`). The dev log names the cause: `<p> cannot contain a nested <form>`. Find the `<p>` wrapping a form (likely a server-action button inside a paragraph) and fix it in a separate change.
 
 **Next (Design 2, only when you send its prompt):** navigation (sidebar groups with the 2 × 2 Record grid and the PlayerChip; mobile bar Home · Activity · Add · Insights · Plan · You), Home and Quick Add per `doc/DESIGN_PLAN.md` §4–5.
+
+## Design 2 (2026-11-06)
+
+Home and Quick Add on the Design 1 components, the mobile bottom bar, rewards that follow Undo, and the dev hydration error. Plan: `doc/DESIGN_PLAN.md` §4–6 (updated where this phase changed it).
+
+- **Rewards now follow the entries (changes a Phase 9 decision, by your instruction).** Phase 9 kept every award forever ("deleting an entry takes nothing away"). Now Undo must remove what an entry earned, so `planRewardSync` (`src/lib/rewards/engine.ts`) reconciles:
+  - Awards worked out from entries (`logged_day`, `clean_week`, `saved_week`, `budget_month`, achievements, and the **current** period's missions) are **revoked** (`xp_events.revoked_at`, the column already existed) when the entries behind them are gone, and the **same row is restored** when they're earned again. Keys stay unique, so XP can never be earned twice. Achievements no longer earned are removed; a mission whose completion is undone goes back to open.
+  - Not touched: weekly reviews, explored insights, skipped missions (they aren't entries), and missions of earlier periods (only the current period is worked out again).
+  - It applies to any delete, not only Undo: the server can't tell them apart, and one rule is simpler and closes the "add, delete, add" loop. Editing an amount or date still changes nothing.
+  - The sync still runs after each write (`after()`), so it never slows a save. **Known gap:** if Undo lands before the save's own sync has finished, that sync can award the day after Undo's sync revoked nothing; the next sync (any save, or opening Rewards) corrects it. `/rewards` now saves whenever the plan `changed`, not only when something was earned.
+  - **Effect on the shared test account:** the first sync revoked 10 XP for 5 Nov, because the two Tea entries behind it were deleted earlier. Its 5 XP mission award for that day stays (past period). No migration.
+- **Quick Add:**
+  - A tile with a usual amount and a category saves in **one tap** (`QuickTile` in `src/components/transactions/quick-add.tsx`), with a routine toast and **Undo for 5 s**. The tile shows saving, then a check for 0.9 s.
+  - **Double taps:** taps on one tile within 1 s reuse the same ids (`idsForTap`, `src/lib/quick-entries.ts`), so the second is ignored while the first is in flight, or answered `duplicate` by the server after. Same idempotency key as any retry.
+  - A small pencil in the tile's corner (44 px tap area) opens the amount sheet. A tile without an amount opens the sheet, which offers "Save ₹X as the usual amount" (checked by default then). One command builder, `quickEntryCommand`, for tiles, shortcuts and the sheet.
+  - **Edit tiles** is its own view, `/add?tab=edit`: edit, hide/show, and reorder by **dragging the grip** (pointer events, so mouse and touch) **or Move up / Move down** buttons, announced to screen readers. Order saves in the background (`reorderPresets`, serialised, reverts with a toast on failure).
+  - Record tabs (and every `SectionTabs`, so Insights and Plan too) fit a 375 px screen: equal columns, icon over label, no clipping.
+- **Home:** balance hero (display figure, scope label, "not a bank balance"), then Spent today / Spent in <month>; Quick Add tiles in a grid (no sideways scroll); compact **player status** (rank word, level, XP bar, streak, total XP) linking to `/rewards` (Player status gets its own page in Design 3); budget and goals with `Progress`; a **Safe to Spend link labelled as an estimate** (no figure: computing it would add Home reads); Recent.
+  - Phones: the two columns dissolve into one ordered list (balance → tiles → status → plans → Safe to Spend → recent); the first two tile rows are in the first screen.
+  - States: new user (one "Plan when you're ready" card with both actions, "Set amount" tiles, "Log your first expense to start earning XP", Recent empty state), `home/loading.tsx` shaped like Home, `home/error.tsx` (error and offline forms, both offering Quick add), an offline note that the figures are from the last connection, and the existing "On this device" list. The player status streams in a `Suspense` after the money, with a skeleton; if its read fails it shows a quiet link instead of breaking Home.
+  - Rank words: Starter (1–2), Tracker (3–4), Planner (5–7), Strategist (8–11), Steward (12+), `rankFor` in `src/domain/rewards.ts`.
+  - The balance count-up is 280 ms (was 600) to meet the under-300 ms rule.
+- **Mobile bar:** Home · Activity · **Add** (docked, centre) · Insights · Plan · **You**. You opens a sheet: Player status, Parent report, Reminders, Settings, then every section (it replaces the header's "All sections" menu, which is removed). Reports is two taps away. Add stays visible on add screens, marked current. The desktop sidebar is unchanged (Design 4).
+- **Hydration error fixed:** the quest footer on `/rewards` was a `<p>` holding the Skip form. It's a `<div>` now. A scan of every `.tsx` found no other `<p>` holding a form, and a browser pass over all 18 signed-in screens logged no console errors. As a control, putting the `<p>` back made the same pass log 2 errors.
+
+**Checks:** lint ✅, typecheck ✅, format ✅, `npm test` ✅ 31 files / 854 tests (new: `tests/unit/quick-add.test.tsx`; reward tests rewritten for the new rule, plus rank words), `npm run test:db` ✅ 13 files / 124 + 12 placeholders (new: `tests/db/undo-rewards.test.ts`; the reward store moved to `tests/db/reward-store.ts`), production build ✅ (through Playwright's web server).
+- **What the Undo DB test proves** (real executor, real schema): a one-tap save moves balance, today's spending, a budget and the category total by its amount and earns the day and today's mission; a double tap is `duplicate` with no extra XP; Undo puts all four figures back and revokes the XP, and the mission is open again; a late replay of the undone save adds nothing; three save/Undo cycles end with exactly one row per award key and the same XP as the first save.
+- **Mutation checks:** turning revocation off fails 1 DB and 5 unit tests; giving every tap fresh ids fails 2 unit tests.
+- **E2E (hosted project):** ledger-desktop `offline`, `rewards`, `transactions` ✅ 21 passed, including Journey A, the new one-tap test (set Tea's usual amount → double tap → one entry → Undo → figures back → tile restored) and the rewritten rewards test. The first run had 2 failures: `offline` "the answer gets lost…" hit `ECONNRESET` in the test's own pass-through request and left a Tea ₹10.99 entry behind, which made `rewards` see +20 XP (deleting its unassigned entry completed "clear the queue"). I soft-deleted the leftover through `set_transaction_deleted`; both passed on the rerun. ledger-mobile (Pixel 7) `transactions` ✅ 4 passed, 1 skipped (the long form journey runs on desktop only, by design), including Journey A and the one-tap test. `shell` navigation on mobile ✅ (You sheet → Money leaks, docked Add). Not run this phase: the rest of the desktop/mobile suites.
+
+**Next (Design 3, only when you send its prompt):** Player Status page (`/rewards/status`) and the chip's link to it, Missions, Achievements, Rewards hub, XP feedback toasts after saves, level-up moment, the "Show progress features" switch.
 
 ## Checks run (Phase 10, 2026-11-01)
 

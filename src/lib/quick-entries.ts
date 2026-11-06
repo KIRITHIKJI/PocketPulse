@@ -120,3 +120,27 @@ export function shortcutEntries(
   }
   return shortcuts.slice(0, 5);
 }
+
+/** A tile saves in one tap only when it knows everything: an amount and a category. */
+export function savesInOneTap(entry: QuickEntry): boolean {
+  return entry.amountPaise !== null && entry.categoryId !== null && !entry.askDetails;
+}
+
+/** Taps on one tile closer together than this are one entry: a double tap, not two teas. */
+export const DOUBLE_TAP_MS = 1_000;
+
+export type TapIds = { id: string; opId: string; at: number };
+
+/**
+ * The ids for a tap. A tap within `DOUBLE_TAP_MS` of the last one reuses its ids, so the server
+ * answers `duplicate` instead of saving a second entry (the same idempotency key as any retry).
+ * A tap after that is a new entry.
+ */
+export function idsForTap(
+  previous: TapIds | null,
+  newId: () => string,
+  now: number = Date.now(),
+): TapIds {
+  if (previous && now - previous.at < DOUBLE_TAP_MS) return { ...previous, at: now };
+  return { id: newId(), opId: newId(), at: now };
+}

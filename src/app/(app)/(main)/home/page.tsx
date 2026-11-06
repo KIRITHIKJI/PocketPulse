@@ -1,15 +1,23 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
-import { ArrowRight, Info, ListChecks, Receipt } from "lucide-react";
+import { ArrowRight, Info, Receipt } from "lucide-react";
 
-import { PageHeader } from "@/components/layout/page-header";
-import { BudgetSnapshot, GoalSnapshot } from "@/components/home/plan-snapshots";
+import {
+  BudgetSnapshot,
+  GoalSnapshot,
+  PlanFirstSteps,
+  SafeToSpendLink,
+} from "@/components/home/plan-snapshots";
+import { OfflineFiguresNote } from "@/components/home/offline-figures-note";
+import { PlayerChip, PlayerChipSkeleton } from "@/components/home/player-chip";
 import { WaitingEntries } from "@/components/offline/waiting-entries";
+import { StatePanel } from "@/components/states/state-panel";
 import { AnimatedMoney } from "@/components/transactions/animated-money";
 import { EntryCard } from "@/components/transactions/entry-list";
 import { QuickAdd } from "@/components/transactions/quick-add";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Surface, SurfaceHeader } from "@/components/ui/surface";
 import {
   type TimeSettings,
   budgetAlert,
@@ -65,6 +73,10 @@ const MONTHS = [
 
 const RECENT = 5;
 
+/**
+ * Home (doc/DESIGN_PLAN.md §4): the tracked balance leads, logging comes second, then today and
+ * this month, progress, plans and recent entries. On a phone the tiles are in the first screen.
+ */
 export default async function HomePage() {
   const now = requestNow();
   // The rows this screen's periods can need, whatever the profile's zone: today, this week and
@@ -145,141 +157,193 @@ export default async function HomePage() {
     goal,
     progress: goalProgress(goal, goalLedger, kit.today, "weekly", money),
   }));
+  const untracked = balance.untrackedAccountIds.length;
+  const tiles = tileEntries(presets, kit.categories);
 
   return (
     <>
-      <PageHeader
-        title="Home"
-        description="Your tracked balance, today’s spending, budgets and goals at a glance."
-      />
+      <div className="flex flex-col gap-0.5">
+        <h1 className="type-title">Home</h1>
+        <p className="type-caption text-muted-foreground">{formatLocalDate(today.startDate!)}</p>
+      </div>
+      <OfflineFiguresNote />
       <WaitingEntries currency={profile.currency} />
 
-      {!profile.onboardingCompletedAt && (
-        <Card className="flex-row flex-wrap items-center gap-3" data-testid="finish-setup">
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary">
-            <ListChecks className="size-5" aria-hidden="true" />
-          </span>
-          <div className="flex min-w-0 flex-1 flex-col">
-            <h2 className="font-semibold">Finish setting up</h2>
-            <p className="text-sm text-muted-foreground">
-              Add your opening balance so your tracked balance starts from the right number.
+      <div className="grid gap-4 lg:grid-cols-12 lg:items-start lg:gap-6">
+        {/* On phones both columns dissolve into one ordered list: balance, tiles, progress, plans,
+            then recent entries. */}
+        <div className="contents lg:col-span-8 lg:flex lg:min-w-0 lg:flex-col lg:gap-6">
+          <Surface
+            variant="hero"
+            aria-label="Balance and spending"
+            role="region"
+            className="order-1"
+          >
+            <div className="flex flex-col gap-1">
+              <h2 className="type-caption text-muted-foreground">
+                Tracked balance · all wallets · now
+              </h2>
+              <AnimatedMoney
+                paise={balance.balancePaise}
+                currency={profile.currency}
+                className="type-display money"
+                data-testid="home-balance"
+              />
+              <p className="flex gap-1.5 type-caption text-muted-foreground">
+                <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                <span>
+                  Opening balances plus what you’ve recorded, not a bank balance.
+                  {untracked > 0 &&
+                    ` ${untracked} wallet${untracked === 1 ? " starts" : "s start"} tracking later.`}
+                </span>
+              </p>
+            </div>
+            {!profile.onboardingCompletedAt && (
+              <div
+                className="flex flex-wrap items-center gap-3 rounded-xl bg-primary-soft p-3"
+                data-testid="finish-setup"
+              >
+                <p className="min-w-0 flex-1 type-body">
+                  Add your starting balance so this figure starts from the right number.
+                </p>
+                <Button size="sm" asChild>
+                  <Link href="/onboarding">Add starting balance</Link>
+                </Button>
+              </div>
+            )}
+            <dl className="grid grid-cols-2 gap-3 border-t pt-3">
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <dt className="type-caption text-muted-foreground">Spent today</dt>
+                <dd>
+                  <AnimatedMoney
+                    paise={spentToday}
+                    currency={profile.currency}
+                    className="type-title money"
+                    data-testid="home-spent-today"
+                  />
+                </dd>
+              </div>
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <dt className="type-caption text-muted-foreground">Spent in {monthName}</dt>
+                <dd>
+                  <AnimatedMoney
+                    paise={spentMonth}
+                    currency={profile.currency}
+                    className="type-title money"
+                    data-testid="home-spent-month"
+                  />
+                </dd>
+              </div>
+            </dl>
+            <p className="-mt-1 type-caption text-muted-foreground">
+              Expenses minus refunds.
+              {incomeMonth > 0 ? (
+                <>
+                  {" "}
+                  Income this month: <span className="money">{money(incomeMonth)}</span>.
+                </>
+              ) : null}
             </p>
-          </div>
-          <Button asChild>
-            <Link href="/onboarding">Continue setup</Link>
-          </Button>
-        </Card>
-      )}
+          </Surface>
 
-      <section aria-label="Balance and spending" className="grid gap-3 md:grid-cols-3">
-        <Card className="gap-1 md:col-span-3 lg:col-span-1">
-          <h2 className="text-sm text-muted-foreground">Tracked balance · all wallets · now</h2>
-          <AnimatedMoney
-            paise={balance.balancePaise}
-            currency={profile.currency}
-            className="tabular text-4xl font-semibold tracking-tight"
-            data-testid="home-balance"
-          />
-          <p className="mt-1 flex gap-1.5 text-xs text-muted-foreground">
-            <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-            Opening balances plus what you’ve recorded — not a bank balance.
-            {balance.untrackedAccountIds.length > 0 &&
-              ` ${balance.untrackedAccountIds.length} wallet${balance.untrackedAccountIds.length === 1 ? " starts" : "s start"} tracking later.`}
-          </p>
-        </Card>
-        <Card className="gap-1">
-          <h2 className="text-sm text-muted-foreground">
-            Spent today · {formatLocalDate(today.startDate!)}
-          </h2>
-          <AnimatedMoney
-            paise={spentToday}
-            currency={profile.currency}
-            className="tabular text-2xl font-semibold"
-            data-testid="home-spent-today"
-          />
-          <p className="text-xs text-muted-foreground">Expenses minus refunds since midnight.</p>
-        </Card>
-        <Card className="gap-1">
-          <h2 className="text-sm text-muted-foreground">Spent this month · {monthName}</h2>
-          <AnimatedMoney
-            paise={spentMonth}
-            currency={profile.currency}
-            className="tabular text-2xl font-semibold"
-            data-testid="home-spent-month"
-          />
-          <p className="text-xs text-muted-foreground">
-            {incomeMonth > 0 ? `Income received this month: ${money(incomeMonth)}. ` : ""}
-            Not the same as what’s left of your allowance.
-          </p>
-        </Card>
-      </section>
-
-      <section aria-labelledby="quick-add-heading" className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <h2 id="quick-add-heading" className="font-semibold">
-            Quick add
-          </h2>
-          <Button variant="ghost" size="sm" asChild>
-            <Link href="/add">
-              Edit tiles
-              <ArrowRight aria-hidden="true" />
-            </Link>
-          </Button>
-        </div>
-        <QuickAdd
-          kit={kit}
-          tiles={tileEntries(presets, kit.categories)}
-          shortcuts={shortcutEntries(mergeLedger(ledger, latestExpense), kit.categories, now)}
-          compact
-        />
-      </section>
-
-      <div className="grid gap-4 lg:grid-cols-5">
-        <Card className="min-w-0 gap-2 lg:col-span-3">
-          <div className="flex items-center justify-between">
-            <h2 className="font-semibold">Recent</h2>
-            {recent.length > 0 && (
+          <section aria-labelledby="quick-add-heading" className="order-2 flex flex-col gap-3">
+            <div className="flex items-center justify-between gap-2">
+              <h2 id="quick-add-heading" className="type-body font-semibold">
+                Quick add
+              </h2>
               <Button variant="ghost" size="sm" asChild>
-                <Link href="/transactions">
-                  All transactions
+                <Link href="/add?tab=edit">
+                  Edit tiles
                   <ArrowRight aria-hidden="true" />
                 </Link>
               </Button>
+            </div>
+            {tiles.length > 0 ? (
+              <QuickAdd
+                kit={kit}
+                tiles={tiles}
+                shortcuts={shortcutEntries(mergeLedger(ledger, latestExpense), kit.categories, now)}
+                showRoutes
+              />
+            ) : (
+              <Surface>
+                <StatePanel
+                  size="section"
+                  title="All tiles are hidden"
+                  description="Show a tile again, or add your own."
+                  actions={
+                    <Button size="sm" variant="outline" asChild>
+                      <Link href="/add?tab=edit">Edit tiles</Link>
+                    </Button>
+                  }
+                />
+              </Surface>
             )}
+          </section>
+
+          <Surface className="order-6 min-w-0">
+            <SurfaceHeader
+              title="Recent"
+              action={
+                recent.length > 0 && (
+                  <Button variant="ghost" size="sm" asChild>
+                    <Link href="/transactions">
+                      All transactions
+                      <ArrowRight aria-hidden="true" />
+                    </Link>
+                  </Button>
+                )
+              }
+            />
+            {recent.length === 0 ? (
+              <StatePanel
+                size="section"
+                icon={Receipt}
+                title="Nothing recorded yet"
+                description="Tap a tile above. Your first entry shows up here."
+              />
+            ) : (
+              <ul className="-mx-2 flex flex-col" data-testid="recent-entries">
+                {recent.map((tx) => (
+                  <EntryCard
+                    key={tx.id}
+                    entry={{
+                      ...entryView(tx, ctx),
+                      timeLabel: `${formatDayLabel(toLocalDate(occurredAtMs(tx), tz), kit.today)}, ${formatTimeOf(tx.occurredAt, tz)}`,
+                    }}
+                  />
+                ))}
+              </ul>
+            )}
+          </Surface>
+        </div>
+
+        <div className="contents lg:col-span-4 lg:flex lg:min-w-0 lg:flex-col lg:gap-6">
+          <div className="order-3">
+            <Suspense fallback={<PlayerChipSkeleton />}>
+              <PlayerChip />
+            </Suspense>
           </div>
-          {recent.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 py-6 text-center">
-              <Receipt className="size-6 text-muted-foreground" aria-hidden="true" />
-              <p className="text-sm text-muted-foreground">
-                Nothing recorded yet. Tap a tile above — your first entry shows up here.
-              </p>
+          {budgets.length === 0 && goals.length === 0 ? (
+            <div className="order-4">
+              <PlanFirstSteps />
             </div>
           ) : (
-            <ul className="-mx-2 flex flex-col" data-testid="recent-entries">
-              {recent.map((tx) => (
-                <EntryCard
-                  key={tx.id}
-                  entry={{
-                    ...entryView(tx, ctx),
-                    timeLabel: `${formatDayLabel(toLocalDate(occurredAtMs(tx), tz), kit.today)}, ${formatTimeOf(tx.occurredAt, tz)}`,
-                  }}
-                />
-              ))}
-            </ul>
+            <div className="order-4 flex flex-col gap-4 lg:gap-6">
+              <BudgetSnapshot
+                alertCount={alertCount}
+                budgetEval={budgetEval}
+                categoryEvals={categoryEvals}
+                hasBudgets={budgets.length > 0}
+                categoryName={categoryName}
+                money={money}
+              />
+              <GoalSnapshot goalCards={goalCards} money={money} />
+            </div>
           )}
-        </Card>
-
-        <div className="flex min-w-0 flex-col gap-4 lg:col-span-2">
-          <BudgetSnapshot
-            alertCount={alertCount}
-            budgetEval={budgetEval}
-            categoryEvals={categoryEvals}
-            hasBudgets={budgets.length > 0}
-            categoryName={categoryName}
-            money={money}
-          />
-
-          <GoalSnapshot goalCards={goalCards} money={money} />
+          <div className="order-5">
+            <SafeToSpendLink />
+          </div>
         </div>
       </div>
     </>

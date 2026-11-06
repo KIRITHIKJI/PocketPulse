@@ -31,6 +31,8 @@ type Toast = {
   action?: { label: string; run: () => Promise<void> | void };
   /** A frequent, ordinary action (a tile save, a repeat): shown more quietly once it repeats. */
   routine?: boolean;
+  /** How long it stays (and its Undo with it). Defaults to 8 s, 10 s for milestones. */
+  durationMs?: number;
   quiet: boolean;
 };
 
@@ -86,7 +88,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   React.useEffect(() => {
     if (!toast || paused || running) return;
-    const visible = toast.tone === "milestone" ? MILESTONE_VISIBLE_MS : VISIBLE_MS;
+    const visible =
+      toast.durationMs ?? (toast.tone === "milestone" ? MILESTONE_VISIBLE_MS : VISIBLE_MS);
     const timer = window.setTimeout(() => setToast(null), visible);
     return () => window.clearTimeout(timer);
   }, [toast, paused, running]);

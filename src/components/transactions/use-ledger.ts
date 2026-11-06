@@ -125,6 +125,9 @@ export function useLedger() {
         /** How the queue lists this if it can't be sent now. */
         label?: string;
         remember?: RememberAmount | null;
+        /** A frequent one-tap save: a compact toast once it repeats, and a shorter Undo. */
+        routine?: boolean;
+        undoMs?: number;
       },
     ): Promise<CommandResult | null> => {
       if (inFlight.current.has(command.opId)) return null;
@@ -153,6 +156,8 @@ export function useLedger() {
               ? "Already saved — no duplicate was added."
               : options.success,
           action: reverse ? { label: "Undo", run: () => undo(reverse) } : undefined,
+          routine: options.routine,
+          durationMs: options.undoMs,
         });
         return result;
       } finally {

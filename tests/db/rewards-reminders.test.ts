@@ -1,14 +1,10 @@
-import {
-  type AchievementDefinition,
-  type QuestDefinition,
-  type Transaction,
-  totalXp,
-} from "@/domain";
+import { type Transaction, totalXp } from "@/domain";
 import { rowToTransaction } from "@/lib/data/mappers";
-import { type RewardStore, syncRewardsWith } from "@/lib/rewards/engine";
+import { syncRewardsWith } from "@/lib/rewards/engine";
 
 import { A, A_CASH, B, type Fixtures, seedFixtures, tid } from "./fixtures";
 import { ADMIN_URL, SKIP_REASON, type TestDb, as, createTestDb } from "./harness";
+import { pgRewardStore, rewardCatalog } from "./reward-store";
 
 // Phase 9: reward state can't be written from a browser, the server's writes are idempotent at the
 // database level, one user's rewards and reminders are invisible to another, and deleting an
@@ -29,82 +25,7 @@ describe.skipIf(!ADMIN_URL)("Phase 9: rewards, reminders and ownership", () => {
     await db?.close();
   });
 
-  /** What the admin client does: writes as the server, for one user id, with the same keys. */
-  function serverStore(userId: string): RewardStore {
-    const q = (text: string, params: unknown[]) => db.client.query(text, params);
-    return {
-      async read() {
-        const events = await q("select * from public.xp_events where owner_id = $1", [userId]);
-        const unlocked = await q("select * from public.user_achievements where owner_id = $1", [
-          userId,
-        ]);
-        const quests = await q("select * from public.user_quests where owner_id = $1", [userId]);
-        return {
-          events: events.rows.map((e) => ({
-            sourceKey: e.source_key,
-            kind: e.kind,
-            xp: e.xp,
-            createdAt: e.created_at,
-            revokedAt: e.revoked_at,
-          })),
-          achievements: unlocked.rows.map((a) => ({
-            code: a.achievement_code,
-            unlockedAt: a.unlocked_at,
-          })),
-          quests: quests.rows.map((r) => ({
-            questCode: r.quest_code,
-            periodKey: r.period_key,
-            completedAt: r.completed_at,
-            optedOutAt: r.opted_out_at,
-          })),
-        };
-      },
-      async addEvents(events) {
-        for (const e of events) {
-          await q(
-            `insert into public.xp_events (owner_id, kind, xp, source_key) values ($1, $2, $3, $4)
-             on conflict (owner_id, source_key) do nothing`,
-            [userId, e.kind, e.xp, e.sourceKey],
-          );
-        }
-      },
-      async addAchievements(codes) {
-        for (const code of codes) {
-          await q(
-            `insert into public.user_achievements (owner_id, achievement_code) values ($1, $2)
-             on conflict do nothing`,
-            [userId, code],
-          );
-        }
-      },
-      async saveQuests(rows) {
-        for (const r of rows) {
-          await q(
-            `insert into public.user_quests (owner_id, quest_code, period_key, progress, completed_at)
-             values ($1, $2, $3, $4, case when $5 then now() end)
-             on conflict (owner_id, quest_code, period_key)
-             do update set progress = excluded.progress, completed_at = excluded.completed_at`,
-            [userId, r.code, r.periodKey, r.progress, r.complete],
-          );
-        }
-      },
-      async saveStreaks(s) {
-        await q(
-          `update public.streak_state set current_daily = $2, longest_daily = $3 where owner_id = $1`,
-          [userId, s.currentDaily, s.longestDaily],
-        );
-      },
-    };
-  }
-
-  async function catalog() {
-    const achievements = await db.client.query("select * from public.achievements");
-    const quests = await db.client.query("select * from public.quests");
-    return {
-      achievements: achievements.rows as AchievementDefinition[],
-      quests: quests.rows as QuestDefinition[],
-    };
-  }
+  const serverStore = (userId: string) => pgRewardStore(db, userId);
 
   async function ledgerOf(userId: string): Promise<Transaction[]> {
     const { rows } = await db.client.query(
@@ -118,7 +39,7 @@ describe.skipIf(!ADMIN_URL)("Phase 9: rewards, reminders and ownership", () => {
     ledger: await ledgerOf(userId),
     goals: [],
     budgets: [],
-    ...(await catalog()),
+    ...(await rewardCatalog(db)),
     now: NOW,
     settings,
   });
@@ -148,7 +69,7 @@ describe.skipIf(!ADMIN_URL)("Phase 9: rewards, reminders and ownership", () => {
     });
   });
 
-  it("awards once however often it runs, and survives deleting the entries", async () => {
+  it("awards once however often it runs; deleting the entry revokes it, re-adding restores it", async () => {
     await db.client.query(
       `insert into public.transactions
          (id, owner_id, type, amount_paise, occurred_at, account_id, category_id, idempotency_key)
@@ -171,7 +92,18 @@ describe.skipIf(!ADMIN_URL)("Phase 9: rewards, reminders and ownership", () => {
       tid(1),
     ]);
     const after = await syncRewardsWith(store, await data(A));
-    expect(totalXp(after.state.events)).toBe(xp);
+    expect(totalXp(after.state.events)).toBe(0);
+    // Revoked, not deleted: the row (and its key) stays, so earning it again can't add a second.
+    const rows = async () =>
+      (await db.client.query("select * from public.xp_events where owner_id = $1", [A])).rows;
+    expect((await rows()).every((r) => r.revoked_at !== null)).toBe(true);
+
+    await db.client.query("update public.transactions set deleted_at = null where id = $1", [
+      tid(1),
+    ]);
+    const back = await syncRewardsWith(store, await data(A));
+    expect(totalXp(back.state.events)).toBe(xp);
+    expect(await rows()).toHaveLength(first.state.events.length);
   });
 
   it("the database itself refuses a second row for a key", async () => {

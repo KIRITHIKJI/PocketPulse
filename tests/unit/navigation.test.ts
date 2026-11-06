@@ -3,7 +3,13 @@ import { join } from "node:path";
 
 import type { Route } from "next";
 
-import { ALL_NAV_ITEMS, MOBILE_TABS, SECTION_TABS, findActiveItem } from "@/lib/navigation";
+import {
+  ALL_NAV_ITEMS,
+  MOBILE_TABS,
+  SECTION_TABS,
+  YOU_ITEMS,
+  findActiveItem,
+} from "@/lib/navigation";
 
 /** Secondary routes that exist but are not navigation items. */
 const AUX_ROUTES = {
@@ -60,14 +66,20 @@ describe("findActiveItem", () => {
 });
 
 describe("navigation structure", () => {
-  it("has exactly the five primary mobile destinations from the spec", () => {
+  it("has the mobile bar's link tabs, and a You sheet that reaches Reports in two taps", () => {
     expect(MOBILE_TABS.map((tab) => tab.href)).toEqual([
       "/home",
       "/transactions",
       "/insights",
       "/budgets",
-      "/reports",
     ]);
+    expect(YOU_ITEMS.map((item) => item.href)).toEqual([
+      "/rewards",
+      "/reports",
+      "/reminders",
+      "/settings",
+    ]);
+    expect(findActiveItem("/reports/export", YOU_ITEMS)?.label).toBe("Parent report");
   });
 
   it("has no duplicate navigation destinations", () => {

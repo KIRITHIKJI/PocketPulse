@@ -4,7 +4,8 @@ import * as React from "react";
 
 import { type CurrencyCode, formatMoney } from "@/domain";
 
-const DURATION_MS = 600;
+// Under 300 ms, like every animation (doc/DESIGN_PLAN.md §6).
+const DURATION_MS = 280;
 
 function reducedMotion(): boolean {
   const pref = document.documentElement.dataset.motion;

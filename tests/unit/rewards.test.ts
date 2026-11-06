@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   OPT_OUT_PERIOD,
+  XP,
   type AchievementDefinition,
   type QuestDefinition,
   type ReminderSettings,
@@ -13,6 +14,7 @@ import {
   formatINR,
   levelFor,
   loggedDays,
+  rankFor,
   savingsGoalSchema,
   totalXp,
 } from "@/domain";
@@ -93,9 +95,11 @@ function data(ledger: Transaction[], extra: Partial<RewardData> = {}): RewardDat
 
 /** The database's one rule that matters here: one row per key. */
 function memoryStore(): RewardStore & { state: RewardState } {
-  const state: RewardState = { events: [], achievements: [], quests: [] };
+  let state: RewardState = { events: [], achievements: [], quests: [] };
   return {
-    state,
+    get state() {
+      return state;
+    },
     async read() {
       return structuredClone(state);
     },
@@ -105,6 +109,14 @@ function memoryStore(): RewardStore & { state: RewardState } {
         state.events.push({ ...e, createdAt: ist("2026-11-11"), revokedAt: null });
       }
     },
+    async revokeEvents(keys) {
+      for (const e of state.events) {
+        if (keys.includes(e.sourceKey) && e.revokedAt === null) e.revokedAt = ist("2026-11-11");
+      }
+    },
+    async restoreEvents(keys) {
+      for (const e of state.events) if (keys.includes(e.sourceKey)) e.revokedAt = null;
+    },
     async addAchievements(codes) {
       for (const code of codes) {
         if (!state.achievements.some((a) => a.code === code)) {
@@ -112,13 +124,16 @@ function memoryStore(): RewardStore & { state: RewardState } {
         }
       }
     },
+    async removeAchievements(codes) {
+      state = { ...state, achievements: state.achievements.filter((a) => !codes.includes(a.code)) };
+    },
     async saveQuests(rows) {
       for (const q of rows) {
         const found = state.quests.find(
           (s) => s.questCode === q.code && s.periodKey === q.periodKey,
         );
         const completedAt = q.complete ? ist("2026-11-11") : null;
-        if (found) found.completedAt ??= completedAt;
+        if (found) found.completedAt = q.complete ? (found.completedAt ?? completedAt) : null;
         else {
           state.quests.push({
             questCode: q.code,
@@ -190,7 +205,6 @@ describe("what earns XP", () => {
       reviewedWeeks: [],
       insightsExplored: 0,
       optedOutQuests: [],
-      awardedDays: [],
     }).events.filter((e) => e.kind === "logged_day");
     expect(keys.map((e) => e.sourceKey)).toEqual(["logged_day:2026-11-05"]);
   });
@@ -220,7 +234,6 @@ describe("what earns XP", () => {
       reviewedWeeks: [],
       insightsExplored: 0,
       optedOutQuests: [],
-      awardedDays: [],
     });
     expect(r.achievementCodes).toContain("first_savings_goal");
     expect(r.events.map((e) => e.sourceKey)).toContain("saved_week:2026-11-02");
@@ -238,7 +251,6 @@ describe("what earns XP", () => {
         reviewedWeeks: [],
         insightsExplored: 0,
         optedOutQuests: [],
-        awardedDays: [],
       }).achievementCodes;
     expect(earned(week({}))).toContain("no_mystery_money");
     expect(earned(week({}, 2))).not.toContain("no_mystery_money");
@@ -265,7 +277,6 @@ describe("what earns XP", () => {
         reviewedWeeks: [],
         insightsExplored: 0,
         optedOutQuests: [],
-        awardedDays: [],
       }).achievementCodes;
     const inTime = budget(ist("2026-10-01"));
     expect(earned(october, inTime)).toContain("monthly_budget_achieved");
@@ -274,6 +285,118 @@ describe("what earns XP", () => {
     expect(earned(october, budget(ist("2026-10-01"), 100))).not.toContain(
       "monthly_budget_achieved",
     );
+  });
+});
+
+describe("undo takes back exactly what the entry earned", () => {
+  const tea = logged(day(11));
+
+  it("undoing today's only entry revokes the day and today's mission; saving again restores them once", async () => {
+    const store = memoryStore();
+    const saved = await syncRewardsWith(store, data([tea]));
+    const earned = totalXp(saved.state.events);
+    expect(saved.state.events.map((e) => e.sourceKey)).toEqual(
+      expect.arrayContaining([`logged_day:${TODAY}`, `quest:log_today:${TODAY}`]),
+    );
+    expect(saved.state.quests.find((q) => q.questCode === "log_today")?.completedAt).not.toBeNull();
+
+    const undone = await syncRewardsWith(store, data([]));
+    expect(totalXp(undone.state.events)).toBe(0);
+    expect(undone.state.quests.find((q) => q.questCode === "log_today")?.completedAt).toBeNull();
+
+    // Saving again (a new entry, new ids) earns the same awards back, on the same rows.
+    const again = logged(day(11));
+    const redone = await syncRewardsWith(store, data([again]));
+    expect(totalXp(redone.state.events)).toBe(earned);
+    expect(store.state.events).toHaveLength(saved.state.events.length);
+    for (let i = 0; i < 3; i += 1) {
+      await syncRewardsWith(store, data([]));
+      await syncRewardsWith(store, data([again]));
+    }
+    expect(totalXp(store.state.events)).toBe(earned);
+    expect(store.state.events).toHaveLength(saved.state.events.length);
+  });
+
+  it("undoing one of two entries that day takes nothing away", async () => {
+    const store = memoryStore();
+    const other = logged(day(11));
+    const both = await syncRewardsWith(store, data([tea, other]));
+    const after = await syncRewardsWith(store, data([other]));
+    expect(totalXp(after.state.events)).toBe(totalXp(both.state.events));
+  });
+
+  it("the tenth entry's achievement goes with it, and comes back with a new tenth", async () => {
+    const store = memoryStore();
+    const nine = Array.from({ length: 9 }, () => logged(day(11)));
+    const tenth = await syncRewardsWith(store, data([...nine, tea]));
+    expect(tenth.newAchievements).toContain("first_10_transactions");
+    const undone = await syncRewardsWith(store, data(nine));
+    expect(undone.state.achievements.map((a) => a.code)).not.toContain("first_10_transactions");
+    expect(totalXp(undone.state.events)).toBe(totalXp(tenth.state.events) - 50);
+    const redone = await syncRewardsWith(store, data([...nine, logged(day(11))]));
+    expect(totalXp(redone.state.events)).toBe(totalXp(tenth.state.events));
+  });
+
+  it("never touches awards that aren't about entries, or last period's missions", async () => {
+    const store = memoryStore();
+    store.state.events.push(
+      {
+        sourceKey: "weekly_review:2026-11-09",
+        kind: "weekly_review",
+        xp: XP.weeklyReview,
+        createdAt: day(9),
+        revokedAt: null,
+      },
+      {
+        sourceKey: "quest:log_today:2026-11-05",
+        kind: "quest",
+        xp: 5,
+        createdAt: day(5),
+        revokedAt: null,
+      },
+    );
+    await syncRewardsWith(store, data([tea]));
+    const { state } = await syncRewardsWith(store, data([]));
+    const live = state.events.filter((e) => e.revokedAt === null).map((e) => e.sourceKey);
+    expect(live).toEqual(
+      expect.arrayContaining(["weekly_review:2026-11-09", "quest:log_today:2026-11-05"]),
+    );
+    expect(state.achievements.map((a) => a.code)).toContain("weekly_review_complete");
+  });
+
+  it("a plan says when saving would take something back", () => {
+    const before = {
+      events: [
+        {
+          sourceKey: `logged_day:${TODAY}`,
+          kind: "logged_day",
+          xp: XP.loggedDay,
+          createdAt: day(11),
+          revokedAt: null,
+        },
+      ],
+      achievements: [],
+      quests: [],
+    };
+    const plan = planRewardSync(before, data([]));
+    expect(plan.revokedKeys).toEqual([`logged_day:${TODAY}`]);
+    expect(plan.earnedSomething).toBe(false);
+    expect(plan.changed).toBe(true);
+  });
+});
+
+describe("rank words", () => {
+  it("cover every level with plain words", () => {
+    expect([1, 2, 3, 5, 8, 12, 40].map(rankFor)).toEqual([
+      "Starter",
+      "Starter",
+      "Tracker",
+      "Planner",
+      "Strategist",
+      "Steward",
+      "Steward",
+    ]);
+    expect(rankFor(0)).toBe("Starter");
   });
 });
 
@@ -293,14 +416,14 @@ describe("idempotency", () => {
     expect(store.state.events).toHaveLength(first.state.events.length);
   });
 
-  it("deleting entries takes nothing away, and keeps the streak's days", async () => {
+  it("deleting entries revokes what they earned: XP, achievements and the streak's days", async () => {
     const store = memoryStore();
     await syncRewardsWith(store, data(entries));
-    const xp = totalXp(store.state.events);
     const { streaks, state } = await syncRewardsWith(store, data(entries.slice(0, 2)));
-    expect(totalXp(state.events)).toBe(xp);
-    expect(state.achievements.map((a) => a.code)).toContain("first_10_transactions");
-    expect(streaks.longestDaily).toBe(8);
+    // Two entries on two days are left: two logged days, nothing else.
+    expect(totalXp(state.events)).toBe(2 * XP.loggedDay);
+    expect(state.achievements.map((a) => a.code)).not.toContain("first_10_transactions");
+    expect(streaks.longestDaily).toBe(2);
   });
 
   it("adding, deleting and adding again can't farm a day", async () => {
@@ -310,6 +433,9 @@ describe("idempotency", () => {
       await syncRewardsWith(store, data([]));
     }
     expect(store.state.events.filter((e) => e.kind === "logged_day")).toHaveLength(1);
+    expect(totalXp(store.state.events)).toBe(0);
+    await syncRewardsWith(store, data([logged(day(5))]));
+    expect(totalXp(store.state.events)).toBe(XP.loggedDay);
   });
 
   it("editing an entry's amount or date earns nothing new", async () => {

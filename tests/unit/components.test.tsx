@@ -28,20 +28,46 @@ describe("StatePanel", () => {
 });
 
 describe("BottomNav", () => {
-  it("marks the tab covering the current screen and links to quick add", () => {
+  it("has Home, Activity, a docked Add, Insights, Plan and You, and marks the current tab", () => {
     pathname.current = "/goals";
     render(<BottomNav />);
     const nav = screen.getByRole("navigation", { name: "Primary" });
-    expect(nav.querySelectorAll("a")).toHaveLength(5);
+    const names = within(nav)
+      .getAllByRole("listitem")
+      .map((item) => {
+        const control = item.querySelector("a, button")!;
+        return control.getAttribute("aria-label") ?? control.textContent;
+      });
+    expect(names).toEqual(["Home", "Activity", "Add expense", "Insights", "Plan", "You"]);
     expect(screen.getByRole("link", { name: "Plan" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "Home" })).not.toHaveAttribute("aria-current");
     expect(screen.getByRole("link", { name: "Add expense" })).toHaveAttribute("href", "/add");
   });
 
-  it("hides the add button while already on an add screen", () => {
+  it("keeps Add in place on add screens, marked as current", () => {
     pathname.current = "/add/text";
     render(<BottomNav />);
-    expect(screen.queryByRole("link", { name: "Add expense" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Add expense" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  });
+
+  it("You opens a sheet with Reports, so Reports is two taps away", async () => {
+    pathname.current = "/reports";
+    const user = userEvent.setup();
+    render(<BottomNav />);
+    await user.click(screen.getByRole("button", { name: "You" }));
+    const you = screen.getByRole("navigation", { name: "You" });
+    expect(within(you).getByRole("link", { name: "Parent report" })).toHaveAttribute(
+      "href",
+      "/reports",
+    );
+    expect(within(you).getByRole("link", { name: "Player status" })).toHaveAttribute(
+      "href",
+      "/rewards",
+    );
+    expect(screen.getByRole("navigation", { name: "All sections" })).toBeInTheDocument();
   });
 });
 

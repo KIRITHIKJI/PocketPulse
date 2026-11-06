@@ -13,7 +13,7 @@ const LABELS: Record<keyof typeof SECTION_TABS, string> = {
 };
 
 /**
- * Horizontal sibling navigation (e.g. Budgets · Goals · Safe to spend · Survival).
+ * Sibling navigation (e.g. Budgets · Goals · Safe to spend · Survival). It always fits the width.
  * Takes a section key rather than items so server pages don't pass icon components across
  * the client boundary.
  */
@@ -23,8 +23,9 @@ export function SectionTabs({ section }: { section: keyof typeof SECTION_TABS })
   const active = findActiveItem(pathname, items);
 
   return (
-    <nav aria-label={LABELS[section]} className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-      <ul className="flex w-max gap-1 rounded-xl border bg-muted/50 p-1">
+    <nav aria-label={LABELS[section]}>
+      {/* Phones: equal columns, icon over label, so nothing is cut off. Wider: one row. */}
+      <ul className="grid auto-cols-fr grid-flow-col gap-1 rounded-xl border bg-muted/50 p-1 sm:flex sm:w-max">
         {items.map((item) => {
           const isActive = active?.href === item.href;
           const Icon = item.icon;
@@ -34,7 +35,7 @@ export function SectionTabs({ section }: { section: keyof typeof SECTION_TABS })
                 href={item.href}
                 aria-current={isActive ? "page" : undefined}
                 className={cn(
-                  "inline-flex min-h-10 items-center gap-2 rounded-lg px-3 text-sm font-medium whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground",
+                  "flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-lg px-1 py-1 text-center text-xs leading-tight font-medium text-muted-foreground transition-colors hover:text-foreground sm:min-h-10 sm:flex-row sm:gap-2 sm:px-3 sm:text-sm sm:whitespace-nowrap",
                   isActive && "bg-card text-foreground shadow-sm",
                 )}
               >
