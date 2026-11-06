@@ -5,19 +5,27 @@ import { cache } from "react";
 import {
   type SafeToSpendResult,
   type TimeSettings,
+  type Transaction,
+  addMonths,
   calculatePlan,
   formatMoney,
+  resolvePeriod,
   toLocalDate,
 } from "@/domain";
 import {
   type Profile,
   getAccounts,
+  getCommitmentPayments,
   getCommitments,
-  getLedger,
+  getGoalLedger,
+  getLedgerSince,
   getProfile,
+  getRecurringEntries,
   getRecurringTemplates,
+  getWalletBalances,
 } from "@/lib/data/queries";
 import { requestNow } from "@/lib/data/session";
+import { isoInstant, mergeLedger, startForAnyZone } from "@/lib/data/slices";
 import { formatLocalDate } from "@/lib/format";
 
 export interface PlanData {
@@ -26,7 +34,11 @@ export interface PlanData {
   now: number;
   today: string;
   money: (paise: number) => string;
-  ledger: Awaited<ReturnType<typeof getLedger>>;
+  /**
+   * The rows the plan screens use, not all of them: the last month (recent pace, today, the
+   * current income cycle), all goal money, and the entries that paid bills or recurring items.
+   */
+  ledger: Transaction[];
   commitments: Awaited<ReturnType<typeof getCommitments>>;
   templates: Awaited<ReturnType<typeof getRecurringTemplates>>;
   result: SafeToSpendResult;
@@ -34,19 +46,40 @@ export interface PlanData {
 
 /** One calculation per request, from the income date and reserve saved on the profile. */
 export const loadPlan = cache(async (): Promise<PlanData> => {
-  const [profile, accounts, ledger, commitments, templates] = await Promise.all([
+  const now = requestNow();
+  // An income cycle is at most a month long, and the pace looks back 14 days.
+  const since = startForAnyZone((s) => {
+    const today = toLocalDate(now, s.timeZone);
+    return [resolvePeriod({ kind: "custom", from: addMonths(today, -1), to: today }, now, s)];
+  })!;
+  const [
+    profile,
+    accounts,
+    recent,
+    goalMoney,
+    recurring,
+    payments,
+    balances,
+    commitments,
+    templates,
+  ] = await Promise.all([
     getProfile(),
     getAccounts(),
-    getLedger(),
+    getLedgerSince(isoInstant(since)),
+    getGoalLedger(),
+    getRecurringEntries(),
+    getCommitmentPayments(),
+    getWalletBalances(isoInstant(now)),
     getCommitments(),
     getRecurringTemplates(),
   ]);
-  const now = requestNow();
+  const ledger = mergeLedger(recent, goalMoney, recurring, payments);
   const settings = { timeZone: profile.timeZone, weekStartsOn: profile.weekStartsOn };
   const money = (paise: number) => formatMoney(paise, { currency: profile.currency });
   const result = calculatePlan({
     accounts,
     ledger,
+    balance: balances.closing,
     commitments,
     templates,
     now,

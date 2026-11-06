@@ -11,13 +11,17 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
+  SUGGESTION_MONTHS,
   type Budget,
   type BudgetEvaluation,
+  type Period,
+  type TimeSettings,
   budgetAlert,
   evaluateBudget,
   formatBasisPoints,
   formatMoney,
   previousPeriod,
+  resolvePeriod,
   suggestMonthlyLimit,
   toLocalDate,
 } from "@/domain";
@@ -26,11 +30,13 @@ import {
   getAccounts,
   getBudgets,
   getCategories,
-  getLedger,
+  getLedgerSince,
   getProfile,
   getReminderPreferences,
+  withBudgetPeriods,
 } from "@/lib/data/queries";
 import { requestNow } from "@/lib/data/session";
+import { isoInstant, startForAnyZone } from "@/lib/data/slices";
 import { formatLocalDate } from "@/lib/format";
 import { mainExpenseCategories } from "@/lib/plan-view";
 
@@ -54,16 +60,29 @@ function periodText(budget: Budget, evaluation: BudgetEvaluation) {
   return `${label} · ${from} to ${to}`;
 }
 
+/** This week and month, the ones before them, and the months a suggested limit looks at. */
+function periodsFor(now: number, settings: TimeSettings): (Period | null)[] {
+  const week = resolvePeriod({ kind: "this_week" }, now, settings);
+  const months: (Period | null)[] = [resolvePeriod({ kind: "this_month" }, now, settings)];
+  for (let i = 0; i < SUGGESTION_MONTHS; i++) {
+    const last = months.at(-1);
+    months.push(last ? previousPeriod(last) : null);
+  }
+  return [week, previousPeriod(week), ...months];
+}
+
 export default async function BudgetsPage() {
-  const [profile, budgets, categories, ledger, accounts, reminders] = await Promise.all([
+  const now = requestNow();
+  const since = startForAnyZone((settings) => periodsFor(now, settings))!;
+  const [profile, budgets, categories, window, accounts, reminders] = await Promise.all([
     getProfile(),
     getBudgets(),
     getCategories(),
-    getLedger(),
+    getLedgerSince(isoInstant(since)),
     getAccounts(),
     getReminderPreferences(),
   ]);
-  const now = requestNow();
+  const ledger = await withBudgetPeriods(window, since, budgets, now);
   const settings = { timeZone: profile.timeZone, weekStartsOn: profile.weekStartsOn };
   const today = toLocalDate(now, profile.timeZone);
   const money = (paise: number) => formatMoney(paise, { currency: profile.currency });

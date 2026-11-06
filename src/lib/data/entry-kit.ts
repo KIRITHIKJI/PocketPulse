@@ -13,8 +13,8 @@ import {
   getAccountsWithDefault,
   getCategories,
   getCategoryRules,
-  getLedger,
   getProfile,
+  getSuggestionHistory,
 } from "@/lib/data/queries";
 import { requestNow } from "@/lib/data/session";
 import { type PickerNode, pickerTree } from "@/lib/picker-tree";
@@ -35,16 +35,14 @@ export interface EntryKit {
   history: Transaction[];
 }
 
-const HISTORY_FOR_SUGGESTIONS = 400;
-
 export async function loadEntryKit(): Promise<EntryKit> {
   // Every entry form preselects the default wallet, created ("Cash") if the user has none.
-  const [profile, { accounts, defaultAccount }, categories, rules, ledger] = await Promise.all([
+  const [profile, { accounts, defaultAccount }, categories, rules, history] = await Promise.all([
     getProfile(),
     getAccountsWithDefault(),
     getCategories(),
     getCategoryRules(),
-    getLedger(),
+    getSuggestionHistory(),
   ]);
   return {
     currency: profile.currency,
@@ -56,8 +54,6 @@ export async function loadEntryKit(): Promise<EntryKit> {
     incomeTree: pickerTree(categories, "income"),
     categories,
     rules,
-    history: ledger
-      .filter((tx) => (tx.type === "expense" || tx.type === "income") && tx.categoryId !== null)
-      .slice(0, HISTORY_FOR_SUGGESTIONS),
+    history,
   };
 }

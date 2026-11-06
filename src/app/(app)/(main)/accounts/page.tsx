@@ -7,21 +7,17 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import {
-  type AccountBalance,
-  consolidatedBalanceAt,
-  entriesBeforeOpening,
-  formatMoney,
-  toLocalDate,
-} from "@/domain";
+import { type AccountBalance, formatMoney, toLocalDate } from "@/domain";
 import { makeDefaultAccount, setAccountArchived } from "@/lib/actions/accounts";
 import {
   type AccountRecord,
   getAccountsWithDefault,
-  getLedger,
   getProfile,
+  getWalletBalances,
+  readWalletBalances,
 } from "@/lib/data/queries";
 import { requestNow } from "@/lib/data/session";
+import { isoInstant } from "@/lib/data/slices";
 import { formatLocalDate } from "@/lib/format";
 import { entriesBeforeOpeningText } from "@/lib/opening-note";
 import { ACCOUNT_KIND_LABELS } from "@/lib/validation/accounts";
@@ -30,16 +26,19 @@ export const metadata: Metadata = { title: "Wallets" };
 
 export default async function AccountsPage() {
   // Every user has a default wallet to preselect, even one who skipped onboarding.
-  const [profile, { accounts }, ledger] = await Promise.all([
+  const now = requestNow();
+  const [profile, { accounts }, read] = await Promise.all([
     getProfile(),
     getAccountsWithDefault(),
-    getLedger(),
+    getWalletBalances(isoInstant(now)),
   ]);
-  const tz = profile.timeZone;
-  const now = requestNow();
-  const today = toLocalDate(now, tz);
+  // Only when the default wallet was created just now can the balances have missed it.
+  const balances = accounts.every((a) => read.closing.accounts.some((b) => b.accountId === a.id))
+    ? read
+    : await readWalletBalances(isoInstant(now));
+  const today = toLocalDate(now, profile.timeZone);
   // Archived wallets still count: their money and history are still in the ledger.
-  const total = consolidatedBalanceAt(accounts, ledger, now, tz);
+  const total = balances.closing;
   const balanceOf = new Map(total.accounts.map((b) => [b.accountId, b]));
   const active = accounts.filter((a) => !a.archivedAt);
   const archived = accounts.filter((a) => a.archivedAt);
@@ -75,7 +74,7 @@ export default async function AccountsPage() {
               key={account.id}
               account={account}
               balance={balanceOf.get(account.id)}
-              beforeOpening={entriesBeforeOpening(account, ledger, tz).length}
+              beforeOpening={balances.entriesBeforeOpening.get(account.id) ?? 0}
               money={money}
               today={today}
             />
@@ -97,7 +96,7 @@ export default async function AccountsPage() {
                 key={account.id}
                 account={account}
                 balance={balanceOf.get(account.id)}
-                beforeOpening={entriesBeforeOpening(account, ledger, tz).length}
+                beforeOpening={balances.entriesBeforeOpening.get(account.id) ?? 0}
                 money={money}
                 today={today}
               />

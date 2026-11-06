@@ -16,7 +16,7 @@
  * Every result returns its inputs and plain-language explanation lines.
  */
 import { netSpending } from "./aggregation";
-import { consolidatedBalanceAt, trackingStartMs } from "./balances";
+import { type ConsolidatedBalance, consolidatedBalanceAt, trackingStartMs } from "./balances";
 import { forecastCommitments } from "./recurring";
 import { indexById, isActive } from "./ledger";
 import {
@@ -45,6 +45,12 @@ import {
 export interface SafeToSpendInput {
   accounts: readonly Account[];
   ledger: readonly Transaction[];
+  /**
+   * The tracked balance at `now`, from `wallet_balances`. Without it the balance is rebuilt from
+   * `ledger`, which then has to hold every row; with it, `ledger` needs goal money, the paid and
+   * recurring entries, and the recent days only.
+   */
+  balance?: ConsolidatedBalance;
   commitments: readonly Commitment[];
   now: Instant;
   settings?: TimeSettings;
@@ -125,11 +131,11 @@ export function calculateSafeToSpend(input: SafeToSpendInput): SafeToSpendResult
   const money = input.money ?? formatINR;
   const dateText = input.dateText ?? ((date: LocalDate) => date);
 
-  const balancePaise = consolidatedBalanceAt(
-    input.accounts,
-    input.ledger,
-    input.now,
-    tz,
+  if (input.balance && input.balance.asOfMs !== input.now) {
+    throw new Error("The balance was taken at a different instant from this plan's");
+  }
+  const balancePaise = (
+    input.balance ?? consolidatedBalanceAt(input.accounts, input.ledger, input.now, tz)
   ).balancePaise;
   const earmarkedPaise = totalEarmarked(input.ledger, input.now);
 

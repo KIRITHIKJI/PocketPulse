@@ -16,7 +16,6 @@ import {
   PURCHASE_GROUPINGS,
   type PurchaseGrouping,
   comparisonWindows,
-  firstSpendingDate,
   formatBasisPoints,
   formatMoney,
   indexById,
@@ -28,11 +27,13 @@ import {
 import {
   getAccounts,
   getCategories,
-  getLedger,
+  getLedgerSince,
   getProfile,
   getQuickAddPresets,
+  hasSpending,
 } from "@/lib/data/queries";
 import { requestNow } from "@/lib/data/session";
+import { isoInstant, startForAnyZone } from "@/lib/data/slices";
 import { entryView } from "@/lib/entry-view";
 import { formatDayLabel, formatTimeOf } from "@/lib/format";
 import { newestFirst } from "@/lib/history";
@@ -54,14 +55,23 @@ export default async function MoneyLeaksPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
-  const [profile, categories, accounts, ledger, presets] = await Promise.all([
+  const now = requestNow();
+  // Leaks compare the chosen period with the one before it; nothing older is needed.
+  const since = startForAnyZone((s) => {
+    const { period } = parseInsightSelection(params, now, s);
+    return [
+      period,
+      comparisonWindows(period, toLocalDate(now, s.timeZone), 1)?.previous[0] ?? null,
+    ];
+  });
+  const [profile, categories, accounts, ledger, presets, anySpending] = await Promise.all([
     getProfile(),
     getCategories(),
     getAccounts(),
-    getLedger(),
+    getLedgerSince(since === null ? null : isoInstant(since)),
     getQuickAddPresets(),
+    hasSpending(),
   ]);
-  const now = requestNow();
   const settings = { timeZone: profile.timeZone, weekStartsOn: profile.weekStartsOn };
   const tz = settings.timeZone;
   const today = toLocalDate(now, tz);
@@ -99,8 +109,6 @@ export default async function MoneyLeaksPage({
         ...entryView(tx, ctx),
         timeLabel: `${formatDayLabel(toLocalDate(occurredAtMs(tx), tz), today)}, ${formatTimeOf(tx.occurredAt, tz)}`,
       }));
-
-  const hasSpending = firstSpendingDate(ledger, tz) !== null;
 
   return (
     <>
@@ -142,7 +150,7 @@ export default async function MoneyLeaksPage({
           title="Not enough repeated purchases yet"
           description={`A group appears when a purchase under ${money(threshold)} happens at least ${MIN_REPEATS} times ${words.period}.`}
           actions={
-            hasSpending ? (
+            anySpending ? (
               <Button variant="outline" asChild>
                 <Link href="/settings">Change the small-purchase amount</Link>
               </Button>

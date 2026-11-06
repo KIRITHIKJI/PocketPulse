@@ -22,13 +22,19 @@ import {
 import {
   getAccounts,
   getCategories,
+  getGoalLedger,
+  getGoalLedgerVersions,
   getGoals,
   getLedger,
+  getLedgerSince,
   getLedgerVersions,
   getProfile,
   getQuickAddPresets,
+  getSpendingLedger,
+  hasLedgerEntries,
 } from "@/lib/data/queries";
 import { requestNow } from "@/lib/data/session";
+import { isoInstant, mergeLedger, startForAnyZone } from "@/lib/data/slices";
 import { entryView } from "@/lib/entry-view";
 import { formatDayLabel, formatTimeOf } from "@/lib/format";
 import { activeFilterCount, filterHistory, groupByDay, parseHistoryFilters } from "@/lib/history";
@@ -45,22 +51,47 @@ export default async function TransactionsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
-  const [profile, accounts, categories, ledger, presets, goals, versions] = await Promise.all([
+  const now = requestNow();
+  const { filters, errors } = parseHistoryFilters(params);
+  // With a start date, only rows from then on can match; without one, the list (and its count
+  // and totals) is all of history.
+  const since = filters.from
+    ? startForAnyZone((s) => [
+        resolvePeriod({ kind: "custom", from: filters.from!, to: filters.from! }, now, s),
+      ])
+    : null;
+  const [
+    profile,
+    accounts,
+    categories,
+    ledger,
+    presets,
+    goals,
+    anyEntries,
+    [noteLedger, versions],
+  ] = await Promise.all([
     getProfile(),
     getAccounts(),
     getCategories(),
-    getLedger(),
+    getLedgerSince(since === null ? null : isoInstant(since)),
     getQuickAddPresets(),
     getGoals(),
-    getLedgerVersions(),
+    since === null ? true : hasLedgerEntries(),
+    // A release left behind when its purchase was deleted: read from goal money and purchases.
+    since === null
+      ? Promise.all([getLedger(), getLedgerVersions()])
+      : Promise.all([
+          Promise.all([getSpendingLedger(), getGoalLedger()]).then((parts) =>
+            mergeLedger(...parts),
+          ),
+          getGoalLedgerVersions(),
+        ]),
   ]);
   const tz = profile.timeZone;
-  const now = requestNow();
   const today = toLocalDate(now, tz);
   const settings = { timeZone: tz, weekStartsOn: profile.weekStartsOn };
   const money = (paise: number) => formatMoney(paise, { currency: profile.currency });
 
-  const { filters, errors } = parseHistoryFilters(params);
   const tileNames = new Map(presets.map((p) => [p.id, p.label]));
   const ctx = {
     categoriesById: new Map(categories.map((c) => [c.id, c])),
@@ -145,11 +176,11 @@ export default async function TransactionsPage({
       )}
 
       <GoalReleaseNotes
-        notes={goalReleaseNotes(ledger, goals, versions)}
+        notes={goalReleaseNotes(noteLedger, goals, versions)}
         currency={profile.currency}
       />
 
-      {ledger.length === 0 ? (
+      {(since === null ? ledger.length === 0 : !anyEntries) ? (
         <StatePanel
           icon={Receipt}
           title="No transactions yet"

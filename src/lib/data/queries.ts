@@ -2,18 +2,21 @@ import "server-only";
 
 import { cache } from "react";
 
-import type {
-  Account,
-  Budget,
-  Category,
-  CategoryRule,
-  Commitment,
-  CurrencyCode,
-  RecurringTemplate,
-  SavingsGoal,
-  Transaction,
-  ReminderSettings,
-  Weekday,
+import {
+  type Account,
+  type Budget,
+  type Category,
+  type CategoryRule,
+  type Commitment,
+  type CurrencyCode,
+  type LedgerBalances,
+  type RecurringTemplate,
+  type SavingsGoal,
+  type Transaction,
+  type ReminderSettings,
+  type Weekday,
+  type Instant,
+  budgetPeriod,
 } from "@/domain";
 import { ensureDefaults } from "@/lib/auth/defaults";
 import { DataLoadError } from "@/lib/data/errors";
@@ -25,11 +28,24 @@ import {
   rowToCategoryRule,
   rowToCommitment,
   rowToGoal,
+  rowToLedgerBalances,
   rowToLedgerRecord,
   rowToRecurringTemplate,
   rowToTransaction,
 } from "@/lib/data/mappers";
-import { type Session, requireSession } from "@/lib/data/session";
+import {
+  type ServerClient,
+  type Session,
+  optionalSession,
+  requireSession,
+} from "@/lib/data/session";
+import {
+  earliestStart,
+  isoInstant,
+  mergeLedger,
+  missingRefundOriginals,
+  startForAnyZone,
+} from "@/lib/data/slices";
 import type { LedgerRecord } from "@/lib/ledger/commands";
 import type { MotionPreference } from "@/lib/motion-preference";
 import type {
@@ -161,6 +177,21 @@ export const getNotifications = cache(async (): Promise<InboxNotification[]> => 
   }));
 });
 
+/**
+ * Reminders not yet read or dismissed, for the header's bell; 0 when signed out. The layout
+ * starts it with the profile read, so it doesn't add a round of its own to every page.
+ */
+export const getUnreadCount = cache(async (): Promise<number> => {
+  const session = await optionalSession();
+  if (!session) return 0;
+  const { count } = await session.supabase
+    .from("notifications")
+    .select("id", { count: "exact", head: true })
+    .is("read_at", null)
+    .is("dismissed_at", null);
+  return count ?? 0;
+});
+
 export interface AccountRecord extends Account {
   sortOrder: number;
 }
@@ -237,21 +268,245 @@ export const getCategoryRules = cache(async (): Promise<CategoryRule[]> => {
   return rows.map(rowToCategoryRule);
 });
 
-const getLedgerRows = cache(async (): Promise<Row[]> => {
+/** The ledger columns domain records use: everything but the idempotency key and void reason. */
+const LEDGER_COLUMNS = [
+  "id",
+  "owner_id",
+  "type",
+  "amount_paise",
+  "currency",
+  "occurred_at",
+  "account_id",
+  "from_account_id",
+  "to_account_id",
+  "goal_id",
+  "refund_of_id",
+  "category_id",
+  "subcategory_id",
+  "preset_id",
+  "description",
+  "merchant",
+  "note",
+  "tags",
+  "source",
+  "batch_id",
+  "recurring_template_id",
+  "recurring_occurrence",
+  "version",
+  "deleted_at",
+  "voided_at",
+  "created_at",
+  "updated_at",
+].join(", ");
+
+function activeLedger(supabase: ServerClient) {
+  return supabase.from("transactions").select<string, Row>(LEDGER_COLUMNS).is("deleted_at", null);
+}
+
+type LedgerQuery = ReturnType<typeof activeLedger>;
+
+/** Every non-deleted row that `narrow` keeps, in ledger order, a page at a time. */
+async function readLedgerRows(narrow: (query: LedgerQuery) => LedgerQuery): Promise<Row[]> {
   const { supabase } = await requireSession();
   return fetchLedgerPages((after, limit) => {
-    const query = supabase.from("transactions").select("*").is("deleted_at", null);
+    const query = narrow(activeLedger(supabase));
     return (after ? query.or(afterLedgerRow(after)) : query)
       .order("occurred_at", { ascending: false })
       .order("id")
       .limit(limit);
   }, "your entries");
-});
+}
 
-/** Every non-deleted ledger row. Balances and history are rebuilt from these by `@/domain`. */
+/** One bounded read, ordered and limited by `narrow`. */
+async function readSomeLedgerRows(narrow: (query: LedgerQuery) => LedgerQuery): Promise<Row[]> {
+  const { supabase } = await requireSession();
+  const { data, error } = await narrow(activeLedger(supabase));
+  if (error) throw new DataLoadError("your entries", error.code);
+  return (data ?? []) as Row[];
+}
+
+const getLedgerRows = cache(() => readLedgerRows((query) => query));
+
+/**
+ * Every non-deleted ledger row. Only for screens whose figures span all history (the full
+ * transaction list, category usage, recurring signals, rewards); others use `getLedgerSince`.
+ */
 export const getLedger = cache(async (): Promise<Transaction[]> =>
   (await getLedgerRows()).map(rowToTransaction),
 );
+
+/**
+ * `rows` plus the older purchases their refunds point at, which a refund's category and size
+ * come from. The extra read only happens when such a purchase isn't among the rows already.
+ */
+async function withRefundOriginals(rows: Row[]): Promise<Transaction[]> {
+  const ledger = rows.map(rowToTransaction);
+  const missing = missingRefundOriginals(ledger);
+  if (missing.length === 0) return ledger;
+  const originals = await readLedgerRows((query) => query.in("id", missing));
+  return mergeLedger(ledger, originals.map(rowToTransaction));
+}
+
+/**
+ * Non-deleted rows dated from `since` on (an ISO instant; null = all of them), with the
+ * purchases their refunds point at.
+ */
+export const getLedgerSince = cache(async (since: string | null): Promise<Transaction[]> =>
+  since === null
+    ? getLedger()
+    : withRefundOriginals(await readLedgerRows((query) => query.gte("occurred_at", since))),
+);
+
+/**
+ * The ledger a screen read from `since`, or a longer read when one of `budgets` (a custom one)
+ * starts earlier than that.
+ */
+export async function withBudgetPeriods(
+  window: Transaction[],
+  since: Instant,
+  budgets: readonly Budget[],
+  now: Instant,
+): Promise<Transaction[]> {
+  if (budgets.length === 0) return window;
+  const needed = earliestStart(
+    since,
+    startForAnyZone((settings) => budgets.map((budget) => budgetPeriod(budget, now, settings))),
+  );
+  return needed === since ? window : getLedgerSince(isoInstant(needed!));
+}
+
+/** Non-deleted rows dated before `until` (an ISO instant). */
+export const getLedgerBefore = cache(async (until: string): Promise<Transaction[]> =>
+  (await readLedgerRows((query) => query.lt("occurred_at", until))).map(rowToTransaction),
+);
+
+/**
+ * Every purchase and refund. For what spans all spending history: "looks recurring", the
+ * earliest purchase, and which purchases can still be refunded.
+ */
+export const getSpendingLedger = cache(async (): Promise<Transaction[]> =>
+  (await readLedgerRows((query) => query.in("type", ["expense", "refund"]))).map(rowToTransaction),
+);
+
+/** Whether any active purchase or refund exists. */
+export const hasSpending = cache(
+  async (): Promise<boolean> =>
+    (
+      await readSomeLedgerRows((query) =>
+        query.in("type", ["expense", "refund"]).is("voided_at", null).limit(1),
+      )
+    ).length > 0,
+);
+
+/** Income dated from `since` on (an ISO instant; null = all of it). */
+export const getIncomeSince = cache(async (since: string | null): Promise<Transaction[]> =>
+  (
+    await readLedgerRows((query) =>
+      since === null
+        ? query.eq("type", "income")
+        : query.eq("type", "income").gte("occurred_at", since),
+    )
+  ).map(rowToTransaction),
+);
+
+const getGoalLedgerRows = cache(() =>
+  readLedgerRows((query) => query.in("type", ["allocation", "allocation_release"])),
+);
+
+/** Every set-aside and release. Goal money spans all history, and there are few of these. */
+export const getGoalLedger = cache(async (): Promise<Transaction[]> =>
+  (await getGoalLedgerRows()).map(rowToTransaction),
+);
+
+/** Row versions of the set-asides and releases, for checked edits of them. */
+export const getGoalLedgerVersions = cache(
+  async (): Promise<Map<string, number>> =>
+    new Map((await getGoalLedgerRows()).map((row) => [row.id as string, Number(row.version)])),
+);
+
+/** Every entry recorded for a recurring item: what makes an occurrence done. */
+export const getRecurringEntries = cache(async (): Promise<Transaction[]> =>
+  (await readLedgerRows((query) => query.not("recurring_template_id", "is", null))).map(
+    rowToTransaction,
+  ),
+);
+
+/** How many recent categorised entries category suggestions learn from. */
+const SUGGESTION_HISTORY = 400;
+
+/** The newest categorised spending and income: what "you chose this before" learns from. */
+export const getSuggestionHistory = cache(async (): Promise<Transaction[]> =>
+  (
+    await readSomeLedgerRows((query) =>
+      query
+        .in("type", ["expense", "income"])
+        .not("category_id", "is", null)
+        .order("occurred_at", { ascending: false })
+        .order("id")
+        .limit(SUGGESTION_HISTORY),
+    )
+  ).map(rowToTransaction),
+);
+
+/** The expense recorded last (by when it was entered, not its date), for "Repeat last". */
+export const getLatestExpense = cache(async (): Promise<Transaction[]> =>
+  (
+    await readSomeLedgerRows((query) =>
+      query
+        .eq("type", "expense")
+        .is("voided_at", null)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .limit(1),
+    )
+  ).map(rowToTransaction),
+);
+
+/** The newest `count` entries in History's order, with the purchases their refunds point at. */
+export const getRecentEntries = cache(async (count: number): Promise<Transaction[]> =>
+  withRefundOriginals(
+    await readSomeLedgerRows((query) =>
+      query
+        .order("occurred_at", { ascending: false })
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .limit(count),
+    ),
+  ),
+);
+
+/** Whether any non-deleted entry exists. */
+export const hasLedgerEntries = cache(
+  async (): Promise<boolean> => (await readSomeLedgerRows((query) => query.limit(1))).length > 0,
+);
+
+/**
+ * Wallet balances at `closing` and optionally `opening` (ISO instants), per wallet and in total,
+ * from the `wallet_balances` database function. It takes no user id: it reads only the signed-in
+ * user's rows, under RLS, and mirrors the domain's balance rules.
+ */
+export async function readWalletBalances(
+  closing: string,
+  opening: string | null = null,
+): Promise<LedgerBalances> {
+  const { supabase } = await requireSession();
+  // A GET, since the function only reads: a dropped connection can then be retried. A GET sends
+  // arguments as text, where null would arrive as "null", so no opening is left out instead.
+  const { data, error } = await supabase.rpc(
+    "wallet_balances",
+    opening === null ? { p_closing: closing } : { p_closing: closing, p_opening: opening },
+    { get: true },
+  );
+  if (error || !data) throw new DataLoadError("your balances", error?.code);
+  return rowToLedgerBalances(
+    data,
+    Date.parse(closing),
+    opening === null ? null : Date.parse(opening),
+  );
+}
+
+/** `readWalletBalances`, once per request for the same instants. */
+export const getWalletBalances = cache(readWalletBalances);
 
 /** Row versions for optimistic-concurrency edits (`update_transaction`), keyed by id. */
 export const getLedgerVersions = cache(
@@ -323,15 +578,34 @@ export const getGoal = cache(async (id: string): Promise<SavingsGoal | null> => 
 });
 
 /** One-off bills plus the rows that mark a recurring occurrence as skipped. */
-export const getCommitments = cache(async (): Promise<Commitment[]> => {
+export const getCommitments = cache(async (): Promise<Commitment[]> =>
+  (await getCommitmentRows()).map(rowToCommitment),
+);
+
+/** Each bill with the entry that paid it, read together so no second round is needed. */
+const getCommitmentRows = cache(async (): Promise<Row[]> => {
   const { supabase } = await requireSession();
-  const rows = await fetchAll(
+  return fetchAll(
     (from, to) =>
-      supabase.from("commitments").select("*").order("due_date").order("id").range(from, to),
+      supabase
+        .from("commitments")
+        .select<string, Row>(
+          `*, paid:transactions!commitments_owner_id_paid_transaction_id_fkey(${LEDGER_COLUMNS})`,
+        )
+        .order("due_date")
+        .order("id")
+        .range(from, to),
     "your planned bills",
   );
-  return rows.map(rowToCommitment);
 });
+
+/** The entries that paid bills (not deleted ones): whether a bill is still paid. */
+export const getCommitmentPayments = cache(async (): Promise<Transaction[]> =>
+  (await getCommitmentRows()).flatMap((row) => {
+    const paid = row.paid as Row | null;
+    return paid && paid.deleted_at === null ? [rowToTransaction(paid)] : [];
+  }),
+);
 
 export const getRecurringTemplates = cache(async (): Promise<RecurringTemplate[]> => {
   const { supabase } = await requireSession();
@@ -386,12 +660,7 @@ export const getQuickAddPresets = cache(async (): Promise<QuickAddPreset[]> => {
 export const getLedgerRecord = cache(async (id: string): Promise<LedgerRecord | null> => {
   if (!UUID_PATTERN.test(id)) return null;
   const { supabase } = await requireSession();
-  const { data, error } = await supabase
-    .from("transactions")
-    .select("*")
-    .eq("id", id)
-    .is("deleted_at", null)
-    .maybeSingle();
+  const { data, error } = await activeLedger(supabase).eq("id", id).maybeSingle();
   if (error) throw new DataLoadError("that entry", error.code);
   return data ? rowToLedgerRecord(data) : null;
 });

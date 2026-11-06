@@ -22,7 +22,8 @@ import {
   spendingDisplay,
   toLocalDate,
 } from "@/domain";
-import { getAccounts, getCategories, getLedger, getProfile } from "@/lib/data/queries";
+import { loadInsightsLedger } from "@/lib/data/insights";
+import { getAccounts, getCategories, getProfile } from "@/lib/data/queries";
 import { requestNow } from "@/lib/data/session";
 import { entryView } from "@/lib/entry-view";
 import { formatDayLabel, formatTimeOf } from "@/lib/format";
@@ -51,11 +52,12 @@ export default async function CategoryInsightsPage({
 }) {
   const { id } = await params;
   const query = await searchParams;
+  const now = requestNow();
   const [profile, categories, accounts, ledger] = await Promise.all([
     getProfile(),
     getCategories(),
     getAccounts(),
-    getLedger(),
+    loadInsightsLedger(query, now),
   ]);
   const category = categories.find((c) => c.id === id);
   const unassigned = id === UNCATEGORIZED;
@@ -63,7 +65,6 @@ export default async function CategoryInsightsPage({
     notFound();
   }
 
-  const now = requestNow();
   const settings = { timeZone: profile.timeZone, weekStartsOn: profile.weekStartsOn };
   const tz = settings.timeZone;
   const today = toLocalDate(now, tz);

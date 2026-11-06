@@ -1,10 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { reportCsv } from "@/domain";
-import { getAccounts, getCategories, getLedger, getProfile } from "@/lib/data/queries";
-import { requestNow, requireSession } from "@/lib/data/session";
+import { requireSession } from "@/lib/data/session";
+import { loadReport } from "@/lib/reports/load";
 import { reportPdf } from "@/lib/reports/pdf";
-import { reportFor } from "@/lib/reports/params";
 
 /**
  * The report as a download, built only when the user asks and returned only to them. All data
@@ -12,26 +11,13 @@ import { reportFor } from "@/lib/reports/params";
  */
 export async function GET(request: NextRequest) {
   await requireSession();
-  const [profile, accounts, ledger, categories] = await Promise.all([
-    getProfile(),
-    getAccounts(),
-    getLedger(),
-    getCategories(),
-  ]);
   const params = Object.fromEntries(
     [...new Set(request.nextUrl.searchParams.keys())].map((key) => [
       key,
       request.nextUrl.searchParams.getAll(key),
     ]),
   );
-  const { report } = reportFor({
-    params,
-    profile,
-    accounts,
-    ledger,
-    categories,
-    now: requestNow(),
-  });
+  const { report } = await loadReport(params);
   const name = `pocketpulse-report-${report.period.startDate ?? "all-time"}`;
   const headers = { "Cache-Control": "private, no-store" };
 

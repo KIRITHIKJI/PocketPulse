@@ -7,22 +7,26 @@ import { StatePanel } from "@/components/states/state-panel";
 import { QuickAdd } from "@/components/transactions/quick-add";
 import { TileEditor } from "@/components/transactions/tile-editor";
 import { Card } from "@/components/ui/card";
-import { categoryLabel, formatMoney, resolveCategoryChoice } from "@/domain";
+import { categoryLabel, formatMoney, frequentExpensesSince, resolveCategoryChoice } from "@/domain";
 import { loadEntryKit } from "@/lib/data/entry-kit";
-import { getLedger, getQuickAddPresets } from "@/lib/data/queries";
+import { getLatestExpense, getLedgerSince, getQuickAddPresets } from "@/lib/data/queries";
 import { requestNow } from "@/lib/data/session";
+import { mergeLedger } from "@/lib/data/slices";
 import { presetIcon, shortcutEntries, tileEntries } from "@/lib/quick-entries";
 
 export const metadata: Metadata = { title: "Quick add" };
 
 export default async function QuickAddPage() {
-  const [kit, presets, ledger] = await Promise.all([
+  const now = requestNow();
+  // Shortcuts need only the "frequent" look-back and the expense recorded last.
+  const [kit, presets, recent, latestExpense] = await Promise.all([
     loadEntryKit(),
     getQuickAddPresets(),
-    getLedger(),
+    getLedgerSince(new Date(frequentExpensesSince(now)).toISOString()),
+    getLatestExpense(),
   ]);
   const tiles = tileEntries(presets, kit.categories);
-  const shortcuts = shortcutEntries(ledger, kit.categories, requestNow());
+  const shortcuts = shortcutEntries(mergeLedger(recent, latestExpense), kit.categories, now);
   const byId = new Map(kit.categories.map((c) => [c.id, c]));
 
   return (

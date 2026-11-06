@@ -8,7 +8,10 @@
  */
 import {
   type Account,
+  type AccountBalance,
   type Category,
+  type ConsolidatedBalance,
+  type LedgerBalances,
   type CategoryRule,
   type Commitment,
   type RecurringTemplate,
@@ -21,6 +24,7 @@ import {
   commitmentSchema,
   recurringTemplateSchema,
   savingsGoalSchema,
+  sumPaise,
   transactionSchema,
 } from "@/domain";
 
@@ -230,4 +234,53 @@ export function rowToRecurringTemplate(row: Row): RecurringTemplate {
     pausedAt: timestamp(row.paused_at),
     archivedAt: timestamp(row.archived_at),
   });
+}
+
+function optionalPaise(value: unknown): number | null {
+  return value === null || value === undefined ? null : paise(value);
+}
+
+/**
+ * The `wallet_balances` result as domain balances. The database sends each wallet's figure and
+ * the totals; a total that isn't the sum of its wallets fails loudly rather than being shown.
+ */
+export function rowToLedgerBalances(
+  value: unknown,
+  closingMs: number,
+  openingMs: number | null,
+): LedgerBalances {
+  const row = value as Row & { accounts: Row[] };
+  const at = (asOfMs: number, key: "opening" | "closing"): ConsolidatedBalance => {
+    const accounts = row.accounts.map((wallet): AccountBalance => {
+      const balancePaise = optionalPaise(wallet[`${key}_paise`]);
+      return {
+        scope: "account",
+        accountId: String(wallet.account_id),
+        balancePaise,
+        asOfMs,
+        tracked: balancePaise !== null,
+      };
+    });
+    const balancePaise = paise(row[`${key}_total_paise`]);
+    if (sumPaise(accounts.map((b) => b.balancePaise ?? 0)) !== balancePaise) {
+      throw new Error(`Wallet balances don't add up to the ${key} total`);
+    }
+    return {
+      scope: "consolidated",
+      balancePaise,
+      asOfMs,
+      accounts,
+      untrackedAccountIds: accounts.filter((b) => !b.tracked).map((b) => b.accountId),
+    };
+  };
+  return {
+    opening: openingMs === null ? null : at(openingMs, "opening"),
+    closing: at(closingMs, "closing"),
+    entriesBeforeOpening: new Map(
+      row.accounts.map((wallet) => [
+        String(wallet.account_id),
+        Number(wallet.entries_before_opening),
+      ]),
+    ),
+  };
 }

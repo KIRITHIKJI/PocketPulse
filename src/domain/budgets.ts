@@ -163,6 +163,9 @@ export function budgetAlert(evaluation: BudgetEvaluation): BudgetAlert | null {
   };
 }
 
+/** How many complete previous months a suggested limit looks at, unless told otherwise. */
+export const SUGGESTION_MONTHS = 3;
+
 /**
  * Suggests a monthly limit from the median net spending of up to `months` complete previous
  * months (never months before tracking started), rounded up to the nearest ₹50. Returns null
@@ -182,7 +185,7 @@ export function suggestMonthlyLimit(
   const settings = options.settings ?? DEFAULT_TIME_SETTINGS;
   const money = options.money ?? formatINR;
   const totals: Paise[] = [];
-  for (const from of previousMonthStarts(today, options.months ?? 3)) {
+  for (const from of previousMonthStarts(today, options.months ?? SUGGESTION_MONTHS)) {
     if (options.trackingStart && from < options.trackingStart) break;
     const period = resolvePeriod({ kind: "custom", from, to: endOfMonth(from) }, 0, settings);
     totals.push(Math.max(0, netSpending(ledger, period, options.categoryId ?? undefined)));

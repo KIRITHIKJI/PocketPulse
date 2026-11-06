@@ -8,6 +8,12 @@ import { parseInstant, type Instant } from "./time";
 import type { ExpenseTransaction, Transaction } from "./schemas";
 
 const DAY_MS = 86_400_000;
+const FREQUENT_DAYS = 60;
+
+/** Where "frequent" starts looking back from: entries older than this never count. */
+export function frequentExpensesSince(now: Instant, days = FREQUENT_DAYS): Instant {
+  return now - days * DAY_MS;
+}
 
 const isActiveExpense = (tx: Transaction): tx is ExpenseTransaction =>
   tx.type === "expense" && isActive(tx);
@@ -45,8 +51,8 @@ export function frequentExpenses(
   now: Instant,
   options: { days?: number; limit?: number; minCount?: number } = {},
 ): FrequentExpense[] {
-  const { days = 60, limit = 4, minCount = 2 } = options;
-  const since = now - days * DAY_MS;
+  const { days = FREQUENT_DAYS, limit = 4, minCount = 2 } = options;
+  const since = frequentExpensesSince(now, days);
   const groups = new Map<string, { template: ExpenseTransaction; count: number }>();
   for (const tx of ledger) {
     if (!isActiveExpense(tx)) continue;

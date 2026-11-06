@@ -203,7 +203,7 @@ Points to watch:
 | # | Fix | Impact | Effort |
 |---|---|---|---|
 | 1 | Set the Vercel function region to `bom1`, next to Supabase ap-south-1 (`vercel.json` `"regions": ["bom1"]`, free on Hobby) | High | Small |
-| 2 | Stop reading the whole ledger per screen: query only the period a screen needs (date filters in SQL), and select only the columns used. Keep the full read for balances only, or move balance totals into a Postgres view or RPC | High | Large |
+| 2 | ~~Stop reading the whole ledger per screen~~ **Done (Speed fixes 2):** balances come from the `wallet_balances` RPC, and screens read their periods' rows plus small all-time reads. Transactions without a date filter and Categories still read every row, because their figures are all-time. See PROGRESS.md | High | Large |
 | 3 | ~~Replace `revalidatePath("/", "layout")` with narrower paths or tags~~ **Corrected (Speed fixes 1): no gain.** In Next 16.4 any `revalidatePath` from a server action clears the whole client cache and refreshes the current page from the root (Next's source: "TODO: Evict only segments with matching tags and/or paths"), and this app has no server data cache. The real cost is the full re-render in each save's response | — | — |
 | 4 | Make reward sync cheaper: compute from the entries just written, or run it at most once per N minutes per user. Do the 4 upserts in parallel or in one RPC, and drop the second `store.read()` | High | Medium |
 | 5 | Run `ReminderSync` at most once per session or hour (it already has a 30-minute timer; skip the on-mount call if one ran recently), and have it read only what it needs | Medium | Small |

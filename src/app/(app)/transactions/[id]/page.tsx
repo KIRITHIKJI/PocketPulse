@@ -23,11 +23,13 @@ import {
 import {
   getAccounts,
   getCategories,
+  getGoalLedger,
   getGoals,
-  getLedger,
   getLedgerRecord,
   getProfile,
+  getSpendingLedger,
 } from "@/lib/data/queries";
+import { mergeLedger } from "@/lib/data/slices";
 import { TYPE_LABELS, entryView } from "@/lib/entry-view";
 import { formatDateTime, formatLocalDate } from "@/lib/format";
 import { isEntryType } from "@/lib/ledger/commands";
@@ -50,14 +52,17 @@ export default async function TransactionDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [record, profile, accounts, categories, ledger, goals] = await Promise.all([
+  // What this page links an entry to: its refunds or purchase, and a goal release.
+  const [record, profile, accounts, categories, spending, goalLedger, goals] = await Promise.all([
     getLedgerRecord(id),
     getProfile(),
     getAccounts(),
     getCategories(),
-    getLedger(),
+    getSpendingLedger(),
+    getGoalLedger(),
     getGoals(),
   ]);
+  const ledger = mergeLedger(spending, goalLedger);
   if (!record) notFound();
   const tz = profile.timeZone;
   const money = (paise: number) => formatMoney(paise, { currency: profile.currency });

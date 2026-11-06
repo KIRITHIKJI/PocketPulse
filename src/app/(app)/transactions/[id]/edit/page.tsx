@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { indexById, occurredAtMs, toLocalDate, toLocalTime } from "@/domain";
 import { loadEntryKit } from "@/lib/data/entry-kit";
-import { getLedger, getLedgerRecord } from "@/lib/data/queries";
+import { getLedgerRecord, getSpendingLedger } from "@/lib/data/queries";
 import { entryView, refundOptions } from "@/lib/entry-view";
 import { formatDateTime } from "@/lib/format";
 import { isEntryType } from "@/lib/ledger/commands";
@@ -20,10 +20,11 @@ export const metadata: Metadata = { title: "Edit entry" };
 
 export default async function EditTransactionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  // A refund's purchase and the refund choices are all in the spending rows.
   const [record, kit, ledger] = await Promise.all([
     getLedgerRecord(id),
     loadEntryKit(),
-    getLedger(),
+    getSpendingLedger(),
   ]);
   if (!record) notFound();
 
