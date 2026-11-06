@@ -6,17 +6,17 @@ import { ArrowLeft, Check, Info } from "lucide-react";
 
 import { SubmitButton } from "@/components/forms/form-parts";
 import {
-  BalancesStepForm,
   BudgetsStepForm,
   GoalStepForm,
   PreferencesStepForm,
 } from "@/components/onboarding/step-forms";
+import { BalancesStepForm } from "@/components/onboarding/balances-step-form";
 import { AppearanceSettings } from "@/components/preferences/appearance-settings";
 import { PreferenceSync } from "@/components/providers/preference-sync";
 import { IncomeForm, RegionForm } from "@/components/settings/settings-forms";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { categoryTree, toLocalDate } from "@/domain";
+import { categoryTree } from "@/domain";
 import { finishOnboarding } from "@/lib/actions/onboarding";
 import {
   ensureDefaultAccount,
@@ -28,7 +28,7 @@ import {
   getReminderPreferences,
   hasAnyTransactions,
 } from "@/lib/data/queries";
-import { requestNow, requireSession } from "@/lib/data/session";
+import { requestToday, requireSession } from "@/lib/data/session";
 import { timeZoneOptions } from "@/lib/format";
 import { stepHref } from "@/lib/onboarding-routes";
 import { cn } from "@/lib/utils";
@@ -72,7 +72,7 @@ export default async function OnboardingPage({
   // repairs missing defaults, and the default wallet is created here if it doesn't exist yet.
   const profile = await getProfile();
   const wallet = await ensureDefaultAccount(session);
-  const today = toLocalDate(requestNow(), profile.timeZone);
+  const today = requestToday(profile.timeZone);
   const index = ONBOARDING_STEPS.findIndex((s) => s.id === step);
   const following = nextStep(step);
   const next = following ? stepHref(following) : "/home";

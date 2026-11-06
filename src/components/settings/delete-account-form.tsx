@@ -5,7 +5,7 @@ import { TriangleAlert } from "lucide-react";
 
 import { ActionForm, Field, FormMessage, SubmitButton } from "@/components/forms/form-parts";
 import { DELETING_OWNER_KEY } from "@/components/offline/forget-device";
-import { deleteAccount } from "@/lib/actions/account";
+import { deleteAccount } from "@/lib/actions/account-deletion";
 import { type FormState, IDLE } from "@/lib/forms";
 
 /** The last step. The server checks the phrase and the password again; this only asks for them. */

@@ -16,7 +16,7 @@ const optionalId = z
   .transform((value) => (value === "" ? null : value))
   .pipe(z.uuid("Choose from the list.").nullable());
 
-export const BUDGET_PERIODS = ["monthly", "weekly", "custom"] as const;
+const BUDGET_PERIODS = ["monthly", "weekly", "custom"] as const;
 
 /** "50, 80, 100" → basis points. Whole percents only, so no rate is ever a float. */
 export const thresholdsField = z.string().transform((value, ctx) => {

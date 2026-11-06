@@ -12,19 +12,19 @@ import {
   type CurrencyCode,
   type InsightWords,
   type Paise,
+  type Period,
   type SpendingEntry,
+  type SpendingScope,
   type TimeSettings,
-  type TrendGranularity,
   type Transaction,
-  UNCATEGORIZED,
+  type TrendGranularity,
   chartShares,
   formatBasisPoints,
-  formatMoney,
+  moneyFormatter,
+  periodScope,
   spendingDisplay,
   trendView,
-  type Period,
-  type SpendingScope,
-  periodScope,
+  UNCATEGORIZED,
 } from "@/domain";
 import {
   type InsightSelection,
@@ -63,7 +63,7 @@ export function PeriodTrend({
   title: string;
 }) {
   const view = trendView(ledger, period, today, settings, requested, only);
-  const money = (paise: Paise) => formatMoney(paise, { currency });
+  const money = moneyFormatter(currency);
   const granularity = view.granularity;
   const rows: TrendRow[] = view.points.map((p) => ({
     key: p.startDate,

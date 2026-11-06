@@ -17,15 +17,18 @@
  */
 import type { Category, CategoryKind, CategoryRule, Transaction } from "./schemas";
 import { isActive, occurredAtMs } from "./ledger";
+import {
+  type CategoryChoice,
+  containsPhrase,
+  normalizeText,
+  resolveCategoryChoice,
+  significantTokens,
+} from "./category-tree";
+import { findByName, KEYWORDS } from "./category-keywords";
 
-export interface CategoryChoice {
-  categoryId: string;
-  subcategoryId: string | null;
-}
+type SuggestionSource = "rule" | "history" | "similar" | "keyword";
 
-export type SuggestionSource = "rule" | "history" | "similar" | "keyword";
-
-export interface CategorySuggestion extends CategoryChoice {
+interface CategorySuggestion extends CategoryChoice {
   source: SuggestionSource;
   /** Plain-language reason shown with the suggestion, e.g. "Your rule: description has “chai”". */
   reason: string;
@@ -34,275 +37,22 @@ export interface CategorySuggestion extends CategoryChoice {
   evidence?: number;
 }
 
-export interface SuggestionInput {
+interface SuggestionInput {
   description?: string | null;
   merchant?: string | null;
   kind?: CategoryKind;
 }
 
-export interface SuggestionContext {
+interface SuggestionContext {
   categories: readonly Category[];
   rules?: readonly CategoryRule[];
   /** The user's earlier transactions (any order); only categorised, active ones are used. */
   history?: readonly Transaction[];
 }
 
-// --- Text -----------------------------------------------------------------------------------
-
-/** Lowercase words only: "Chai @ Ramu's!! ₹15" → "chai ramu s". Digits and symbols are dropped. */
-export function normalizeText(text: string | null | undefined): string {
-  if (!text) return "";
-  return text
-    .normalize("NFKC")
-    .toLowerCase()
-    .replace(/[^\p{L}\s]+/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-const STOP_WORDS = new Set([
-  "and",
-  "the",
-  "for",
-  "with",
-  "from",
-  "to",
-  "at",
-  "in",
-  "on",
-  "of",
-  "my",
-  "a",
-  "an",
-  "rs",
-  "inr",
-  "rupees",
-  "paid",
-  "bought",
-  "today",
-  "yesterday",
-]);
-
-/** Words that can identify a purchase: 3+ letters, not filler. */
-export function significantTokens(text: string | null | undefined): string[] {
-  return [...new Set(normalizeText(text).split(" "))].filter(
-    (t) => t.length >= 3 && !STOP_WORDS.has(t),
-  );
-}
-
-/** Whole-word/phrase containment on normalized text ("tea" matches "masala tea", not "steam"). */
-function containsPhrase(haystack: string, phrase: string): boolean {
-  if (!phrase) return false;
-  return ` ${haystack} `.includes(` ${phrase} `);
-}
-
-// --- Hierarchy ------------------------------------------------------------------------------
-
-export function isCategoryActive(category: Category): boolean {
-  return category.archivedAt === null && category.mergedIntoId === null;
-}
-
-export interface CategoryNode {
-  category: Category;
-  subcategories: Category[];
-}
-
-const byOrder = (a: Category, b: Category) =>
-  a.sortOrder - b.sortOrder || a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
-
-/**
- * Main categories of one kind with their subcategories, in display order. By default only
- * active ones (what pickers show); `includeInactive` also returns archived/merged rows.
- */
-export function categoryTree(
-  categories: readonly Category[],
-  kind: CategoryKind,
-  options: { includeInactive?: boolean } = {},
-): CategoryNode[] {
-  const visible = (c: Category) => options.includeInactive || isCategoryActive(c);
-  const mains = categories.filter((c) => c.kind === kind && c.parentId === null && visible(c));
-  return mains.sort(byOrder).map((category) => ({
-    category,
-    subcategories: categories.filter((c) => c.parentId === category.id && visible(c)).sort(byOrder),
-  }));
-}
-
-/** Follows merges to the category that holds the history now; null if it's archived or missing. */
-export function resolveCategory(
-  id: string | null,
-  categoriesById: ReadonlyMap<string, Category>,
-): Category | null {
-  let current = id ? categoriesById.get(id) : undefined;
-  for (let hops = 0; current && current.mergedIntoId && hops < 10; hops++) {
-    current = categoriesById.get(current.mergedIntoId);
-  }
-  if (!current || !isCategoryActive(current)) return null;
-  return current;
-}
-
-/**
- * Turns a stored (category, subcategory) pair into one that is valid today, following merges.
- * An archived subcategory falls back to its main category. Returns null if the main category is
- * archived or of the wrong kind.
- */
-export function resolveCategoryChoice(
-  choice: { categoryId: string | null; subcategoryId: string | null },
-  categoriesById: ReadonlyMap<string, Category>,
-  kind?: CategoryKind,
-): CategoryChoice | null {
-  const sub = resolveCategory(choice.subcategoryId, categoriesById);
-  let result: CategoryChoice | null = null;
-  if (sub) {
-    result = sub.parentId
-      ? { categoryId: sub.parentId, subcategoryId: sub.id }
-      : { categoryId: sub.id, subcategoryId: null };
-  } else {
-    const main = resolveCategory(choice.categoryId, categoriesById);
-    if (main) {
-      result = main.parentId
-        ? { categoryId: main.parentId, subcategoryId: main.id }
-        : { categoryId: main.id, subcategoryId: null };
-    }
-  }
-  if (!result) return null;
-  const main = categoriesById.get(result.categoryId);
-  if (!main || !isCategoryActive(main) || main.parentId !== null) return null;
-  if (kind && main.kind !== kind) return null;
-  return result;
-}
-
-/** "Food & Drinks › Tea", or just "Food & Drinks". */
-export function categoryLabel(
-  choice: { categoryId: string | null; subcategoryId: string | null },
-  categoriesById: ReadonlyMap<string, Category>,
-): string | null {
-  const main = choice.categoryId ? categoriesById.get(choice.categoryId) : undefined;
-  if (!main) return null;
-  const sub = choice.subcategoryId ? categoriesById.get(choice.subcategoryId) : undefined;
-  return sub ? `${main.name} › ${sub.name}` : main.name;
-}
-
-// --- Built-in keywords ----------------------------------------------------------------------
-
-/** keyword (normalized, may be a phrase) → [main category name, subcategory name | null]. */
-const KEYWORDS: Record<CategoryKind, ReadonlyArray<[string, string, string | null]>> = {
-  expense: [
-    ["tea", "Food & Drinks", "Tea"],
-    ["chai", "Food & Drinks", "Tea"],
-    ["coffee", "Food & Drinks", "Coffee"],
-    ["snack", "Food & Drinks", "Snacks"],
-    ["snacks", "Food & Drinks", "Snacks"],
-    ["samosa", "Food & Drinks", "Snacks"],
-    ["chips", "Food & Drinks", "Snacks"],
-    ["biscuit", "Food & Drinks", "Snacks"],
-    ["biscuits", "Food & Drinks", "Snacks"],
-    ["breakfast", "Food & Drinks", "Breakfast"],
-    ["lunch", "Food & Drinks", "Lunch"],
-    ["dinner", "Food & Drinks", "Dinner"],
-    ["groceries", "Food & Drinks", "Groceries"],
-    ["grocery", "Food & Drinks", "Groceries"],
-    ["vegetables", "Food & Drinks", "Groceries"],
-    ["milk", "Food & Drinks", "Groceries"],
-    ["cafe", "Food & Drinks", "Cafe"],
-    ["swiggy", "Food & Drinks", "Delivery"],
-    ["zomato", "Food & Drinks", "Delivery"],
-    ["delivery", "Food & Drinks", "Delivery"],
-    ["fees", "College", "Fees"],
-    ["fee", "College", "Fees"],
-    ["book", "College", "Books"],
-    ["books", "College", "Books"],
-    ["stationery", "College", "Stationery"],
-    ["pen", "College", "Stationery"],
-    ["notebook", "College", "Stationery"],
-    ["printing", "College", "Printing"],
-    ["print", "College", "Printing"],
-    ["printout", "College", "Printing"],
-    ["xerox", "College", "Printing"],
-    ["photocopy", "College", "Printing"],
-    ["assignment", "College", "Assignments"],
-    ["project", "College", "Project components"],
-    ["arduino", "College", "Project components"],
-    ["fest", "College", "Events"],
-    ["event", "College", "Events"],
-    ["bus", "Transport", "Bus"],
-    ["train", "Transport", "Train"],
-    ["metro", "Transport", "Train"],
-    ["auto", "Transport", "Auto"],
-    ["rickshaw", "Transport", "Auto"],
-    ["cab", "Transport", "Cab"],
-    ["uber", "Transport", "Cab"],
-    ["ola", "Transport", "Cab"],
-    ["rapido", "Transport", "Cab"],
-    ["petrol", "Transport", "Fuel"],
-    ["fuel", "Transport", "Fuel"],
-    ["parking", "Transport", "Parking"],
-    ["clothes", "Personal", "Clothes"],
-    ["shirt", "Personal", "Clothes"],
-    ["haircut", "Personal", "Grooming"],
-    ["salon", "Personal", "Grooming"],
-    ["shampoo", "Personal", "Personal care"],
-    ["soap", "Personal", "Personal care"],
-    ["shopping", "Personal", "Shopping"],
-    ["movie", "Entertainment", "Movies"],
-    ["movies", "Entertainment", "Movies"],
-    ["cinema", "Entertainment", "Movies"],
-    ["game", "Entertainment", "Games"],
-    ["games", "Entertainment", "Games"],
-    ["outing", "Entertainment", "Outings"],
-    ["trip", "Entertainment", "Outings"],
-    ["hobby", "Entertainment", "Hobbies"],
-    ["recharge", "Bills & Subscriptions", "Mobile recharge"],
-    ["mobile data", "Bills & Subscriptions", "Mobile data"],
-    ["data pack", "Bills & Subscriptions", "Mobile data"],
-    ["netflix", "Bills & Subscriptions", "Subscriptions"],
-    ["spotify", "Bills & Subscriptions", "Subscriptions"],
-    ["subscription", "Bills & Subscriptions", "Subscriptions"],
-    ["medicine", "Health & Fitness", "Medicines"],
-    ["medicines", "Health & Fitness", "Medicines"],
-    ["pharmacy", "Health & Fitness", "Medicines"],
-    ["doctor", "Health & Fitness", "Appointments"],
-    ["gym", "Health & Fitness", "Gym"],
-  ],
-  income: [
-    ["allowance", "Allowance", null],
-    ["pocket money", "Allowance", null],
-    ["salary", "Part-time work", null],
-    ["stipend", "Part-time work", null],
-    ["freelance", "Part-time work", null],
-    ["scholarship", "Scholarship", null],
-    ["gift", "Gifts", null],
-    ["birthday", "Gifts", null],
-  ],
-};
-
-function findByName(
-  categories: readonly Category[],
-  kind: CategoryKind,
-  main: string,
-  sub: string | null,
-) {
-  const mainCat = categories.find(
-    (c) =>
-      c.kind === kind &&
-      c.parentId === null &&
-      isCategoryActive(c) &&
-      c.name.toLowerCase() === main.toLowerCase(),
-  );
-  if (!mainCat) return null;
-  const subCat = sub
-    ? categories.find(
-        (c) =>
-          c.parentId === mainCat.id &&
-          isCategoryActive(c) &&
-          c.name.toLowerCase() === sub.toLowerCase(),
-      )
-    : undefined;
-  return { categoryId: mainCat.id, subcategoryId: subCat?.id ?? null };
-}
-
 // --- Suggestion -----------------------------------------------------------------------------
 
-export function ruleMatches(rule: CategoryRule, input: SuggestionInput): boolean {
+function ruleMatches(rule: CategoryRule, input: SuggestionInput): boolean {
   const field = rule.matchField === "merchant" ? input.merchant : input.description;
   return containsPhrase(normalizeText(field), normalizeText(rule.matchText));
 }

@@ -3,7 +3,7 @@
  * return gets an apostrophe: a spreadsheet would otherwise run it as a formula. Numbers are passed
  * as `{ number }` so a negative amount stays a number.
  */
-export type CsvCell = string | { number: string };
+type CsvCell = string | { number: string };
 
 const BOM = String.fromCharCode(0xfeff);
 const FORMULA_START = /^[=+\-@\t\r]/;

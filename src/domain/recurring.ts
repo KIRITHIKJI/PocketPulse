@@ -7,7 +7,8 @@
  * Occurrences are counted from the anchor, so 31 Jan monthly gives 28 Feb then 31 Mar, not 28 Mar.
  */
 import { isActive } from "./ledger";
-import type { Commitment, RecurringTemplate, Transaction } from "./schemas";
+import type { Transaction } from "./schemas";
+import type { Commitment, RecurringTemplate } from "./plan-schemas";
 import { type LocalDate, addDays, addMonths } from "./time";
 
 /** Far more than any screen shows; stops an overdue daily template growing without limit. */
@@ -30,11 +31,7 @@ export function nthOccurrence(template: RecurringTemplate, n: number): LocalDate
 }
 
 /** The schedule's dates in `[from, to]`, ignoring whether each has happened. */
-export function scheduleBetween(
-  template: RecurringTemplate,
-  from: LocalDate,
-  to: LocalDate,
-): LocalDate[] {
+function scheduleBetween(template: RecurringTemplate, from: LocalDate, to: LocalDate): LocalDate[] {
   const dates: LocalDate[] = [];
   for (let n = 0; n < MAX_STEPS && dates.length < MAX_OCCURRENCES; n += 1) {
     const date = nthOccurrence(template, n);
@@ -61,7 +58,7 @@ export function firstOccurrenceOnOrAfter(
   return null;
 }
 
-export interface DueOccurrence {
+interface DueOccurrence {
   templateId: string;
   occurrence: LocalDate;
   /** Doubles as the forecast commitment's id. */

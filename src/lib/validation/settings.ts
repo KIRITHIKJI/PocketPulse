@@ -21,7 +21,6 @@ import { MOTION_PREFERENCES } from "@/lib/motion-preference";
 export const THEMES = ["dark", "light", "system"] as const;
 export type ThemePreference = (typeof THEMES)[number];
 
-export { INCOME_FREQUENCIES };
 export type { IncomeFrequency };
 
 export const profileNameSchema = z.object({

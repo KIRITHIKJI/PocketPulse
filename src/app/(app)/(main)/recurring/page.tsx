@@ -1,28 +1,19 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Archive, CalendarClock, Pause, Play, Repeat, SkipForward } from "lucide-react";
+import { CalendarClock, Repeat } from "lucide-react";
 
-import { ConfirmAction, InlineAction } from "@/components/forms/inline-action";
+import { InlineAction } from "@/components/forms/inline-action";
 import { PageHeader } from "@/components/layout/page-header";
-import { BillFormDialog, RecordDueButton, RecurringFormDialog } from "@/components/plan/due-forms";
+import { BillFormDialog } from "@/components/plan/due-forms";
+import { RecurringFormDialog } from "@/components/plan/recurring-form";
 import { PlanNote } from "@/components/plan/parts";
+import { DueItemCard, RecurringTemplateCard } from "@/components/plan/recurring-cards";
 import { StatePanel } from "@/components/states/state-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import {
-  type RecurringTemplate,
-  addDays,
-  firstOccurrenceOnOrAfter,
-  recurringSignals,
-} from "@/domain";
-import {
-  archiveRecurring,
-  cancelBill,
-  setRecurringPaused,
-  skipOccurrence,
-  unskipOccurrence,
-} from "@/lib/actions/recurring";
+import { addDays, recurringSignals } from "@/domain";
+import { unskipOccurrence } from "@/lib/actions/recurring";
 import { loadEntryKit } from "@/lib/data/entry-kit";
 import { loadPlan } from "@/lib/data/plan";
 import { getSpendingLedger } from "@/lib/data/queries";
@@ -33,11 +24,6 @@ import { dueItems, occurredItems } from "@/lib/plan-view";
 export const metadata: Metadata = { title: "Income & recurring" };
 
 const LOOK_AHEAD_DAYS = 45;
-
-function everyText(t: RecurringTemplate) {
-  const unit = { daily: "day", weekly: "week", monthly: "month", yearly: "year" }[t.cadence];
-  return t.intervalCount === 1 ? `Every ${unit}` : `Every ${t.intervalCount} ${unit}s`;
-}
 
 export default async function RecurringPage() {
   // "Looks recurring" reads all purchases; the rest of the screen uses the plan's rows.
@@ -132,64 +118,7 @@ export default async function RecurringPage() {
               <ul className="grid gap-3 lg:grid-cols-2" data-testid="due-list">
                 {due.slice(0, 40).map((item) => (
                   <li key={item.key} className="min-w-0">
-                    <Card className="h-full gap-2" data-testid="due-item">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <h3 className="truncate font-semibold">{item.title}</h3>
-                          <p className="text-xs text-muted-foreground">
-                            {item.overdue ? "Was due" : "Due"} {formatLocalDate(item.dueDate)}
-                          </p>
-                        </div>
-                        <p className="tabular shrink-0 font-semibold">
-                          {item.kind === "income" ? "+" : ""}
-                          {money(item.amountPaise)}
-                        </p>
-                      </div>
-                      <p className="flex flex-wrap gap-1">
-                        <Badge variant="outline">
-                          {item.label === "Bill" ? "Planned, not paid" : item.label}
-                        </Badge>
-                        {item.overdue && <Badge variant="warning">Overdue</Badge>}
-                        {item.counted && <Badge variant="outline">Counted in safe-to-spend</Badge>}
-                      </p>
-                      <div className="mt-auto flex flex-wrap items-center gap-1 border-t pt-2">
-                        <RecordDueButton item={item} kit={kit} />
-                        {item.source === "recurring" ? (
-                          <InlineAction
-                            action={skipOccurrence}
-                            fields={{
-                              templateId: item.templateId!,
-                              occurrence: item.occurrence!,
-                            }}
-                            pendingLabel="Skipping…"
-                            aria-label={`Skip ${item.title} on ${formatLocalDate(item.dueDate)}`}
-                          >
-                            <SkipForward aria-hidden="true" />
-                            Skip
-                          </InlineAction>
-                        ) : (
-                          <ConfirmAction
-                            action={cancelBill}
-                            fields={{ id: item.commitmentId! }}
-                            trigger={
-                              <Button variant="ghost" size="sm">
-                                Cancel bill
-                              </Button>
-                            }
-                            title={`Cancel ${item.title}?`}
-                            description={
-                              <p>
-                                It stops coming off safe-to-spend. If you already recorded this
-                                payment as an entry, cancelling is right: that keeps it from being
-                                subtracted twice.
-                              </p>
-                            }
-                            confirmLabel="Cancel bill"
-                            pendingLabel="Cancelling…"
-                          />
-                        )}
-                      </div>
-                    </Card>
+                    <DueItemCard item={item} kit={kit} money={money} />
                   </li>
                 ))}
               </ul>
@@ -229,66 +158,11 @@ export default async function RecurringPage() {
                 Recurring items
               </h2>
               <ul className="grid gap-3 lg:grid-cols-2">
-                {active.map((t) => {
-                  const next = firstOccurrenceOnOrAfter(
-                    t,
-                    t.nextDueDate > today ? t.nextDueDate : today,
-                  );
-                  return (
-                    <li key={t.id} className="min-w-0">
-                      <Card className="h-full gap-2" data-testid="recurring-template">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <h3 className="truncate font-semibold">{t.title}</h3>
-                            <p className="text-xs text-muted-foreground">
-                              {t.kind === "income" ? "Income" : "Expense"} · {everyText(t)}
-                              {t.pausedAt
-                                ? " · paused"
-                                : next
-                                  ? ` · next ${formatLocalDate(next)}`
-                                  : " · ended"}
-                            </p>
-                          </div>
-                          <p className="tabular shrink-0 font-semibold">{money(t.amountPaise)}</p>
-                        </div>
-                        <div className="mt-auto flex flex-wrap items-center gap-1 border-t pt-2">
-                          <RecurringFormDialog template={t} kit={kit} />
-                          <InlineAction
-                            action={setRecurringPaused}
-                            fields={{ id: t.id, pause: t.pausedAt ? "false" : "true" }}
-                            pendingLabel="Saving…"
-                          >
-                            {t.pausedAt ? (
-                              <Play aria-hidden="true" />
-                            ) : (
-                              <Pause aria-hidden="true" />
-                            )}
-                            {t.pausedAt ? "Resume" : "Pause"}
-                          </InlineAction>
-                          <ConfirmAction
-                            action={archiveRecurring}
-                            fields={{ id: t.id }}
-                            trigger={
-                              <Button variant="ghost" size="sm">
-                                <Archive aria-hidden="true" />
-                                Archive
-                              </Button>
-                            }
-                            title={`Archive ${t.title}?`}
-                            description={
-                              <p>
-                                It stops being forecast. Entries it already created stay in your
-                                history.
-                              </p>
-                            }
-                            confirmLabel="Archive"
-                            pendingLabel="Archiving…"
-                          />
-                        </div>
-                      </Card>
-                    </li>
-                  );
-                })}
+                {active.map((t) => (
+                  <li key={t.id} className="min-w-0">
+                    <RecurringTemplateCard template={t} kit={kit} today={today} money={money} />
+                  </li>
+                ))}
               </ul>
             </section>
           )}

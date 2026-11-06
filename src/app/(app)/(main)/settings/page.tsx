@@ -6,16 +6,14 @@ import { PageHeader } from "@/components/layout/page-header";
 import { AppearanceSettings } from "@/components/preferences/appearance-settings";
 import {
   IncomeForm,
-  PrivacyForm,
   ProfileNameForm,
   RegionForm,
-  RemindersForm,
   SpendingForm,
 } from "@/components/settings/settings-forms";
+import { PrivacyForm, RemindersForm } from "@/components/settings/preference-forms";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { toLocalDate } from "@/domain";
 import { getProfile, getReminderPreferences, hasAnyTransactions } from "@/lib/data/queries";
-import { requestNow, requireSession } from "@/lib/data/session";
+import { requestToday, requireSession } from "@/lib/data/session";
 import { timeZoneOptions } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Settings" };
@@ -88,7 +86,7 @@ export default async function SettingsPage() {
     getReminderPreferences(),
     hasAnyTransactions(),
   ]);
-  const today = toLocalDate(requestNow(), profile.timeZone);
+  const today = requestToday(profile.timeZone);
 
   return (
     <>

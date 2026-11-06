@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 
 import { useOffline } from "@/components/offline/offline-provider";
-import { StatusBadge, opAmount } from "@/components/offline/sync-center";
+import { StatusBadge, opAmount } from "@/components/offline/sync-status";
 import { Card } from "@/components/ui/card";
 import { type CurrencyCode, formatMoney, sumPaise } from "@/domain";
 

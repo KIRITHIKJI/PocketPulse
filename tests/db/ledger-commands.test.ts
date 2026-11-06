@@ -6,13 +6,16 @@ import {
   resolvePeriod,
 } from "@/domain";
 import { rowToAccount, rowToTransaction } from "@/lib/data/mappers";
-import type { LedgerCommand, LedgerCommandInput } from "@/lib/ledger/commands";
+import type { LedgerCommand } from "@/lib/ledger/commands";
 import { ledgerCommandSchema } from "@/lib/ledger/commands";
 import { runLedgerCommandWith } from "@/lib/ledger/executor";
+import type { z } from "zod";
 
 import { pgPort } from "./ledger-port";
 import { A, A_BANK, A_CASH, B, type Fixtures, seedFixtures, tid } from "./fixtures";
 import { ADMIN_URL, SKIP_REASON, type Session, type TestDb, as, createTestDb } from "./harness";
+
+type LedgerCommandInput = z.input<typeof ledgerCommandSchema>;
 
 // Phase 5: the app's single mutation layer (commands → executor → RPCs) against the real schema,
 // RLS and integrity triggers. Balances and category totals are recomputed by the domain layer

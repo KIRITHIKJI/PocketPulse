@@ -13,8 +13,8 @@ import {
   addDays,
   addMonths,
   daysBetween,
-  resolvePeriod,
 } from "./time";
+import { resolvePeriod } from "./periods";
 import type { Transaction } from "./schemas";
 
 export const INCOME_FREQUENCIES = ["weekly", "biweekly", "monthly", "irregular", "none"] as const;
@@ -63,7 +63,7 @@ function previousIncomeDate(next: LocalDate, frequency: IncomeFrequency): LocalD
 
 export type SurvivalStatus = "needs_date" | "too_early" | "on_track" | "watch" | "at_risk";
 
-export interface IncomeCycle {
+interface IncomeCycle {
   startDate: LocalDate;
   nextIncomeDate: LocalDate;
   /** Today's place in the cycle: day 1 is the cycle's first day. */
@@ -74,7 +74,7 @@ export interface IncomeCycle {
   expectedIncomePaise: Paise | null;
 }
 
-export interface SurvivalPlan {
+interface SurvivalPlan {
   status: SurvivalStatus;
   headline: string;
   detail: string;

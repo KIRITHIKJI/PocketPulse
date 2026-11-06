@@ -11,10 +11,10 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
   type TransactionSource,
-  formatMoney,
   indexById,
   isActive,
   isBeforeOpeningDate,
+  moneyFormatter,
   occurredAtMs,
   purchaseRelease,
   refundableAmount,
@@ -65,7 +65,7 @@ export default async function TransactionDetailPage({
   const ledger = mergeLedger(spending, goalLedger);
   if (!record) notFound();
   const tz = profile.timeZone;
-  const money = (paise: number) => formatMoney(paise, { currency: profile.currency });
+  const money = moneyFormatter(profile.currency);
   const accountsById = new Map(accounts.map((a) => [a.id, a]));
   const ledgerById = indexById(ledger);
   const view = entryView(record, {

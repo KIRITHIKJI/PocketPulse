@@ -26,7 +26,7 @@ import { saveBudget } from "@/lib/actions/budgets";
 import { paiseToInput } from "@/lib/format";
 import { newId } from "@/lib/ids";
 
-export interface EditableBudget {
+interface EditableBudget {
   id: string;
   label: string;
   categoryId: string | null;

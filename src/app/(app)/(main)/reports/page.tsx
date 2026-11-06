@@ -5,19 +5,20 @@ import { Download, FileSpreadsheet, FileText } from "lucide-react";
 
 import { PeriodPicker } from "@/components/insights/parts";
 import { PageHeader } from "@/components/layout/page-header";
-import { FigureRow, Meter, PlanNote } from "@/components/plan/parts";
+import { Meter, PlanNote } from "@/components/plan/parts";
 import { CopyReportText } from "@/components/reports/copy-report-text";
+import { ReportOptionsForm } from "@/components/reports/report-options";
+import { Summary } from "@/components/reports/report-summary";
 import { StatePanel } from "@/components/states/state-panel";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
-  type ParentReport,
+  formatBasisPoints,
+  hiddenRowLabel,
+  moneyFormatter,
+  ratioBasisPoints,
   REPORT_DEFINITIONS,
   REPORT_TYPE_LABELS,
-  formatBasisPoints,
-  formatMoney,
-  hiddenRowLabel,
-  ratioBasisPoints,
   reportDifferences,
   reportSubcategories,
   reportText,
@@ -25,89 +26,10 @@ import {
 import { hasLedgerEntries } from "@/lib/data/queries";
 import { formatLocalDate } from "@/lib/format";
 import { periodQuery } from "@/lib/insights-view";
-import { mainExpenseCategories } from "@/lib/plan-view";
 import { loadReport } from "@/lib/reports/load";
 import { reportQuery } from "@/lib/reports/params";
 
 export const metadata: Metadata = { title: "Parent report" };
-
-function OptionBox({ name, label, checked }: { name: string; label: string; checked: boolean }) {
-  return (
-    <label className="flex min-h-10 items-center gap-2 text-sm">
-      <input type="hidden" name={name} value="0" />
-      <input
-        type="checkbox"
-        name={name}
-        value="1"
-        defaultChecked={checked}
-        className="size-4 accent-[var(--primary)]"
-      />
-      {label}
-    </label>
-  );
-}
-
-function Summary({ report, money }: { report: ParentReport; money: (paise: number) => string }) {
-  return (
-    <dl className="divide-y">
-      <FigureRow
-        label={
-          report.openingAsOf
-            ? `Opening balance · ${formatLocalDate(report.openingAsOf)}`
-            : "Opening balances"
-        }
-        value={money(report.openingPaise)}
-        testId="report-opening"
-      />
-      {report.newlyTrackedPaise !== 0 && (
-        <FigureRow
-          label="Wallets added during the period"
-          value={money(report.newlyTrackedPaise)}
-          explanation="Their opening balances, from the day each one starts."
-        />
-      )}
-      <FigureRow
-        label={`Income · ${report.incomeCount}`}
-        value={money(report.incomePaise)}
-        testId="report-income"
-      />
-      <FigureRow
-        label={`Expenses · ${report.expenseCount}`}
-        value={`−${money(report.expensesPaise)}`}
-        testId="report-expenses"
-      />
-      <FigureRow
-        label={`Refunds · ${report.refundCount}`}
-        value={money(report.refundsPaise)}
-        testId="report-refunds"
-      />
-      <FigureRow
-        label="Net movement"
-        value={money(report.netMovementPaise)}
-        testId="report-net"
-        explanation="Income plus refunds, minus expenses."
-      />
-      {report.beforeTrackingPaise !== 0 && (
-        <FigureRow
-          label="Entries already in opening balances"
-          value={money(-report.beforeTrackingPaise)}
-          explanation="Dated before their wallet’s opening date, so they count as spending but don’t change the balance."
-        />
-      )}
-      <FigureRow
-        label={`${report.provisional ? "Balance so far" : "Closing balance"} · ${formatLocalDate(report.closingAsOf)}`}
-        value={money(report.closingPaise)}
-        testId="report-closing"
-        strong
-        explanation={
-          report.provisional
-            ? "The period is still running, so this is the balance now."
-            : "The balance at the end of that day, rebuilt from dated entries."
-        }
-      />
-    </dl>
-  );
-}
 
 export default async function ReportsPage({
   searchParams,
@@ -119,7 +41,7 @@ export default async function ReportsPage({
     loadReport(params),
     hasLedgerEntries(),
   ]);
-  const money = (paise: number) => formatMoney(paise, { currency: profile.currency });
+  const money = moneyFormatter(profile.currency);
   const query = reportQuery(selection, options);
   const exportHref = (format: "pdf" | "csv") =>
     `/reports/export?format=${format}&${query}` as Route;
@@ -150,60 +72,7 @@ export default async function ReportsPage({
         />
       ) : (
         <>
-          <Card className="gap-3">
-            <h2 className="font-semibold">What to include</h2>
-            <form method="get" action="/reports" className="flex flex-col gap-3">
-              <input type="hidden" name="period" value={selection.kind} />
-              {selection.kind === "custom" && (
-                <>
-                  <input type="hidden" name="from" value={selection.customFrom} />
-                  <input type="hidden" name="to" value={selection.customTo} />
-                </>
-              )}
-              <div className="flex flex-wrap gap-x-5">
-                <OptionBox
-                  name="details"
-                  label="Every entry"
-                  checked={options.includeTransactions}
-                />
-                <OptionBox name="notes" label="Notes" checked={options.includeNotes} />
-                <OptionBox
-                  name="compare"
-                  label="Compare with the earlier period"
-                  checked={options.compare}
-                />
-              </div>
-              <details>
-                <summary className="flex min-h-10 cursor-pointer items-center text-sm font-medium">
-                  Hide categories
-                  {options.hiddenCategoryIds.length > 0
-                    ? ` (${options.hiddenCategoryIds.length} hidden)`
-                    : ""}
-                </summary>
-                <div className="grid gap-x-5 sm:grid-cols-2 lg:grid-cols-3">
-                  {mainExpenseCategories(categories).map((category) => (
-                    <label key={category.id} className="flex min-h-10 items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        name="hide"
-                        value={category.id}
-                        defaultChecked={options.hiddenCategoryIds.includes(category.id)}
-                        className="size-4 accent-[var(--primary)]"
-                      />
-                      {category.name}
-                    </label>
-                  ))}
-                </div>
-                <p className="pb-2 text-xs text-muted-foreground">
-                  A hidden category’s name and entries are left out. Its money stays in the totals,
-                  under “{hiddenRowLabel()}”, so the report still adds up.
-                </p>
-              </details>
-              <Button type="submit" variant="outline" className="self-start">
-                Update preview
-              </Button>
-            </form>
-          </Card>
+          <ReportOptionsForm selection={selection} options={options} categories={categories} />
 
           <section aria-label="Report preview" className="flex flex-col gap-4" data-testid="report">
             <div className="grid gap-4 lg:grid-cols-2">

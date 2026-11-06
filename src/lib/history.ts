@@ -132,7 +132,7 @@ export function activeFilterCount(f: HistoryFilters): number {
   ].filter((v) => v !== null).length;
 }
 
-export interface HistoryContext {
+interface HistoryContext {
   categoriesById: ReadonlyMap<string, Category>;
   accountsById: ReadonlyMap<string, Account>;
   ledgerById: ReadonlyMap<string, Transaction>;
@@ -214,7 +214,7 @@ export function filterHistory(
     .sort(newestFirst);
 }
 
-export interface DayGroup {
+interface DayGroup {
   date: LocalDate;
   entries: Transaction[];
 }

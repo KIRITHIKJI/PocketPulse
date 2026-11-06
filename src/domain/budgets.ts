@@ -3,18 +3,13 @@
  * or safe-to-spend. "Spent" is net spending (expenses − refunds) from aggregation.ts, so a
  * budget always agrees with insights and reports for the same period.
  */
-import { amountStats, netSpending, previousMonthStarts } from "./aggregation";
+import { amountStats, netSpending } from "./aggregation";
+import { previousMonthStarts } from "./spending-trend";
 import { divRound, formatINR, ratioBasisPoints, subtractPaise, type Paise } from "./money";
-import type { Budget, Transaction } from "./schemas";
-import {
-  DEFAULT_TIME_SETTINGS,
-  type Instant,
-  type LocalDate,
-  type Period,
-  type TimeSettings,
-  endOfMonth,
-  resolvePeriod,
-} from "./time";
+import type { Transaction } from "./schemas";
+import type { Budget } from "./plan-schemas";
+import { DEFAULT_TIME_SETTINGS, type Instant, type LocalDate, type TimeSettings } from "./time";
+import { type Period, endOfMonth, resolvePeriod } from "./periods";
 
 /** Said wherever a remaining budget amount appears: "left" can sound like money in a pocket. */
 export const BUDGET_TARGET_NOTE = "target, not reserved money";
@@ -140,7 +135,7 @@ export function newlyReachedThresholds(
   return after.reachedThresholdsBp.filter((t) => !before.reachedThresholdsBp.includes(t));
 }
 
-export interface BudgetAlert {
+interface BudgetAlert {
   budgetId: string;
   /** The highest threshold reached. */
   thresholdBp: number;

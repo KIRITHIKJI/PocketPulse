@@ -21,7 +21,7 @@ import { paiseToInput } from "@/lib/format";
 import { newId } from "@/lib/ids";
 import type { EntryDraft, LedgerCommand } from "@/lib/ledger/commands";
 
-export interface RecordDefaults {
+interface RecordDefaults {
   amountPaise: number | null;
   description: string;
   categoryId: string | null;

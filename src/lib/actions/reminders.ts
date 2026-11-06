@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { dueReminders, formatMoney } from "@/domain";
+import { dueReminders, moneyFormatter } from "@/domain";
 import { dbErrorMessage } from "@/lib/data/errors";
 import {
   getActiveGoals,
@@ -19,7 +19,7 @@ import { formatLocalDate } from "@/lib/format";
 import { type FormState, invalid, text } from "@/lib/forms";
 import { reminderScheduleSchema } from "@/lib/validation/settings";
 
-export interface NewReminder {
+interface NewReminder {
   title: string;
   body: string;
   linkPath: string;
@@ -52,7 +52,7 @@ export async function syncReminders(): Promise<NewReminder[]> {
       nextIncomeDate: profile.nextIncomeDate,
       now: requestNow(),
       settings: { timeZone: profile.timeZone, weekStartsOn: profile.weekStartsOn },
-      money: (paise) => formatMoney(paise, { currency: profile.currency }),
+      money: moneyFormatter(profile.currency),
       dateText: formatLocalDate,
     });
     if (due.length === 0) return [];

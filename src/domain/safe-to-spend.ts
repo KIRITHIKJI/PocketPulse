@@ -30,7 +30,8 @@ import {
   type Paise,
 } from "./money";
 import { totalEarmarked } from "./savings";
-import type { Account, Commitment, RecurringTemplate, Transaction } from "./schemas";
+import type { Account, Transaction } from "./schemas";
+import type { Commitment, RecurringTemplate } from "./plan-schemas";
 import {
   DEFAULT_TIME_SETTINGS,
   type Instant,
@@ -38,11 +39,11 @@ import {
   type TimeSettings,
   addDays,
   daysBetween,
-  resolvePeriod,
   toLocalDate,
 } from "./time";
+import { resolvePeriod } from "./periods";
 
-export interface SafeToSpendInput {
+interface SafeToSpendInput {
   accounts: readonly Account[];
   ledger: readonly Transaction[];
   /**
@@ -98,10 +99,7 @@ export interface SafeToSpendResult {
   explanation: string[];
 }
 
-export function isCommitmentPaid(
-  commitment: Commitment,
-  byId: ReadonlyMap<string, Transaction>,
-): boolean {
+function isCommitmentPaid(commitment: Commitment, byId: ReadonlyMap<string, Transaction>): boolean {
   if (!commitment.paidTransactionId) return false;
   const tx = byId.get(commitment.paidTransactionId);
   return tx !== undefined && isActive(tx);
@@ -273,7 +271,7 @@ export function calculateSafeToSpend(input: SafeToSpendInput): SafeToSpendResult
 /** How far ahead recurring bills are forecast when there's no income date to plan up to. */
 const NO_DATE_HORIZON_DAYS = 30;
 
-export interface SafeToSpendPlanInput extends Omit<SafeToSpendInput, "horizonEndDate"> {
+interface SafeToSpendPlanInput extends Omit<SafeToSpendInput, "horizonEndDate"> {
   templates: readonly RecurringTemplate[];
 }
 

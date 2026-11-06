@@ -27,7 +27,7 @@ import { savePreset, setPresetArchived } from "@/lib/actions/presets";
 import { CATEGORY_ICON_NAMES } from "@/lib/category-style";
 import { paiseToInput } from "@/lib/format";
 
-export type EditableTile = {
+type EditableTile = {
   id: string;
   label: string;
   /** Shown on the tile (its own icon, else the category's). */

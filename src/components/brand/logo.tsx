@@ -3,7 +3,7 @@ import { useId } from "react";
 import { cn } from "@/lib/utils";
 
 /** PocketPulse mark: a pulse line inside a rounded pocket, with a lime "saved" dot. */
-export function LogoMark({ className }: { className?: string }) {
+function LogoMark({ className }: { className?: string }) {
   // Unique per mark: a gradient in a hidden copy (the sidebar on phones) doesn't paint for others.
   const gradient = useId();
   return (

@@ -34,7 +34,7 @@ export type LedgerMutation =
 
 export type MutationOutcome = "applied" | "duplicate" | "conflict" | "not_found";
 
-export interface MutationResult {
+interface MutationResult {
   ledger: Transaction[];
   outcome: MutationOutcome;
 }
@@ -50,7 +50,7 @@ function stableStringify(value: unknown): string {
   return JSON.stringify(value);
 }
 
-export function sameTransaction(a: Transaction, b: Transaction): boolean {
+function sameTransaction(a: Transaction, b: Transaction): boolean {
   return stableStringify(a) === stableStringify(b);
 }
 
@@ -98,20 +98,6 @@ export function applyMutation(
   }
 }
 
-export function applyMutations(
-  ledger: readonly Transaction[],
-  mutations: readonly LedgerMutation[],
-): { ledger: Transaction[]; outcomes: MutationOutcome[] } {
-  let current = [...ledger];
-  const outcomes: MutationOutcome[] = [];
-  for (const m of mutations) {
-    const result = applyMutation(current, m);
-    current = result.ledger;
-    outcomes.push(result.outcome);
-  }
-  return { ledger: current, outcomes };
-}
-
 // --- Refunds ------------------------------------------------------------------------------
 
 /** Total active refunds recorded against an expense. */
@@ -147,7 +133,7 @@ export function refundCategory(
 
 // --- Integrity ----------------------------------------------------------------------------
 
-export type LedgerIssueCode =
+type LedgerIssueCode =
   | "unknown_account"
   | "currency_mismatch"
   | "refund_without_expense"
@@ -157,7 +143,7 @@ export type LedgerIssueCode =
   | "foreign_owner"
   | "before_opening_date";
 
-export interface LedgerIssue {
+interface LedgerIssue {
   code: LedgerIssueCode;
   transactionId: string;
   message: string;

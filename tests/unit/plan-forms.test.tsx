@@ -2,7 +2,8 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { BudgetFormDialog } from "@/components/plan/budget-form";
-import { BillFormDialog, RecurringFormDialog } from "@/components/plan/due-forms";
+import { BillFormDialog } from "@/components/plan/due-forms";
+import { RecurringFormDialog } from "@/components/plan/recurring-form";
 import { GoalFormDialog } from "@/components/plan/goal-form";
 import type { EntryKit } from "@/lib/data/entry-kit";
 import type { FormState } from "@/lib/forms";

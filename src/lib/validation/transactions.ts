@@ -144,7 +144,7 @@ export function entryFormSchema(context: { timeZone: string; now: Instant }) {
       ).toISOString(),
     }));
 }
-export type EntryForm = z.output<ReturnType<typeof entryFormSchema>>;
+type EntryForm = z.output<ReturnType<typeof entryFormSchema>>;
 
 /** The fields a form value sets on the row, shaped for its type (other links cleared). */
 function entryFields(form: EntryForm) {

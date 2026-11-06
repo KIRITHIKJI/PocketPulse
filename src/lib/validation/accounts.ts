@@ -24,6 +24,5 @@ export const accountFormSchema = z.object({
   openingBalance: balanceField,
   openingDate: dateField,
 });
-export type AccountForm = z.output<typeof accountFormSchema>;
 
 export const accountIdSchema = z.uuid("That wallet doesn’t exist.");

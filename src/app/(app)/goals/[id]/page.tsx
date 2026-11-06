@@ -5,11 +5,9 @@ import { ArrowLeft, ArrowDownLeft, ArrowUpRight, PartyPopper } from "lucide-reac
 
 import { CategoryBadge } from "@/components/categories/category-icon";
 import { PageHeader } from "@/components/layout/page-header";
-import {
-  GoalMoveDialog,
-  GoalPurchaseDialog,
-  GoalStatusActions,
-} from "@/components/plan/goal-actions";
+import { GoalStatusActions } from "@/components/plan/goal-actions";
+import { GoalPurchaseDialog } from "@/components/plan/goal-purchase-dialog";
+import { GoalMoveDialog } from "@/components/plan/goal-move-dialog";
 import { GoalFormDialog } from "@/components/plan/goal-form";
 import { GoalReleaseNotes } from "@/components/plan/goal-release-notes";
 import { FigureRow, PlanNote, ProgressRing } from "@/components/plan/parts";

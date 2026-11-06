@@ -24,4 +24,3 @@ export const presetFormSchema = z
       .pipe(z.enum(CATEGORY_ICON_NAMES, "Choose an icon from the list.").nullable()),
   })
   .transform((f) => ({ ...f, subcategoryId: f.categoryId ? f.subcategoryId : null }));
-export type PresetForm = z.output<typeof presetFormSchema>;

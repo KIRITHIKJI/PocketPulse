@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ArrowLeft, Bot, Database, Landmark, Lock, Send } from "lucide-react";
 
 import { PageHeader } from "@/components/layout/page-header";
-import { PrivacyForm } from "@/components/settings/settings-forms";
+import { PrivacyForm } from "@/components/settings/preference-forms";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getProfile } from "@/lib/data/queries";

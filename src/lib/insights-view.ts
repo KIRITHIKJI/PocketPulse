@@ -13,13 +13,13 @@ import {
   type SpendingScope,
   type TimeSettings,
   type TrendGranularity,
-  UNCATEGORIZED,
   categoryLabel,
   comparisonWindows,
   daysBetween,
-  formatMoney,
   isLocalDate,
+  moneyFormatter,
   resolvePeriod,
+  UNCATEGORIZED,
 } from "@/domain";
 import { formatLocalDate, paiseToInput } from "@/lib/format";
 import { SPENDING_FILTER } from "@/lib/history";
@@ -205,7 +205,7 @@ export function insightWords(
     period: periodPhrase(selection),
     previous: previousPhrase(selection.period, today),
     unit: unitWord(selection.period),
-    money: (paise) => formatMoney(paise, { currency }),
+    money: moneyFormatter(currency),
     labelOf: categoryNamer(categories),
   };
 }

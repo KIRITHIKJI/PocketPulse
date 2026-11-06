@@ -14,8 +14,8 @@ import {
   type LedgerRecord,
   inverseCommand,
   ledgerCommandSchema,
-  toRpcCall,
 } from "@/lib/ledger/commands";
+import { toRpcCall } from "@/lib/ledger/rpc-call";
 import { beforeOpeningText, entriesBeforeOpeningText } from "@/lib/opening-note";
 import { presetIcon, shortcutEntries, tileEntries } from "@/lib/quick-entries";
 import { commandFromForm, entryFormSchema, parseTags } from "@/lib/validation/transactions";

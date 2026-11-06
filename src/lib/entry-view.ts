@@ -11,6 +11,7 @@ import {
   type TransactionType,
   categoryLabel,
   formatMoney,
+  moneyFormatter,
   occurredAtMs,
   refundableAmount,
 } from "@/domain";
@@ -42,7 +43,7 @@ export interface EntryView {
   tags: string[];
 }
 
-export interface EntryContext {
+interface EntryContext {
   categoriesById: ReadonlyMap<string, Category>;
   accountsById: ReadonlyMap<string, Account>;
   ledgerById?: ReadonlyMap<string, Transaction>;
@@ -73,7 +74,7 @@ export function entryCategory(tx: Transaction, ctx: EntryContext) {
 }
 
 export function entryView(tx: Transaction, ctx: EntryContext): EntryView {
-  const money = (paise: number) => formatMoney(paise, { currency: ctx.currency });
+  const money = moneyFormatter(ctx.currency);
   const category = entryCategory(tx, ctx);
   let walletLabel: string | null = null;
   let tone: AmountTone = "neutral";

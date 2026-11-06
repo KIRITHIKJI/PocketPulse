@@ -8,7 +8,6 @@ import { cn } from "@/lib/utils";
 
 const Sheet = SheetPrimitive.Root;
 const SheetTrigger = SheetPrimitive.Trigger;
-const SheetClose = SheetPrimitive.Close;
 
 function SheetContent({
   className,
@@ -51,4 +50,4 @@ function SheetDescription({
   );
 }
 
-export { Sheet, SheetTrigger, SheetClose, SheetContent, SheetTitle, SheetDescription };
+export { Sheet, SheetTrigger, SheetContent, SheetTitle, SheetDescription };

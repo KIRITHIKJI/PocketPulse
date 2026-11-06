@@ -95,7 +95,7 @@ export function dueItems(input: {
   );
 }
 
-export interface OccurredItem {
+interface OccurredItem {
   key: string;
   title: string;
   amountPaise: number;

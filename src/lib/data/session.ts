@@ -3,6 +3,7 @@ import "server-only";
 import { cache } from "react";
 import { redirect } from "next/navigation";
 
+import { type LocalDate, toLocalDate } from "@/domain";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export type ServerClient = NonNullable<Awaited<ReturnType<typeof createSupabaseServerClient>>>;
@@ -39,3 +40,8 @@ export const requireSession = cache(async (): Promise<Session> => {
  * balance "as of now" and "today" can't disagree across a midnight boundary mid-render.
  */
 export const requestNow = cache((): number => Date.now());
+
+/** Today's local date in the user's timezone, from the request's shared "now". */
+export function requestToday(timeZone: string): LocalDate {
+  return toLocalDate(requestNow(), timeZone);
+}

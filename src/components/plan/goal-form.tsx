@@ -26,7 +26,7 @@ import { saveGoal } from "@/lib/actions/goals";
 import { paiseToInput } from "@/lib/format";
 import { newId } from "@/lib/ids";
 
-export const GOAL_ICONS = [
+const GOAL_ICONS = [
   ["piggy-bank", "Piggy bank"],
   ["laptop", "Laptop"],
   ["smartphone", "Phone"],
@@ -39,7 +39,7 @@ export const GOAL_ICONS = [
   ["house", "Home"],
 ] as const;
 
-export interface EditableGoal {
+interface EditableGoal {
   id: string;
   title: string;
   icon: string | null;

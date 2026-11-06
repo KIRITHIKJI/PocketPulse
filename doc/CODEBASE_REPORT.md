@@ -2,6 +2,8 @@
 
 _Written from reading the code on 2026-11-05 (commit `12e33ff`). No build, tests or speed measurements were run for this report, so the performance notes below are reasoned from the code, not measured._
 
+_Update 2026-11-06 (Code tidy): fixes #13, #14 and #15 are done; see §8 and PROGRESS.md › Code tidy. §1–§3 describe the code before that tidy: the long files in §2 have since been split (no `src` file is over 319 lines), and the test files are named by feature._
+
 ## 1. Folder tree with line counts
 
 Tracked files only, excluding `package-lock.json`. Repository total: about 50,000 lines.
@@ -116,9 +118,9 @@ App code and migrations (tests excluded; the longest test file is `tests/db/phas
 **Confusing names**
 
 - `accounts` in code means "Wallets" in the UI. `presets` means quick-add tiles. `allocation` and `allocation_release` mean "set aside" and "release". `commitments` holds both bills and skipped recurring occurrences.
-- `src/lib/actions/account.ts` (account deletion) sits next to `accounts.ts` (wallets).
+- `src/lib/actions/account.ts` (account deletion) sits next to `accounts.ts` (wallets). _(Renamed `account-deletion.ts` in Code tidy.)_
 - `getLedger`, `getLedgerRows`, `getLedgerRecord` and `LedgerRecord` are easy to mix up.
-- Tests are named by build phase (`phase4.test.ts`, `phase8.test.ts`, `phase10.test.ts`), not by feature.
+- Tests are named by build phase (`phase4.test.ts`, `phase8.test.ts`, `phase10.test.ts`), not by feature. _(Renamed by feature in Code tidy.)_
 
 ## 4. Likely reasons pages are slow (from the code)
 
@@ -214,7 +216,7 @@ Points to watch:
 | 10 | Check `pg_stat_user_indexes`, then drop the indexes that are never used (`transactions_owner_updated`, `transactions_category`, the wallet ones if unused) | Low | Small |
 | 11 | Fix the double `notification_preferences` read. Delete `getCurrentUser` in favour of `optionalSession` | Low | Small |
 | 12 | Load Dexie only when the queue is needed (dynamic import), and drop `motion` from `template.tsx` in favour of a CSS fade | Low | Small |
-| 13 | Share one `moneyFormatter(profile)` and one `today(profile)` helper instead of 20 and 5 copies | Low | Small |
-| 14 | Split the 400+ line components (`transaction-form`, `goal-actions`, `sync-center`) and the long pages into smaller parts | Low | Medium |
-| 15 | Rename the phase-named test files by feature. Make test-only exports local or move them to test helpers | Low | Small |
+| 13 | ~~Share one `moneyFormatter(profile)` and one `today(profile)` helper instead of 20 and 5 copies~~ **Done (Code tidy):** `moneyFormatter(currency)` in `@/domain` and `requestToday(timeZone)` in `src/lib/data/session.ts` | Low | Small |
+| 14 | ~~Split the 400+ line components (`transaction-form`, `goal-actions`, `sync-center`) and the long pages into smaller parts~~ **Done (Code tidy):** every `src` file over ~315 lines was split, domain modules included; `@/domain` and `@/lib/data/queries` keep their names | Low | Medium |
+| 15 | ~~Rename the phase-named test files by feature. Make test-only exports local or move them to test helpers~~ **Done (Code tidy):** tests are named by feature; `applyMutations`, `TransactionInput`, `LedgerCommandInput` and `AUX_ROUTES` moved into the tests. `newlyReachedThresholds`, `isScheduledOn` and `formatINRCompact` stay in the domain: they are domain rules with their own tests | Low | Small |
 | 16 | Add an index on `(owner_id, subcategory_id)` for transactions if category merges become common | Low | Small |
