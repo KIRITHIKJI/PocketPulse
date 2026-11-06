@@ -65,7 +65,6 @@ export const balancesStepSchema = z
       seen.add(key);
     });
   });
-export type BalancesStep = z.output<typeof balancesStepSchema>;
 
 export const budgetsStepSchema = z.object({
   total: optionalAmountField,

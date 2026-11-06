@@ -25,7 +25,7 @@ import { createAccount, updateAccount } from "@/lib/actions/accounts";
 import { paiseToInput } from "@/lib/format";
 import { ACCOUNT_KIND_LABELS } from "@/lib/validation/accounts";
 
-export type EditableAccount = {
+type EditableAccount = {
   id: string;
   name: string;
   kind: (typeof ACCOUNT_KINDS)[number];

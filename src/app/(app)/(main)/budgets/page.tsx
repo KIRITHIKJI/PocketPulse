@@ -11,7 +11,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
-  SUGGESTION_MONTHS,
   type Budget,
   type BudgetEvaluation,
   type Period,
@@ -19,9 +18,10 @@ import {
   budgetAlert,
   evaluateBudget,
   formatBasisPoints,
-  formatMoney,
+  moneyFormatter,
   previousPeriod,
   resolvePeriod,
+  SUGGESTION_MONTHS,
   suggestMonthlyLimit,
   toLocalDate,
 } from "@/domain";
@@ -85,7 +85,7 @@ export default async function BudgetsPage() {
   const ledger = await withBudgetPeriods(window, since, budgets, now);
   const settings = { timeZone: profile.timeZone, weekStartsOn: profile.weekStartsOn };
   const today = toLocalDate(now, profile.timeZone);
-  const money = (paise: number) => formatMoney(paise, { currency: profile.currency });
+  const money = moneyFormatter(profile.currency);
 
   const mains = mainExpenseCategories(categories);
   const pickable = mains.map((c) => ({ id: c.id, name: c.name }));

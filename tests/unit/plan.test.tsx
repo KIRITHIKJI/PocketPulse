@@ -3,7 +3,8 @@ import { render, screen } from "@testing-library/react";
 import { BudgetRemaining } from "@/components/plan/parts";
 import { expense, ist } from "./domain/fixtures";
 import { commitmentSchema, formatMoney, recurringTemplateSchema } from "@/domain";
-import { ledgerCommandSchema, toRpcCall, inverseCommand } from "@/lib/ledger/commands";
+import { ledgerCommandSchema, inverseCommand } from "@/lib/ledger/commands";
+import { toRpcCall } from "@/lib/ledger/rpc-call";
 import { dueItems, occurredItems } from "@/lib/plan-view";
 import {
   billFormSchema,

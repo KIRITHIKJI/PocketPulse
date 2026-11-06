@@ -30,7 +30,7 @@ export type NavItem = {
   also?: readonly string[];
 };
 
-export type NavGroup = { label: string; items: readonly NavItem[] };
+type NavGroup = { label: string; items: readonly NavItem[] };
 
 /** Full app navigation used by the desktop sidebar and the mobile "More" sheet. */
 export const NAV_GROUPS: readonly NavGroup[] = [
@@ -111,19 +111,6 @@ export const SECTION_TABS = {
   insights: NAV_GROUPS[3]!.items,
   plan: NAV_GROUPS[4]!.items,
 } as const;
-
-/** Secondary routes that exist but are not navigation items. */
-export const AUX_ROUTES = {
-  welcome: "/welcome",
-  onboarding: "/onboarding",
-  login: "/login",
-  register: "/register",
-  forgotPassword: "/forgot-password",
-  resetPassword: "/reset-password",
-  settingsPrivacy: "/settings/privacy",
-  settingsSync: "/settings/sync",
-  settingsData: "/settings/data",
-} as const satisfies Record<string, Route>;
 
 function matchLength(pathname: string, prefix: string): number {
   if (pathname === prefix) return prefix.length;

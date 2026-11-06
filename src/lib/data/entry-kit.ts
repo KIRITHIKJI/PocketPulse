@@ -7,7 +7,6 @@ import {
   type CurrencyCode,
   type LocalDate,
   type Transaction,
-  toLocalDate,
 } from "@/domain";
 import {
   getAccountsWithDefault,
@@ -16,7 +15,7 @@ import {
   getProfile,
   getSuggestionHistory,
 } from "@/lib/data/queries";
-import { requestNow } from "@/lib/data/session";
+import { requestToday } from "@/lib/data/session";
 import { type PickerNode, pickerTree } from "@/lib/picker-tree";
 
 /** Everything an entry screen needs on the client: wallets, categories and suggestion inputs. */
@@ -47,7 +46,7 @@ export async function loadEntryKit(): Promise<EntryKit> {
   return {
     currency: profile.currency,
     timeZone: profile.timeZone,
-    today: toLocalDate(requestNow(), profile.timeZone),
+    today: requestToday(profile.timeZone),
     accounts: accounts.map(({ sortOrder: _sortOrder, ...account }) => account),
     defaultAccountId: defaultAccount.id,
     expenseTree: pickerTree(categories, "expense"),

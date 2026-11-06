@@ -11,9 +11,9 @@ import { type ListedDay, EntryList } from "@/components/transactions/entry-list"
 import { HistoryFilterForm } from "@/components/transactions/history-filters";
 import { Button } from "@/components/ui/button";
 import {
-  formatMoney,
   indexById,
   isActive,
+  moneyFormatter,
   netSpending,
   resolvePeriod,
   sumPaise,
@@ -90,7 +90,7 @@ export default async function TransactionsPage({
   const tz = profile.timeZone;
   const today = toLocalDate(now, tz);
   const settings = { timeZone: tz, weekStartsOn: profile.weekStartsOn };
-  const money = (paise: number) => formatMoney(paise, { currency: profile.currency });
+  const money = moneyFormatter(profile.currency);
 
   const tileNames = new Map(presets.map((p) => [p.id, p.label]));
   const ctx = {

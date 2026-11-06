@@ -6,7 +6,7 @@ import { Bell, Info, X } from "lucide-react";
 import { InlineAction } from "@/components/forms/inline-action";
 import { PageHeader } from "@/components/layout/page-header";
 import { BrowserNotifications, ReminderScheduleForm } from "@/components/reminders/reminder-forms";
-import { RemindersForm } from "@/components/settings/settings-forms";
+import { RemindersForm } from "@/components/settings/preference-forms";
 import { StatePanel } from "@/components/states/state-panel";
 import { Card } from "@/components/ui/card";
 import {

@@ -3,11 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { firstOccurrenceOnOrAfter, toLocalDate } from "@/domain";
+import { firstOccurrenceOnOrAfter } from "@/domain";
 import { dbErrorMessage } from "@/lib/data/errors";
 import { rowToRecurringTemplate } from "@/lib/data/mappers";
 import { getProfile } from "@/lib/data/queries";
-import { requestNow, requireSession } from "@/lib/data/session";
+import { requestToday, requireSession } from "@/lib/data/session";
 import { type FormState, invalid, text } from "@/lib/forms";
 import {
   billFormSchema,
@@ -153,7 +153,7 @@ export async function setRecurringPaused(_prev: FormState, formData: FormData): 
     if (error) return { status: "error", message: dbErrorMessage(error) };
     if (!row) return { status: "error", message: MISSING };
     const profile = await getProfile();
-    const today = toLocalDate(requestNow(), profile.timeZone);
+    const today = requestToday(profile.timeZone);
     const next = firstOccurrenceOnOrAfter(rowToRecurringTemplate(row), today);
     if (next) patch.next_due_date = next;
   }

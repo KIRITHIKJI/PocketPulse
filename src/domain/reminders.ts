@@ -7,7 +7,8 @@
 import { budgetAlert, evaluateBudget } from "./budgets";
 import { formatBasisPoints, type Paise } from "./money";
 import { loggedDays } from "./rewards";
-import type { Budget, Commitment, RecurringTemplate, SavingsGoal, Transaction } from "./schemas";
+import type { Transaction } from "./schemas";
+import type { Budget, Commitment, RecurringTemplate, SavingsGoal } from "./plan-schemas";
 import { forecastCommitments } from "./recurring";
 import { unpaidCommitmentsDue } from "./safe-to-spend";
 import {
@@ -16,11 +17,11 @@ import {
   type TimeSettings,
   addDays,
   daysBetween,
-  startOfWeek,
   toLocalDate,
   toLocalTime,
   weekdayOf,
 } from "./time";
+import { startOfWeek } from "./periods";
 
 export const REMINDER_DAY_CHOICES = ["daily", "weekdays"] as const;
 export const SAVINGS_REVIEW_CHOICES = ["weekly", "monthly"] as const;
@@ -42,7 +43,7 @@ export interface ReminderSettings {
   savingsReviewFrequency: (typeof SAVINGS_REVIEW_CHOICES)[number];
 }
 
-export type ReminderKind =
+type ReminderKind =
   | "missed_logging"
   | "weekly_review"
   | "upcoming_income"
@@ -50,7 +51,7 @@ export type ReminderKind =
   | "upcoming_commitment"
   | "savings_review";
 
-export interface DueReminder {
+interface DueReminder {
   kind: ReminderKind;
   title: string;
   body: string;
@@ -58,7 +59,7 @@ export interface DueReminder {
   dedupeKey: string;
 }
 
-export interface ReminderInput {
+interface ReminderInput {
   prefs: ReminderSettings;
   ledger: readonly Transaction[];
   budgets: readonly Budget[];

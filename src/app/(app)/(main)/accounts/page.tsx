@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { type AccountBalance, formatMoney, toLocalDate } from "@/domain";
+import { type AccountBalance, moneyFormatter, toLocalDate } from "@/domain";
 import { makeDefaultAccount, setAccountArchived } from "@/lib/actions/accounts";
 import {
   type AccountRecord,
@@ -42,7 +42,7 @@ export default async function AccountsPage() {
   const balanceOf = new Map(total.accounts.map((b) => [b.accountId, b]));
   const active = accounts.filter((a) => !a.archivedAt);
   const archived = accounts.filter((a) => a.archivedAt);
-  const money = (paise: number) => formatMoney(paise, { currency: profile.currency });
+  const money = moneyFormatter(profile.currency);
 
   return (
     <>

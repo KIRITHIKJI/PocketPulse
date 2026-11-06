@@ -9,10 +9,9 @@ import {
   type CommandStatus,
   type LedgerCommand,
   type LedgerRecord,
-  type RpcCall,
   inverseCommand,
-  toRpcCall,
 } from "@/lib/ledger/commands";
+import { type RpcCall, toRpcCall } from "@/lib/ledger/rpc-call";
 
 type Row = Record<string, unknown>;
 

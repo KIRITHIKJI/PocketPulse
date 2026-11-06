@@ -12,16 +12,16 @@ import { EntryCard } from "@/components/transactions/entry-list";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
-  MIN_REPEATS,
-  PURCHASE_GROUPINGS,
   type PurchaseGrouping,
   comparisonWindows,
   formatBasisPoints,
-  formatMoney,
   indexById,
   leakReport,
+  MIN_REPEATS,
+  moneyFormatter,
   occurredAtMs,
   periodScope,
+  PURCHASE_GROUPINGS,
   toLocalDate,
 } from "@/domain";
 import {
@@ -75,7 +75,7 @@ export default async function MoneyLeaksPage({
   const settings = { timeZone: profile.timeZone, weekStartsOn: profile.weekStartsOn };
   const tz = settings.timeZone;
   const today = toLocalDate(now, tz);
-  const money = (paise: number) => formatMoney(paise, { currency: profile.currency });
+  const money = moneyFormatter(profile.currency);
 
   const selection = parseInsightSelection(params, now, settings);
   const { period } = selection;

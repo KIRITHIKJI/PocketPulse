@@ -10,11 +10,10 @@ import {
   type QuestDefinition,
   XP,
   startOfWeek,
-  toLocalDate,
 } from "@/domain";
 import { DataLoadError } from "@/lib/data/errors";
 import { getBudgets, getGoals, getLedger, getProfile } from "@/lib/data/queries";
-import { type Session, requestNow, requireSession } from "@/lib/data/session";
+import { type Session, requestNow, requestToday, requireSession } from "@/lib/data/session";
 import {
   type RewardData,
   type RewardPlan,
@@ -173,7 +172,7 @@ async function recordEvent(kind: string, xp: number, sourceKey: string) {
 
 export async function recordWeeklyReview() {
   const profile = await getProfile();
-  const today = toLocalDate(requestNow(), profile.timeZone);
+  const today = requestToday(profile.timeZone);
   const week = startOfWeek(today, profile.weekStartsOn);
   await recordEvent("weekly_review", XP.weeklyReview, `weekly_review:${week}`);
 }

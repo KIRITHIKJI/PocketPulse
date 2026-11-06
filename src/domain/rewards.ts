@@ -11,7 +11,8 @@
 import { netSpending, spendingEntries } from "./aggregation";
 import { isActive, occurredAtMs } from "./ledger";
 import { divRound } from "./money";
-import type { Budget, SavingsGoal, Transaction } from "./schemas";
+import type { Transaction } from "./schemas";
+import type { Budget, SavingsGoal } from "./plan-schemas";
 import {
   type Instant,
   type LocalDate,
@@ -20,11 +21,9 @@ import {
   addMonths,
   daysBetween,
   parseInstant,
-  resolvePeriod,
-  startOfMonth,
-  startOfWeek,
   toLocalDate,
 } from "./time";
+import { resolvePeriod, startOfMonth, startOfWeek } from "./periods";
 
 export const XP = {
   loggedDay: 10,
@@ -36,8 +35,8 @@ export const XP = {
 
 /** "Explored the transactions behind 5 insights." */
 export const DETECTIVE_INSIGHTS = 5;
-export const FIRST_ENTRIES = 10;
-export const STREAK_DAYS = 7;
+const FIRST_ENTRIES = 10;
+const STREAK_DAYS = 7;
 /** A week or month with almost nothing logged says nothing, so these need some real activity. */
 const MIN_EXPENSES_CLEAN_WEEK = 3;
 const MIN_EXPENSES_BUDGET_MONTH = 5;
@@ -76,7 +75,7 @@ export interface QuestProgress {
 }
 
 /** What already happened outside the ledger, from stored events. */
-export interface RewardFacts {
+interface RewardFacts {
   /** Week starts the user marked as reviewed. */
   reviewedWeeks: readonly LocalDate[];
   /** Distinct insights whose entries were opened. */
@@ -161,7 +160,7 @@ export function calculateStreaks(
   };
 }
 
-export interface Level {
+interface Level {
   level: number;
   /** XP this level started at. */
   floorXp: number;

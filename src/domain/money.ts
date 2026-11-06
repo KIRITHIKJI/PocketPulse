@@ -12,7 +12,7 @@ export type Paise = number;
 /** ₹9,99,99,99,999.99 — the largest single amount the app accepts. */
 export const MAX_AMOUNT_PAISE: Paise = 999_999_999_999;
 
-export const DEFAULT_CURRENCY = "INR";
+const DEFAULT_CURRENCY = "INR";
 export const SUPPORTED_CURRENCIES = ["INR", "USD", "EUR", "GBP", "AED", "SGD"] as const;
 export type CurrencyCode = (typeof SUPPORTED_CURRENCIES)[number];
 
@@ -29,7 +29,7 @@ export class MoneyError extends Error {
   override name = "MoneyError";
 }
 
-export function assertPaise(value: number, label = "amount"): Paise {
+function assertPaise(value: number, label = "amount"): Paise {
   if (!Number.isSafeInteger(value)) {
     throw new MoneyError(`${label} must be a whole number of paise, got ${String(value)}`);
   }
@@ -68,7 +68,7 @@ export function maxPaise(a: Paise, b: Paise): Paise {
   return a > b ? a : b;
 }
 
-export type RoundingMode = "half-up" | "floor" | "ceil";
+type RoundingMode = "half-up" | "floor" | "ceil";
 
 /**
  * Exact integer division `numerator / denominator` with explicit rounding.
@@ -129,10 +129,10 @@ export function formatBasisPoints(bp: number, maxFractionDigits: 0 | 1 | 2 = 1):
 // ---------------------------------------------------------------------------
 // Parsing
 
-export type ParseAmountError =
+type ParseAmountError =
   "empty" | "invalid" | "too_many_decimals" | "negative" | "zero" | "too_large";
 
-export type ParseAmountResult =
+type ParseAmountResult =
   { ok: true; paise: Paise } | { ok: false; error: ParseAmountError; message: string };
 
 const PARSE_MESSAGES: Record<ParseAmountError, string> = {
@@ -225,7 +225,7 @@ function groupWestern(digits: string): string {
   return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
-export interface FormatMoneyOptions {
+interface FormatMoneyOptions {
   currency?: CurrencyCode;
   /** "auto" shows paise only when non-zero (₹15, ₹12.50); "always" → ₹15.00; "never" rounds half-up. */
   paise?: "auto" | "always" | "never";
@@ -252,6 +252,11 @@ export function formatMoney(amount: Paise, options: FormatMoneyOptions = {}): st
   if (amount < 0 && !isZero) return `−${body}`;
   if (options.sign === "always" && !isZero) return `+${body}`;
   return body;
+}
+
+/** `formatMoney` bound to one currency, for screens that show many amounts. */
+export function moneyFormatter(currency: CurrencyCode): (amount: Paise) => string {
+  return (amount) => formatMoney(amount, { currency });
 }
 
 export function formatINR(amount: Paise, options: Omit<FormatMoneyOptions, "currency"> = {}) {

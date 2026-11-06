@@ -21,7 +21,7 @@ function matches(pathname: string, prefixes: readonly string[]) {
   return prefixes.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
-export type RouteAccess = "public" | "signed-out-only" | "recovery" | "protected";
+type RouteAccess = "public" | "signed-out-only" | "recovery" | "protected";
 
 export function routeAccess(pathname: string): RouteAccess {
   // The reset page needs the recovery session from the email link, so it must not redirect.

@@ -2,13 +2,18 @@ import {
   type Account,
   type Commitment,
   type SavingsGoal,
+  type LedgerMutation,
+  type MutationOutcome,
   type Transaction,
-  type TransactionInput,
   accountSchema,
+  applyMutation,
   commitmentSchema,
   savingsGoalSchema,
   transactionSchema,
 } from "@/domain";
+import type { z } from "zod";
+
+type TransactionInput = z.input<typeof transactionSchema>;
 
 /** Deterministic valid v4 UUIDs: id(1) → 00000000-0000-4000-8000-000000000001. */
 export const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -123,3 +128,18 @@ export const commitment = (
     dueDate,
     ...o,
   });
+
+/** Applies mutations in order, as a client replaying a queue would. */
+export function applyMutations(
+  ledger: readonly Transaction[],
+  mutations: readonly LedgerMutation[],
+): { ledger: Transaction[]; outcomes: MutationOutcome[] } {
+  let current = [...ledger];
+  const outcomes: MutationOutcome[] = [];
+  for (const m of mutations) {
+    const result = applyMutation(current, m);
+    current = result.ledger;
+    outcomes.push(result.outcome);
+  }
+  return { ledger: current, outcomes };
+}

@@ -8,7 +8,7 @@ import {
   type Transaction,
   addMonths,
   calculatePlan,
-  formatMoney,
+  moneyFormatter,
   resolvePeriod,
   toLocalDate,
 } from "@/domain";
@@ -28,7 +28,7 @@ import { requestNow } from "@/lib/data/session";
 import { isoInstant, mergeLedger, startForAnyZone } from "@/lib/data/slices";
 import { formatLocalDate } from "@/lib/format";
 
-export interface PlanData {
+interface PlanData {
   profile: Profile;
   settings: TimeSettings;
   now: number;
@@ -75,7 +75,7 @@ export const loadPlan = cache(async (): Promise<PlanData> => {
   ]);
   const ledger = mergeLedger(recent, goalMoney, recurring, payments);
   const settings = { timeZone: profile.timeZone, weekStartsOn: profile.weekStartsOn };
-  const money = (paise: number) => formatMoney(paise, { currency: profile.currency });
+  const money = moneyFormatter(profile.currency);
   const result = calculatePlan({
     accounts,
     ledger,

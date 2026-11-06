@@ -1,13 +1,22 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-import {
-  ALL_NAV_ITEMS,
-  AUX_ROUTES,
-  MOBILE_TABS,
-  SECTION_TABS,
-  findActiveItem,
-} from "@/lib/navigation";
+import type { Route } from "next";
+
+import { ALL_NAV_ITEMS, MOBILE_TABS, SECTION_TABS, findActiveItem } from "@/lib/navigation";
+
+/** Secondary routes that exist but are not navigation items. */
+const AUX_ROUTES = {
+  welcome: "/welcome",
+  onboarding: "/onboarding",
+  login: "/login",
+  register: "/register",
+  forgotPassword: "/forgot-password",
+  resetPassword: "/reset-password",
+  settingsPrivacy: "/settings/privacy",
+  settingsSync: "/settings/sync",
+  settingsData: "/settings/data",
+} as const satisfies Record<string, Route>;
 
 const APP_DIR = join(process.cwd(), "src", "app");
 

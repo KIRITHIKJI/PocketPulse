@@ -20,7 +20,7 @@ import {
 import { paiseToInput } from "@/lib/format";
 import type { LedgerCommand } from "@/lib/ledger/commands";
 
-export type SuggestionContext = {
+type SuggestionContext = {
   categories: readonly Category[];
   rules: readonly CategoryRule[];
   history: readonly Transaction[];
@@ -113,7 +113,7 @@ export const AMOUNT_ISSUES: readonly ParseIssue[] = [
   "other_currency",
 ];
 
-export type DraftProblem = {
+type DraftProblem = {
   message: string;
   /** Set when the user can accept the value as it stands. */
   confirm?: { label: string; clears: ParseIssue };

@@ -3,7 +3,7 @@
 Durable project state. Update before a context reset or at the end of each work session.
 Source of truth for requirements: `PROJECT_SPEC.md`.
 
-_Last updated: 2026-11-06 — Speed fixes 2. Migrations 0100–1000, 20261105000100 (ledger keyset index) and 20261106000100 (`wallet_balances`) are applied on the hosted project (you ran `db push`; `migration list` confirmed). The app is not deployed yet, so nothing has been tried on a real phone._
+_Last updated: 2026-11-06 — Code tidy (no behaviour change; see "Code tidy"). Before that, Speed fixes 2. Migrations 0100–1000, 20261105000100 (ledger keyset index) and 20261106000100 (`wallet_balances`) are applied on the hosted project (you ran `db push`; `migration list` confirmed). The app is not deployed yet, so nothing has been tried on a real phone._
 
 ## Build stages
 
@@ -420,9 +420,47 @@ From `doc/CODEBASE_REPORT.md` §8 #2, plus the header count from Speed fixes 1's
   - Mutation check: tracking start made exclusive, voided rows counted, the profile's zone ignored. Each break failed 2–3 tests.
 - **The unit tests prove:** the window start is never after the real period start, across 8 zones, 3 week starts and 8 boundary instants. Home spending and budgets, Insights and the safe-to-spend plan give the same result from the partial reads as from every row. A plan without the balance would be wrong, and a balance from another instant is refused.
 - **Live:** the function equals the domain on both test accounts' real rows, and the accounts share no wallet.
-- **E2E** (desktop: `shell`, plus `transactions` (Journey A), `insights`, `offline` and `report` on ledger-desktop): **48 passed, 1 failed, 5 did not run.** The failure is `insights.spec.ts` "with no spending, both screens say so honestly". It expects an account with no purchases, but the account has two active quick-add Tea entries: ₹52.35 on 1 Nov and ₹10.00 on 5 Nov, both saved before this session. The old build shows the same Insights page (money check), so this isn't a code change. The 5 that didn't run are the rest of that serial spec. Not deleted, since they may be yours.
+- **E2E** (desktop: `shell`, plus `transactions` (Journey A), `insights`, `offline` and `report` on ledger-desktop): **48 passed, 1 failed, 5 did not run.** The failure is `insights.spec.ts` "with no spending, both screens say so honestly". It expects an account with no purchases, but the account has two active quick-add Tea entries: ₹52.35 on 1 Nov and ₹10.00 on 5 Nov, both saved before this session. The old build shows the same Insights page (money check), so this isn't a code change. The 5 that didn't run are the rest of that serial spec. You then deleted the two entries, and `insights.spec.ts` on ledger-desktop passed in full: **7 passed** (setup + 6), 2026-11-06.
 
 **Next speed steps (not done):** the full re-render on every save; Transactions' default view and Categories still read every row (they'd need SQL aggregates for all-time counts and totals); Reports could save its second round if the function took the period's local dates instead of instants.
+
+## Code tidy (2026-11-06)
+
+No behaviour change: no money logic, migration or UI changes. Baseline: `npm test` 29 files / 817 tests, `npm run test:db` 123.
+
+**Plan**
+
+- **Fix #13:** one `moneyFormatter(currency)` in `@/domain/money` replaces the 20 local `money` lambdas; one `requestToday(timeZone)` in `src/lib/data/session.ts` replaces the 5 `toLocalDate(requestNow(), …)` copies.
+- **Fix #14 / split files over ~300 lines** (domain stays the only home of money rules; `@/domain` keeps exporting the same names):
+  - `domain/parse-entries.ts` → `parse-dates.ts`, `parse-tokens.ts`, `parse-entries.ts`
+  - `domain/insights.ts` → `insight-cards.ts`, `insight-trends.ts`, `insights.ts`
+  - `domain/categorize.ts` → `category-tree.ts`, `categorize.ts`
+  - `domain/report.ts` → `report.ts`, `report-export.ts`
+  - `domain/purchases.ts` → `purchases.ts`, `leaks.ts`, `recurring-signals.ts`
+  - `domain/aggregation.ts` → `aggregation.ts`, `period-comparison.ts`
+  - `domain/time.ts` → `time.ts`, `periods.ts`
+  - `domain/schemas.ts` → `schemas.ts`, `plan-schemas.ts`
+  - `lib/data/queries.ts` → folder `lib/data/queries/` (`profile`, `accounts`, `ledger`, `plan`, `records`, `index`)
+  - `lib/ledger/commands.ts` → `commands.ts`, `rpc-call.ts`
+  - `lib/reports/pdf.ts` → `pdf.ts`, `pdf-layout.ts`
+  - `transaction-form.tsx` → `+ entry-fields.tsx`; `goal-actions.tsx` → `+ goal-move-dialog.tsx`, `goal-purchase-dialog.tsx`; `sync-center.tsx` → `+ sync-status.tsx`, `queued-entry-actions.tsx`; `quick-add.tsx` → `+ quick-add-form.tsx`; `draft-review.tsx` → `+ draft-card.tsx`; `settings-forms.tsx` → `+ preference-forms.tsx`; `due-forms.tsx` → `+ recurring-form.tsx`, `wallet-field.tsx`; `step-forms.tsx` → `+ balances-step-form.tsx`
+  - Pages `insights`, `home`, `reports`, `recurring`: move sections into components under `src/components/<feature>/`
+- **Remove (proved with knip 5 + grep) — done as planned:** `getLedgerBefore`, `timeZoneSchema`, `CardContent`, `SheetClose` (no user at all); drop `export` from the 34 values and 80 types only used in their own file; move test-only `applyMutations`, `TransactionInput`, `LedgerCommandInput` and `AUX_ROUTES` into the tests. Kept on purpose: `newlyReachedThresholds`, `isScheduledOn`, `formatINRCompact` (domain rules pinned by tests; removing them would delete tests), `scripts/make-icons.mjs` (manual icon script), `public/sw.js` and `e2e/auth.setup.ts` (knip false positives). knip found no unused dependencies.
+- **Rename:** `lib/actions/account.ts` → `account-deletion.ts` (it sits next to `accounts.ts`, which is wallets). Tests: unit `phase4-validation` → `onboarding-validation`, `phase5` → `transactions`, `phase6` → `draft-review`; DB `phase4` → `onboarding-categories`, `phase5` → `ledger-commands`, `phase6` → `batch-entries`, `phase6a` → `batch-undo`, `phase8` → `plan`, `phase9` → `rewards-reminders`, `phase10` → `offline-sync`; e2e `phase4.spec` → `onboarding-categories.spec`. Not renamed: `accounts`/`presets`/`allocation` in code, because they mirror the database tables and RPCs (a rename would need a migration).
+
+**What was done** (where it differs from the plan, the plan is out of date and this is right)
+
+- **#13:** `moneyFormatter(currency)` (`src/domain/money.ts`, with a new test against `formatMoney`) replaced 20 lambdas in 18 files; `requestToday(timeZone)` (`src/lib/data/session.ts`) replaced the 5 copies.
+- **Splits (#14).** No `src` file is over 310 lines now except `globals.css` (312) and `domain/report.ts` (319); `rewards`, `balances` and `money` are 303–310 and were left whole. Everything outside the domain still imports `@/domain`, which re-exports the new modules; helper modules (`parse-*`, `category-keywords`, `insight-*`) stay internal.
+  - Domain: `parse-entries` → `parse-dates`, `parse-numbers`, `parse-tokens`, `parse-entries`; `insights` → `insight-scope`, `insight-cards`, `insight-trends`, `insights`; `categorize` → `category-tree`, `category-keywords`, `categorize`; `report` → `report`, `report-export`; `purchases` → `purchases`, `leaks`, `recurring-signals`; `aggregation` → `aggregation`, `period-comparison`, `spending-trend`; `time` → `time`, `periods`; `schemas` → `schemas`, `plan-schemas`.
+  - Lib: `data/queries.ts` → `data/queries/{index,profile,accounts,categories,ledger,plan,presets,shared}.ts` (`@/lib/data/queries` still works); `ledger/commands.ts` → `+ rpc-call.ts`; `reports/pdf.ts` → `+ pdf-layout.ts`.
+  - Components: as planned, plus `transactions/note-tags-fields.tsx`. Two import cycles the split made were removed: the entry form's types now live in `entry-fields.tsx`, and `OtherEntryRoutes` and `money` in `quick-add-form.tsx`.
+  - Pages: `home` → `components/home/plan-snapshots.tsx` (387 → 287); `insights` → `components/insights/insight-panels.tsx` (404 → 268); `reports` → `components/reports/report-options.tsx`, `report-summary.tsx` (380 → 249); `recurring` → `components/plan/recurring-cards.tsx` (333 → 207). Markup moved unchanged.
+- **Removed:** as planned. Also deleted, as unused once un-exported: the types `IncomeTransaction`, `TransferTransaction`, `BudgetInput`, `EntryDraftInput`, `AccountForm`, `BalancesStep`, `PresetForm`; `EDITABLE_FIELDS` became the plain union type it was only used as. Re-exported because a new file or a test now needs them: `LedgerMutation`, `MutationOutcome`, `GoalProgress`, `InsightsModel`. A final knip run lists only its 3 false-positive files and the `postcss` peer of Tailwind.
+- **Renamed:** as planned. `playwright.config.ts`'s ledger-spec pattern doesn't match the new e2e name, so it still runs in the parallel `desktop`/`mobile` projects.
+- **Tests:** no test was deleted or changed in what it checks. Edits were imports only (the moved helpers and types, `toRpcCall` from `rpc-call`, `RecurringFormDialog` from `recurring-form`), plus 6 new `moneyFormatter` cases.
+
+**Checks (2026-11-06):** lint ✅, typecheck ✅, format ✅, `npm test` ✅ 29 files / **823** tests (was 817), `npm run test:db` ✅ **123** + 11 placeholders (was 123; throwaway PostgreSQL 18 cluster on port 54329 per the README, stopped after), `npm run build` ✅, knip ✅. E2E at desktop width (`setup`, `desktop`, `ledger-desktop` on the hosted project, fresh build): ✅ **190 passed**, 0 failed, 0 skipped, in 6.0 min. The mobile projects weren't run this session.
 
 ## Checks run (Phase 10, 2026-11-01)
 
@@ -687,3 +725,8 @@ All 10 build phases are done. What's left is yours, because it needs accounts or
 2. Install on your phone and try Journey G for real: airplane mode, add, reopen, reconnect.
 3. Tell me what Chrome writes for "kal", "aaj" and "parso".
 4. Set up custom SMTP in Supabase before anyone else signs up.
+
+### Test fixes
+
+- Insights e2e must not depend on existing account data.
+- Find the cause of ~1,000 ms sidebar clicks.

@@ -10,7 +10,8 @@
 import { addPaise, sumPaise, type Paise } from "./money";
 import { isActive, occurredAtMs } from "./ledger";
 import type { Account, Transaction } from "./schemas";
-import { DEFAULT_TIMEZONE, type Instant, type Period, startOfLocalDate } from "./time";
+import { DEFAULT_TIMEZONE, type Instant, startOfLocalDate } from "./time";
+import { type Period } from "./periods";
 
 /** Signed effect of one transaction on one account's balance (0 if unrelated). */
 export function accountDelta(tx: Transaction, accountId: string): Paise {

@@ -10,7 +10,8 @@ import {
   refreshSuggestion,
 } from "@/lib/drafts";
 import { formatLocalDate } from "@/lib/format";
-import { inverseCommand, ledgerCommandSchema, toRpcCall } from "@/lib/ledger/commands";
+import { inverseCommand, ledgerCommandSchema } from "@/lib/ledger/commands";
+import { toRpcCall } from "@/lib/ledger/rpc-call";
 
 import { BUS, CASH, FOOD, OWNER, SNACKS, TEA, TRANSPORT, id } from "./domain/fixtures";
 

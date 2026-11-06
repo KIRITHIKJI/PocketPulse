@@ -8,6 +8,7 @@ import {
   formatINRCompact,
   formatMoney,
   groupIndian,
+  moneyFormatter,
   paiseToDecimalString,
   parseAmountInput,
   ratioBasisPoints,
@@ -128,6 +129,13 @@ describe("formatINR", () => {
     expect(groupIndian("1000")).toBe("1,000");
     expect(groupIndian("100000")).toBe("1,00,000");
     expect(groupIndian("1234567")).toBe("12,34,567");
+  });
+});
+
+describe("moneyFormatter", () => {
+  it.each([0, 5, 1250, 1500, -4000, 12_500_000])("matches formatMoney for %i paise", (paise) => {
+    expect(moneyFormatter("INR")(paise)).toBe(formatMoney(paise, { currency: "INR" }));
+    expect(moneyFormatter("USD")(paise)).toBe(formatMoney(paise, { currency: "USD" }));
   });
 });
 

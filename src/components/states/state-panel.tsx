@@ -10,7 +10,7 @@ const VARIANTS = {
   denied: { icon: Lock, tone: "bg-muted text-muted-foreground", role: "alert" },
 } as const satisfies Record<string, { icon: LucideIcon; tone: string; role?: string }>;
 
-export type StateVariant = keyof typeof VARIANTS;
+type StateVariant = keyof typeof VARIANTS;
 
 type StatePanelProps = {
   variant?: StateVariant;

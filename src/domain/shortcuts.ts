@@ -2,7 +2,7 @@
  * Shortcuts for logging again what the user logs often: "repeat last expense" and "frequent
  * transactions". Both read only the user's own active entries; nothing is invented.
  */
-import { normalizeText } from "./categorize";
+import { normalizeText } from "./category-tree";
 import { isActive, occurredAtMs } from "./ledger";
 import { parseInstant, type Instant } from "./time";
 import type { ExpenseTransaction, Transaction } from "./schemas";
@@ -34,7 +34,7 @@ export function lastExpense(ledger: readonly Transaction[]): ExpenseTransaction 
   return best;
 }
 
-export interface FrequentExpense {
+interface FrequentExpense {
   /** Stable key of the group: what, where, which category and how much. */
   key: string;
   /** The latest entry of the group: the template a repeat copies. */

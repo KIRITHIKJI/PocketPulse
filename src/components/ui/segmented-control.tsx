@@ -6,7 +6,7 @@ import type { LucideIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
-export type SegmentedOption<T extends string> = {
+type SegmentedOption<T extends string> = {
   value: T;
   label: string;
   icon?: LucideIcon;

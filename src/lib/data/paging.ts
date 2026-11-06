@@ -4,7 +4,7 @@ type Row = Record<string, unknown>;
 type Page = PromiseLike<{ data: Row[] | null; error: { code?: string } | null }>;
 
 /** PostgREST's default max rows per request. */
-export const PAGE = 1000;
+const PAGE = 1000;
 
 /** Reads every row of a query, page by page, so large lists are never silently truncated. */
 export async function fetchAll(

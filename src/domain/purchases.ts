@@ -11,26 +11,17 @@
  * apart, and merging them would state something false about the user's money.
  */
 import {
-  type Change,
   type SpendingEntry,
   UNCATEGORIZED,
   amountStats,
-  change,
   netSpending,
   spendingEntries,
 } from "./aggregation";
-import { normalizeText, significantTokens } from "./categorize";
-import { indexById, isActive, occurredAtMs, refundCategory } from "./ledger";
-import { type Paise, multiplyPaise, ratioBasisPoints, subtractPaise, sumPaise } from "./money";
+import { normalizeText, significantTokens } from "./category-tree";
+import { indexById, refundCategory } from "./ledger";
+import { type Paise, ratioBasisPoints, subtractPaise, sumPaise } from "./money";
 import type { ExpenseTransaction, RefundTransaction, Transaction } from "./schemas";
-import {
-  type LocalDate,
-  type Period,
-  type TimeSettings,
-  daysBetween,
-  resolvePeriod,
-  toLocalDate,
-} from "./time";
+import { type Period } from "./periods";
 
 export const PURCHASE_GROUPINGS = ["description", "merchant", "tile", "category"] as const;
 export type PurchaseGrouping = (typeof PURCHASE_GROUPINGS)[number];
@@ -161,7 +152,7 @@ function buildPurchaseGroup(
   };
 }
 
-export interface PurchaseGroupOptions {
+interface PurchaseGroupOptions {
   by: PurchaseGrouping;
   /** Keep only small purchases under this amount. */
   underPaise?: Paise;
@@ -225,206 +216,4 @@ export function smallPurchaseTotal(
     shareBp: netPaise < 0 ? null : ratioBasisPoints(netPaise, netSpending(ledger, period)),
     transactionIds: entries.map((e) => e.tx.id),
   };
-}
-
-// --- Money Leak Detector --------------------------------------------------------------------
-
-export interface LeakGroup extends PurchaseGroup {
-  /** Same group, same threshold, in the previous window; null with `comparisonNote` if unfair. */
-  comparison: (Change & { previousCount: number }) | null;
-  comparisonNote: string | null;
-}
-
-export interface LeakReport {
-  groups: LeakGroup[];
-  /** Net total of the listed groups. Groups don't overlap within one grouping. */
-  netPaise: Paise;
-  shareBp: number | null;
-  /** Small purchases this grouping can't place (no merchant recorded, say). */
-  ungroupedCount: number;
-}
-
-export interface LeakOptions {
-  ledger: readonly Transaction[];
-  period: Period;
-  /** The window to compare with, or null when there isn't one (all time). */
-  previous: Period | null;
-  by: PurchaseGrouping;
-  thresholdPaise: Paise;
-  labelOf?: (key: string) => string;
-  tileLabels?: ReadonlyMap<string, string>;
-  minRepeats?: number;
-}
-
-export function leakReport({
-  ledger,
-  period,
-  previous,
-  by,
-  thresholdPaise,
-  labelOf,
-  tileLabels,
-  minRepeats = MIN_REPEATS,
-}: LeakOptions): LeakReport {
-  const options = { by, underPaise: thresholdPaise, labelOf, tileLabels };
-  const all = purchaseGroups(ledger, period, options);
-  const before = previous ? purchaseGroups(ledger, previous, options) : [];
-  const beforeByKey = new Map(before.map((g) => [g.key, g]));
-  const anyBefore = previous !== null && spendingEntries(ledger, previous).length > 0;
-  const note = !previous
-    ? "All time has no earlier period to compare with."
-    : "Nothing was recorded in the previous period, so there’s nothing to compare yet.";
-
-  const groups = all
-    .filter((g) => g.count >= minRepeats)
-    .map((g): LeakGroup => {
-      const prev = beforeByKey.get(g.key);
-      return {
-        ...g,
-        comparison: anyBefore
-          ? { ...change(g.netPaise, prev?.netPaise ?? 0), previousCount: prev?.count ?? 0 }
-          : null,
-        comparisonNote: anyBefore ? null : note,
-      };
-    })
-    .sort((a, b) => b.netPaise - a.netPaise || (a.key < b.key ? -1 : 1));
-
-  const netPaise = sumPaise(groups.map((g) => g.netPaise));
-  const small = smallPurchaseTotal(ledger, period, thresholdPaise);
-  return {
-    groups,
-    netPaise,
-    shareBp: netPaise < 0 ? null : ratioBasisPoints(netPaise, netSpending(ledger, period)),
-    ungroupedCount: small.count - sumPaise(all.map((g) => g.count)),
-  };
-}
-
-export interface WhatIf {
-  fewer: number;
-  typicalPaise: Paise;
-  savedPaise: Paise;
-  /** Every purchase was the same amount, so "₹25 coffees" is exact, not "about". */
-  sameAmount: boolean;
-}
-
-/** A plain estimate: `fewer` purchases at the group's median price, capped at what happened. */
-export function whatIf(group: PurchaseGroup, fewer: number): WhatIf {
-  const typicalPaise = group.medianPaise ?? 0;
-  const capped = Math.min(Math.max(0, Math.trunc(fewer)), group.count);
-  return {
-    fewer: capped,
-    typicalPaise,
-    savedPaise: multiplyPaise(typicalPaise, capped),
-    sameAmount: group.minPaise === group.maxPaise,
-  };
-}
-
-export function whatIfText(
-  label: string,
-  result: WhatIf,
-  money: (paise: Paise) => string,
-  span: string,
-): string {
-  const price = money(result.typicalPaise);
-  const count = result.fewer === 1 ? "one" : String(result.fewer);
-  const noun = result.fewer === 1 ? "entry" : "entries";
-  const at = result.sameAmount ? `at ${price}` : `at about ${price}`;
-  const less = `${result.sameAmount ? "" : "about "}${money(result.savedPaise)}`;
-  return `If you logged ${count} fewer ${label} ${noun} ${at} in ${span}, you’d spend ${less} less.`;
-}
-
-// --- Recurring signals ----------------------------------------------------------------------
-
-export interface RecurringSignal {
-  by: PurchaseGrouping;
-  key: string;
-  label: string;
-  cadence: "weekly" | "monthly" | "regular";
-  /** Median gap between purchases. */
-  everyDays: number;
-  count: number;
-  typicalPaise: Paise;
-  netPaise: Paise;
-  lastDate: LocalDate;
-  transactionIds: string[];
-}
-
-const MIN_SIGNAL_DATES = 3;
-const MIN_SIGNAL_GAP_DAYS = 6; // anything tighter is a habit, which the leak view already covers
-
-function median(values: readonly number[]): number {
-  const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.floor(sorted.length / 2)]!;
-}
-
-/**
- * Purchases that repeat on a steady rhythm for a steady price, across all history. A signal, not
- * a fact: it needs three dates with even gaps, prices within 25 % of each other, and must not
- * have gone quiet for more than two gaps.
- */
-export function recurringSignals(
-  ledger: readonly Transaction[],
-  today: LocalDate,
-  settings: TimeSettings,
-): RecurringSignal[] {
-  const allTime = resolvePeriod({ kind: "all_time" }, 0, settings);
-  const byId = indexById(ledger);
-  const signals: RecurringSignal[] = [];
-  const seen = new Set<string>();
-
-  for (const by of ["description", "merchant"] as const) {
-    for (const group of purchaseGroups(ledger, allTime, { by })) {
-      if (group.transactionIds.some((id) => seen.has(id))) continue;
-      const purchases = group.transactionIds
-        .map((id) => byId.get(id)!)
-        .filter((tx) => tx.type === "expense");
-      const dates = [
-        ...new Set(purchases.map((tx) => toLocalDate(occurredAtMs(tx), settings.timeZone))),
-      ].sort();
-      if (dates.length < MIN_SIGNAL_DATES) continue;
-
-      const gaps = dates.slice(1).map((date, i) => daysBetween(dates[i]!, date));
-      const everyDays = median(gaps);
-      const slack = Math.max(2, Math.ceil(everyDays * 0.15));
-      const steady = gaps.every((gap) => Math.abs(gap - everyDays) <= slack);
-      const lastDate = dates.at(-1)!;
-      const quiet = daysBetween(lastDate, today) > everyDays * 2;
-      const stablePrice = group.maxPaise! * 4 <= group.minPaise! * 5;
-      if (everyDays < MIN_SIGNAL_GAP_DAYS || !steady || quiet || !stablePrice) continue;
-
-      group.transactionIds.forEach((id) => seen.add(id));
-      signals.push({
-        by,
-        key: group.key,
-        label: group.label,
-        cadence:
-          everyDays >= 6 && everyDays <= 8
-            ? "weekly"
-            : everyDays >= 27 && everyDays <= 33
-              ? "monthly"
-              : "regular",
-        everyDays,
-        count: group.count,
-        typicalPaise: group.medianPaise!,
-        netPaise: group.netPaise,
-        lastDate,
-        transactionIds: group.transactionIds,
-      });
-    }
-  }
-  return signals.sort((a, b) => b.netPaise - a.netPaise || (a.key < b.key ? -1 : 1));
-}
-
-/** The earliest local date with an active expense or refund, or null. */
-export function firstSpendingDate(
-  ledger: readonly Transaction[],
-  timeZone: string,
-): LocalDate | null {
-  let first: number | null = null;
-  for (const tx of ledger) {
-    if (!isActive(tx) || (tx.type !== "expense" && tx.type !== "refund")) continue;
-    const at = occurredAtMs(tx);
-    if (first === null || at < first) first = at;
-  }
-  return first === null ? null : toLocalDate(first, timeZone);
 }

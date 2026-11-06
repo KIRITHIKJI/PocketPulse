@@ -57,4 +57,4 @@ function SwitchRow({
   );
 }
 
-export { Switch, SwitchRow };
+export { SwitchRow };

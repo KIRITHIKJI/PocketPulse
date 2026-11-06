@@ -20,7 +20,7 @@ export type FormState = {
 export const IDLE: FormState = { status: "idle" };
 
 /** First message per field, keyed by the dotted path ("extras.0.name"). */
-export function fieldErrors(error: z.ZodError): FieldErrors {
+function fieldErrors(error: z.ZodError): FieldErrors {
   const out: FieldErrors = {};
   for (const issue of error.issues) {
     const key = issue.path.length ? issue.path.join(".") : "form";

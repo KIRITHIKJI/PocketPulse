@@ -11,16 +11,16 @@ import { type ListedDay, EntryList } from "@/components/transactions/entry-list"
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
-  UNCATEGORIZED,
   buildInsights,
   formatBasisPoints,
-  formatMoney,
   indexById,
+  moneyFormatter,
   netSpending,
   periodScope,
   resolvePeriod,
   spendingDisplay,
   toLocalDate,
+  UNCATEGORIZED,
 } from "@/domain";
 import { loadInsightsLedger } from "@/lib/data/insights";
 import { getAccounts, getCategories, getProfile } from "@/lib/data/queries";
@@ -68,7 +68,7 @@ export default async function CategoryInsightsPage({
   const settings = { timeZone: profile.timeZone, weekStartsOn: profile.weekStartsOn };
   const tz = settings.timeZone;
   const today = toLocalDate(now, tz);
-  const money = (paise: number) => formatMoney(paise, { currency: profile.currency });
+  const money = moneyFormatter(profile.currency);
   const selection = parseInsightSelection(query, now, settings);
   const { period } = selection;
   const words = insightWords(selection, today, categories, profile.currency);

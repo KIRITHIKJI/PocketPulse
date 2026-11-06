@@ -4,7 +4,13 @@ import * as React from "react";
 import { Minus, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { type CurrencyCode, type PurchaseGroup, formatMoney, whatIf, whatIfText } from "@/domain";
+import {
+  type CurrencyCode,
+  type PurchaseGroup,
+  moneyFormatter,
+  whatIf,
+  whatIfText,
+} from "@/domain";
 
 /** An optional estimate. Starts at one fewer and never suggests the purchase was a mistake. */
 export function WhatIf({
@@ -20,7 +26,7 @@ export function WhatIf({
 }) {
   const [fewer, setFewer] = React.useState(1);
   const result = whatIf(group, fewer);
-  const money = (paise: number) => formatMoney(paise, { currency });
+  const money = moneyFormatter(currency);
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-xl bg-muted/50 p-3 text-sm">
       <span className="flex items-center gap-1">

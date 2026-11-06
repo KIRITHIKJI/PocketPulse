@@ -17,7 +17,8 @@ import {
   type Paise,
 } from "./money";
 import { indexById, isActive, occurredAtMs } from "./ledger";
-import type { AllocationTransaction, SavingsGoal, Transaction } from "./schemas";
+import type { AllocationTransaction, Transaction } from "./schemas";
+import type { SavingsGoal } from "./plan-schemas";
 import { type Instant, type LocalDate, addDays, daysBetween, toLocalDate } from "./time";
 
 /** Net earmarked per goal (allocations − releases), optionally as of an instant. */
@@ -35,7 +36,7 @@ export function earmarkedByGoal(
   return totals;
 }
 
-export function earmarkedForGoal(goalId: string, ledger: readonly Transaction[], asOfMs?: Instant) {
+function earmarkedForGoal(goalId: string, ledger: readonly Transaction[], asOfMs?: Instant) {
   return earmarkedByGoal(ledger, asOfMs).get(goalId) ?? 0;
 }
 
@@ -170,7 +171,7 @@ export function goalMoves(goalId: string, ledger: readonly Transaction[]): Alloc
     .sort((a, b) => occurredAtMs(b) - occurredAtMs(a));
 }
 
-export interface GoalForecast {
+interface GoalForecast {
   /** Net set aside per day so far, whole paise (floor). */
   dailyPacePaise: Paise;
   reachedOn: LocalDate;
