@@ -3,7 +3,7 @@
 Durable project state. Update before a context reset or at the end of each work session.
 Source of truth for requirements: `PROJECT_SPEC.md`.
 
-_Last updated: 2026-11-06 — Code tidy (no behaviour change; see "Code tidy"). Before that, Speed fixes 2. Migrations 0100–1000, 20261105000100 (ledger keyset index) and 20261106000100 (`wallet_balances`) are applied on the hosted project (you ran `db push`; `migration list` confirmed). The app is not deployed yet, so nothing has been tried on a real phone._
+_Last updated: 2026-11-06 — Design 1 of 4 (audit, `doc/DESIGN_PLAN.md`, design foundation; see "Design 1"). Before that, Code tidy (no behaviour change). Before that, Speed fixes 2. Migrations 0100–1000, 20261105000100 (ledger keyset index) and 20261106000100 (`wallet_balances`) are applied on the hosted project (you ran `db push`; `migration list` confirmed). The app is not deployed yet, so nothing has been tried on a real phone._
 
 ## Build stages
 
@@ -461,6 +461,26 @@ No behaviour change: no money logic, migration or UI changes. Baseline: `npm tes
 - **Tests:** no test was deleted or changed in what it checks. Edits were imports only (the moved helpers and types, `toRpcCall` from `rpc-call`, `RecurringFormDialog` from `recurring-form`), plus 6 new `moneyFormatter` cases.
 
 **Checks (2026-11-06):** lint ✅, typecheck ✅, format ✅, `npm test` ✅ 29 files / **823** tests (was 817), `npm run test:db` ✅ **123** + 11 placeholders (was 123; throwaway PostgreSQL 18 cluster on port 54329 per the README, stopped after), `npm run build` ✅, knip ✅. E2E at desktop width (`setup`, `desktop`, `ledger-desktop` on the hosted project, fresh build): ✅ **190 passed**, 0 failed, 0 skipped, in 6.0 min. The mobile projects weren't run this session.
+
+## Design 1 (2026-11-06)
+
+Redesign phase 1 of 4, from `doc/REDESIGN_BRIEF.md` with your overrides (no speed work, no layout sign-off per screen, keep "Safe to Spend" and every route, inspiration only with no Solo Leveling names or symbols, free fonts and libraries, Geist stays). **`doc/DESIGN_PLAN.md` is now the design source of truth** for Design 2–4: audit, strategy, tokens, component specs, a desktop + mobile + empty-state plan for all 20 screens, navigation, and the rules every later phase follows.
+
+- **Audit:** 18 signed-in screens screenshotted in dark at 375 and 1440 px, plus a script that read computed styles. Worst findings: no tappable control reached 44 px on phones; Quick add sat below the fold on a phone Home; three empty-state styles (Budgets' had no action inside); two glowing primary buttons on desktop; four card radii; green meant both money and XP. Ranked tables are in the plan, §0.
+- **Strategy:** the job is "log small spends fast, know where money goes". North Star: logged days per week (same rule as the `logged_day` reward). Each game element is mapped to the job; ethics rules (no guilt, no pressure to spend or over-save, no dark patterns, an off switch for progress features in Design 3).
+- **Tokens (`src/app/globals.css`):** three layers. Base palette `--pp-*` → meaning (`--surface-*`, `--text-*`, `--money-{positive,neutral,negative,estimate,earmark}`, `--progress-*`, `--feedback-*`, three allowed gradients) → component (`--button-*`, `--surface-card-*`, `--toast-*`). Dark and light. The shadcn names stay as layer-2 aliases, so every screen still works until its phase.
+  - **Visible changes on existing screens, on purpose:** positive green moved from lime (hue 128) to a restrained green (hue 150); one radius scale (6/10/14/18/24 px), so cards went 24 → 18 px and controls 14 → 10 px; the primary button lost its glow; on touch screens every button is at least 44 px (`pointer-coarse:`); cards pad 16 px on phones (was 20). Layouts are unchanged.
+  - **Type roles:** `type-caption` 12, `type-body` 14, `type-heading` 16, `type-title` 22/24, `type-display` 32/36, and `money` (tabular, slashed zero). Spacing: `p-gutter`, `p-surface`, `gap-stack`, `gap-section`. Motion durations 100–280 ms.
+  - `cn` now knows these tokens (`extendTailwindMerge`), so `text-caption` isn't mistaken for a colour.
+- **Components:** `ui/surface.tsx` (new; `Card` is its default variant: card, hero, inset, interactive, status; loading keeps the box), `ui/button.tsx` (5 variants; unused `secondary`/`link` removed; `loading` prop; 44 px on touch), `ui/progress.tsx` (new; basis points or steps; money/xp/warning/over/neutral; empty, complete, over, loading, disabled; `role=progressbar` with value text), `states/state-panel.tsx` (the empty state; `size="page" | "section"`, actions inside, no dashed border), `feedback/notice.tsx` (new; info/success/warning/error/offline), `feedback/toast.tsx` (tones success/error/info/progress/milestone; `routine` toasts go compact from the third within two minutes; Undo is kept).
+- **Not done here, by plan:** no screen was restyled. `Meter` and `ProgressRing` in `components/plan/parts.tsx` still exist; screens move to `Progress` in their phase. Navigation changes are Design 2.
+- **Rendered check:** every component state on a temporary preview page (deleted before the commit), dark, 375 and 1440 px, plus a milestone toast. On an emulated Pixel 7 every button measured ≥ 44 px. Home and Rewards re-checked after the token change: no breakage.
+
+**Checks:** lint ✅, typecheck ✅, format ✅, `npm test` ✅ 30 files / **838** tests (15 new in `tests/unit/design-foundation.test.tsx`), `npm run build` ✅. DB, live and e2e suites weren't run (no data, SQL or route changes).
+
+**Found, not fixed (not design):** `next dev` reports a hydration error on some signed-in screens ("3 issues" on `/rewards`). The dev log names the cause: `<p> cannot contain a nested <form>`. Find the `<p>` wrapping a form (likely a server-action button inside a paragraph) and fix it in a separate change.
+
+**Next (Design 2, only when you send its prompt):** navigation (sidebar groups with the 2 × 2 Record grid and the PlayerChip; mobile bar Home · Activity · Add · Insights · Plan · You), Home and Quick Add per `doc/DESIGN_PLAN.md` §4–5.
 
 ## Checks run (Phase 10, 2026-11-01)
 
