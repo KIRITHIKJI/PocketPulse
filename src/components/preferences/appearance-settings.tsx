@@ -24,9 +24,9 @@ export function AppearanceSettings() {
   const hydrated = useHydrated();
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-2">
-        <h3 id="theme-label" className="text-sm font-medium">
+        <h3 id="theme-label" className="type-body font-medium">
           Theme
         </h3>
         <SegmentedControl
@@ -40,7 +40,7 @@ export function AppearanceSettings() {
         />
       </div>
       <div className="flex flex-col gap-2">
-        <h3 className="text-sm font-medium">Motion</h3>
+        <h3 className="type-body font-medium">Motion</h3>
         <SegmentedControl
           aria-label="Motion"
           value={hydrated ? preference : "system"}
@@ -50,7 +50,7 @@ export function AppearanceSettings() {
           }}
           options={MOTION_OPTIONS}
         />
-        <p className="text-sm text-muted-foreground">
+        <p className="type-body text-muted-foreground">
           “Match device” follows your system’s reduce-motion setting. Reduced turns off
           non-essential animation such as number roll-ups and celebrations.
         </p>

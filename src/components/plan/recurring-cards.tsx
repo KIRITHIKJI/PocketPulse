@@ -5,7 +5,6 @@ import { RecordDueButton } from "@/components/plan/due-forms";
 import { RecurringFormDialog } from "@/components/plan/recurring-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import {
   type LocalDate,
   type Paise,
@@ -21,6 +20,7 @@ import {
 import { type EntryKit } from "@/lib/data/entry-kit";
 import { formatLocalDate } from "@/lib/format";
 import { type DueItem } from "@/lib/plan-view";
+import { cn } from "@/lib/utils";
 
 function everyText(t: RecurringTemplate) {
   const unit = { daily: "day", weekly: "week", monthly: "month", yearly: "year" }[t.cadence];
@@ -29,68 +29,97 @@ function everyText(t: RecurringTemplate) {
 
 type Money = (paise: Paise) => string;
 
-/** One due or upcoming item: what it is, when, and how to record, skip or cancel it. */
-export function DueItemCard({ item, kit, money }: { item: DueItem; kit: EntryKit; money: Money }) {
+/** The timeline's date mark: day over month, from the same "20 Oct 2026" text as everywhere. */
+function DateMark({ date, overdue }: { date: LocalDate; overdue: boolean }) {
+  const [day, month] = formatLocalDate(date).split(" ");
   return (
-    <Card className="h-full gap-2" data-testid="due-item">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <h3 className="truncate font-semibold">{item.title}</h3>
-          <p className="text-xs text-muted-foreground">
-            {item.overdue ? "Was due" : "Due"} {formatLocalDate(item.dueDate)}
-          </p>
-        </div>
-        <p className="tabular shrink-0 font-semibold">
-          {item.kind === "income" ? "+" : ""}
-          {money(item.amountPaise)}
-        </p>
-      </div>
-      <p className="flex flex-wrap gap-1">
-        <Badge variant="outline">{item.label === "Bill" ? "Planned, not paid" : item.label}</Badge>
-        {item.overdue && <Badge variant="warning">Overdue</Badge>}
-        {item.counted && <Badge variant="outline">Counted in safe-to-spend</Badge>}
-      </p>
-      <div className="mt-auto flex flex-wrap items-center gap-1 border-t pt-2">
-        <RecordDueButton item={item} kit={kit} />
-        {item.source === "recurring" ? (
-          <InlineAction
-            action={skipOccurrence}
-            fields={{
-              templateId: item.templateId!,
-              occurrence: item.occurrence!,
-            }}
-            pendingLabel="Skipping…"
-            aria-label={`Skip ${item.title} on ${formatLocalDate(item.dueDate)}`}
-          >
-            <SkipForward aria-hidden="true" />
-            Skip
-          </InlineAction>
-        ) : (
-          <ConfirmAction
-            action={cancelBill}
-            fields={{ id: item.commitmentId! }}
-            trigger={
-              <Button variant="ghost" size="sm">
-                Cancel bill
-              </Button>
-            }
-            title={`Cancel ${item.title}?`}
-            description={
-              <p>
-                It stops coming off safe-to-spend. If you already recorded this payment as an entry,
-                cancelling is right: that keeps it from being subtracted twice.
-              </p>
-            }
-            confirmLabel="Cancel bill"
-            pendingLabel="Cancelling…"
-          />
-        )}
-      </div>
-    </Card>
+    <time
+      dateTime={date}
+      aria-hidden="true"
+      className={cn(
+        "flex w-12 shrink-0 flex-col items-center rounded-lg bg-surface-inset py-1.5",
+        overdue && "bg-feedback-warning/10",
+      )}
+    >
+      <span className="type-heading leading-none money">{day}</span>
+      <span className="type-caption text-text-secondary">{month}</span>
+    </time>
   );
 }
 
-/** One recurring template: its schedule and the edit, pause and archive actions. */
+/** One due or upcoming item as a timeline row: when, what, how much, and record, skip or cancel. */
+export function DueItemCard({ item, kit, money }: { item: DueItem; kit: EntryKit; money: Money }) {
+  const income = item.kind === "income";
+  return (
+    <div className="flex flex-col gap-2 py-3" data-testid="due-item">
+      <div className="flex items-start gap-3">
+        <DateMark date={item.dueDate} overdue={item.overdue} />
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <div className="flex items-start justify-between gap-3">
+            <h3 className="min-w-0 truncate type-body font-medium">{item.title}</h3>
+            <p
+              className={cn(
+                "shrink-0 type-body font-semibold money",
+                income && "text-money-positive",
+              )}
+            >
+              {income ? "+" : ""}
+              {money(item.amountPaise)}
+            </p>
+          </div>
+          <p className="type-caption text-text-secondary">
+            {item.overdue ? "Was due" : "Due"} {formatLocalDate(item.dueDate)}
+          </p>
+          <p className="flex flex-wrap gap-1">
+            <Badge variant="outline">
+              {item.label === "Bill" ? "Planned, not paid" : item.label}
+            </Badge>
+            {item.overdue && <Badge variant="warning">Overdue</Badge>}
+            {item.counted && <Badge variant="outline">Counted in safe-to-spend</Badge>}
+          </p>
+          <div className="flex flex-wrap items-center gap-1 pt-1">
+            <RecordDueButton item={item} kit={kit} />
+            {item.source === "recurring" ? (
+              <InlineAction
+                action={skipOccurrence}
+                fields={{
+                  templateId: item.templateId!,
+                  occurrence: item.occurrence!,
+                }}
+                pendingLabel="Skipping…"
+                aria-label={`Skip ${item.title} on ${formatLocalDate(item.dueDate)}`}
+              >
+                <SkipForward aria-hidden="true" />
+                Skip
+              </InlineAction>
+            ) : (
+              <ConfirmAction
+                action={cancelBill}
+                fields={{ id: item.commitmentId! }}
+                trigger={
+                  <Button variant="ghost" size="sm">
+                    Cancel bill
+                  </Button>
+                }
+                title={`Cancel ${item.title}?`}
+                description={
+                  <p>
+                    It stops coming off safe-to-spend. If you already recorded this payment as an
+                    entry, cancelling is right: that keeps it from being subtracted twice.
+                  </p>
+                }
+                confirmLabel="Cancel bill"
+                pendingLabel="Cancelling…"
+              />
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** One recurring template as a list row: its schedule and the edit, pause and archive actions. */
 export function RecurringTemplateCard({
   template: t,
   kit,
@@ -103,19 +132,28 @@ export function RecurringTemplateCard({
   money: Money;
 }) {
   const next = firstOccurrenceOnOrAfter(t, t.nextDueDate > today ? t.nextDueDate : today);
+  const income = t.kind === "income";
   return (
-    <Card className="h-full gap-2" data-testid="recurring-template">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <h3 className="truncate font-semibold">{t.title}</h3>
-          <p className="text-xs text-muted-foreground">
-            {t.kind === "income" ? "Income" : "Expense"} · {everyText(t)}
+    <div className="flex flex-col gap-1 py-3" data-testid="recurring-template">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <h3 className="truncate type-body font-medium">{t.title}</h3>
+          <p className="type-caption text-text-secondary">
+            {income ? "Income" : "Expense"} · {everyText(t)}
             {t.pausedAt ? " · paused" : next ? ` · next ${formatLocalDate(next)}` : " · ended"}
           </p>
         </div>
-        <p className="tabular shrink-0 font-semibold">{money(t.amountPaise)}</p>
+        <p
+          className={cn(
+            "shrink-0 type-body font-semibold money",
+            income && "text-money-positive",
+            t.pausedAt && "text-muted-foreground",
+          )}
+        >
+          {money(t.amountPaise)}
+        </p>
       </div>
-      <div className="mt-auto flex flex-wrap items-center gap-1 border-t pt-2">
+      <div className="-ml-2 flex flex-wrap items-center gap-1">
         <RecurringFormDialog template={t} kit={kit} />
         <InlineAction
           action={setRecurringPaused}
@@ -142,6 +180,6 @@ export function RecurringTemplateCard({
           pendingLabel="Archiving…"
         />
       </div>
-    </Card>
+    </div>
   );
 }

@@ -5,6 +5,7 @@ import { ShoppingBag } from "lucide-react";
 
 import { RecordDialog } from "@/components/plan/record-dialog";
 import { Button } from "@/components/ui/button";
+import { Surface } from "@/components/ui/surface";
 import { moneyFormatter, releaseFromSaved } from "@/domain";
 import type { EntryKit } from "@/lib/data/entry-kit";
 
@@ -59,29 +60,33 @@ export function GoalPurchaseDialog({
         if (amountPaise === null) return null;
         const released = releaseFromSaved(amountPaise, savedPaise);
         return (
-          <div className="flex flex-col gap-1 rounded-lg bg-muted/60 p-3 text-sm">
+          <Surface variant="inset" className="gap-1 type-body">
             <p>
-              <span className="font-medium">{money(amountPaise)}</span> goes on record as spending,
-              and your tracked balance drops by that much.
+              <span className="font-medium money">{money(amountPaise)}</span> goes on record as
+              spending, and your tracked balance drops by that much.
             </p>
             <p data-testid="purchase-release">
               {released > 0 ? (
                 <>
-                  <span className="font-medium">{money(released)}</span> is released from this goal,
-                  so that money stops being set aside
-                  {released < savedPaise
-                    ? ` (${money(savedPaise - released)} stays in the goal)`
-                    : ""}
+                  <span className="font-medium text-money-earmark money">{money(released)}</span> is
+                  released from this goal, so that money stops being set aside
+                  {released < savedPaise ? (
+                    <>
+                      {" "}
+                      (<span className="money">{money(savedPaise - released)}</span> stays in the
+                      goal)
+                    </>
+                  ) : null}
                   .
                 </>
               ) : (
                 "Nothing is set aside for this goal, so nothing is released."
               )}
             </p>
-            <p className="text-xs text-muted-foreground">
+            <p className="type-caption text-muted-foreground">
               Together they mean the money is subtracted once, not twice.
             </p>
-          </div>
+          </Surface>
         );
       }}
     />

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { Route } from "next";
-import { Droplets, Zap } from "lucide-react";
+import { Droplets, Settings, Zap } from "lucide-react";
 
 import { PageHeader } from "@/components/layout/page-header";
 import { SectionTabs } from "@/components/layout/section-tabs";
@@ -10,7 +10,7 @@ import { WhatIf } from "@/components/insights/what-if";
 import { StatePanel } from "@/components/states/state-panel";
 import { EntryCard } from "@/components/transactions/entry-list";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Surface, SurfaceHeader } from "@/components/ui/surface";
 import {
   type PurchaseGrouping,
   comparisonWindows,
@@ -48,6 +48,10 @@ const GROUPING_LABELS: Record<PurchaseGrouping, string> = {
   tile: "Quick-add tile",
   category: "Category",
 };
+
+/** Desktop columns: group · times · each · total · what-if. Phones stack the same cells. */
+const COLUMNS =
+  "lg:grid-cols-[minmax(0,1fr)_4.5rem_6.5rem_7rem_minmax(0,1.5fr)] lg:items-center lg:gap-4";
 
 export default async function MoneyLeaksPage({
   searchParams,
@@ -110,22 +114,38 @@ export default async function MoneyLeaksPage({
         timeLabel: `${formatDayLabel(toLocalDate(occurredAtMs(tx), tz), today)}, ${formatTimeOf(tx.occurredAt, tz)}`,
       }));
 
+  const settingsLink = (
+    <Button variant="outline" asChild>
+      <Link href="/settings">
+        <Settings aria-hidden="true" />
+        Change the small-purchase amount
+      </Link>
+    </Button>
+  );
+
   return (
     <>
-      <PageHeader
-        title="Money leaks"
-        description="Repeated small purchases grouped together, so you can decide what’s worth it. No judgement: many of these may be exactly what you want."
-      />
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+        <PageHeader
+          title="Money leaks"
+          description="Repeated small purchases, grouped so you can decide what’s worth it. No judgement."
+        />
+        <div className="min-w-0 xl:shrink-0">
+          <PeriodPicker
+            kind={selection.kind}
+            customFrom={selection.customFrom}
+            customTo={selection.customTo}
+            error={selection.error}
+            extra={`&by=${by}`}
+          />
+        </div>
+      </div>
       <SectionTabs section="insights" />
-      <PeriodPicker
-        kind={selection.kind}
-        customFrom={selection.customFrom}
-        customTo={selection.customTo}
-        error={selection.error}
-        extra={`&by=${by}`}
-      />
       <nav aria-label="Group by" className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-        <ul className="flex w-max gap-1">
+        <ul className="flex w-max items-center gap-1 rounded-xl border bg-muted/50 p-1">
+          <li aria-hidden="true" className="px-2 type-caption text-muted-foreground">
+            Group by
+          </li>
           {PURCHASE_GROUPINGS.map((option) => (
             <li key={option}>
               <Link
@@ -133,8 +153,8 @@ export default async function MoneyLeaksPage({
                 scroll={false}
                 aria-current={option === by ? "true" : undefined}
                 className={cn(
-                  "inline-flex min-h-10 items-center rounded-lg px-3 text-sm whitespace-nowrap text-muted-foreground hover:text-foreground",
-                  option === by && "bg-muted font-medium text-foreground",
+                  "inline-flex min-h-10 items-center rounded-lg px-3 type-body font-medium whitespace-nowrap text-muted-foreground transition-colors duration-(--duration-quick) outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 pointer-coarse:min-h-11",
+                  option === by && "bg-card text-foreground shadow-sm",
                 )}
               >
                 {GROUPING_LABELS[option]}
@@ -148,33 +168,55 @@ export default async function MoneyLeaksPage({
         <StatePanel
           icon={Droplets}
           title="Not enough repeated purchases yet"
-          description={`A group appears when a purchase under ${money(threshold)} happens at least ${MIN_REPEATS} times ${words.period}.`}
+          description={
+            <>
+              No repeated small purchases {words.period}. A leak needs {MIN_REPEATS} similar
+              purchases under <span className="money">{money(threshold)}</span>.
+            </>
+          }
           actions={
             anySpending ? (
-              <Button variant="outline" asChild>
-                <Link href="/settings">Change the small-purchase amount</Link>
-              </Button>
+              settingsLink
             ) : (
-              <Button asChild>
-                <Link href="/add">
-                  <Zap aria-hidden="true" />
-                  Quick add
-                </Link>
-              </Button>
+              <>
+                <Button asChild>
+                  <Link href="/add">
+                    <Zap aria-hidden="true" />
+                    Quick add
+                  </Link>
+                </Button>
+                {settingsLink}
+              </>
             )
           }
         />
       ) : (
-        <>
-          <p className="text-sm text-muted-foreground" data-testid="leak-summary">
-            {report.groups.length} repeated {report.groups.length === 1 ? "purchase" : "purchases"}{" "}
-            under {money(threshold)} {words.period}: {money(report.netPaise)}
-            {report.shareBp === null
-              ? ""
-              : `, ${formatBasisPoints(report.shareBp, 0)} of your spending`}
-            .
-          </p>
-          <ul className="grid gap-4 lg:grid-cols-2">
+        <Surface className="min-w-0">
+          <SurfaceHeader title={`Repeated purchases ${words.period}`}>
+            <p className="type-caption text-text-secondary money" data-testid="leak-summary">
+              {report.groups.length} repeated{" "}
+              {report.groups.length === 1 ? "purchase" : "purchases"} under {money(threshold)}{" "}
+              {words.period}: {money(report.netPaise)}
+              {report.shareBp === null
+                ? ""
+                : `, ${formatBasisPoints(report.shareBp, 0)} of your spending`}
+              .
+            </p>
+          </SurfaceHeader>
+          <div
+            aria-hidden="true"
+            className={cn(
+              "hidden border-b pb-2 type-caption text-muted-foreground lg:grid",
+              COLUMNS,
+            )}
+          >
+            <span>Group</span>
+            <span className="text-right">Times</span>
+            <span className="text-right">Average</span>
+            <span className="text-right">Total</span>
+            <span>What if</span>
+          </div>
+          <ul className="flex flex-col divide-y">
             {report.groups.map((group) => {
               const href: Route = historyHref({
                 type: "spending",
@@ -185,60 +227,82 @@ export default async function MoneyLeaksPage({
               });
               const c = group.comparison;
               const name = group.label.split(" › ").at(-1)!;
+              const extra = [
+                group.shareBp === null
+                  ? null
+                  : `${formatBasisPoints(group.shareBp, 0)} of spending`,
+                group.refundsPaise > 0 ? `${money(group.refundsPaise)} refunded` : null,
+              ].filter(Boolean);
               return (
-                <li key={group.key} className="min-w-0">
-                  <Card
-                    className="h-full gap-3"
-                    data-testid="leak-group"
-                    data-paise={group.netPaise}
-                  >
-                    <div className="flex items-baseline justify-between gap-2">
-                      <h2 className="truncate font-semibold">{name}</h2>
-                      <span className="tabular shrink-0 text-xl font-semibold">
-                        {money(group.netPaise)}
-                      </span>
+                <li
+                  key={group.key}
+                  className="flex min-w-0 flex-col gap-2 py-3 first:pt-0 last:pb-0 lg:first:pt-1"
+                  data-testid="leak-group"
+                  data-paise={group.netPaise}
+                >
+                  <div className={cn("grid gap-2", COLUMNS)}>
+                    <div className="flex min-w-0 flex-col gap-0.5">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <h3 className="truncate type-body font-semibold">{name}</h3>
+                        <span className="shrink-0 type-body font-semibold money lg:hidden">
+                          {money(group.netPaise)}
+                        </span>
+                      </div>
+                      <p className="type-caption text-muted-foreground money">
+                        <span className="lg:hidden">
+                          {group.count} times · average {money(group.averagePaise!)}
+                          {extra.length > 0 && " · "}
+                        </span>
+                        {extra.join(" · ")}
+                      </p>
                     </div>
-                    <p className="tabular text-sm text-muted-foreground">
-                      {[
-                        `${group.count} times`,
-                        `average ${money(group.averagePaise!)}`,
-                        group.shareBp === null
-                          ? null
-                          : `${formatBasisPoints(group.shareBp, 0)} of spending`,
-                        group.refundsPaise > 0 ? `${money(group.refundsPaise)} refunded` : null,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {c
-                        ? `Compared with ${words.previous}: ${money(c.previousPaise)}, ${c.previousCount} ${c.previousCount === 1 ? "time" : "times"}. ${
-                            c.deltaPaise === 0
-                              ? "The same now."
-                              : `${money(Math.abs(c.deltaPaise))} ${c.deltaPaise > 0 ? "more" : "less"} now.`
-                          }`
-                        : `Not enough data to compare yet. ${group.comparisonNote}`}
-                    </p>
+                    <span className="hidden text-right type-body money lg:block">
+                      {group.count}
+                      <span aria-hidden="true">×</span>
+                      <span className="sr-only"> times</span>
+                    </span>
+                    <span className="hidden text-right type-body money lg:block">
+                      <span className="sr-only">average </span>
+                      {money(group.averagePaise!)}
+                    </span>
+                    <span className="hidden text-right type-body font-semibold money lg:block">
+                      <span className="sr-only">total </span>
+                      {money(group.netPaise)}
+                    </span>
                     <WhatIf
                       group={group}
                       name={name}
                       span="a period like this one"
                       currency={profile.currency}
                     />
-                    <details>
-                      <summary className="flex min-h-10 cursor-pointer items-center text-sm font-medium">
-                        See the {group.transactionIds.length} entries
-                      </summary>
-                      <ul className="-mx-2 flex flex-col">
+                  </div>
+                  <p className="type-caption text-muted-foreground money">
+                    {c
+                      ? `Compared with ${words.previous}: ${money(c.previousPaise)}, ${c.previousCount} ${c.previousCount === 1 ? "time" : "times"}. ${
+                          c.deltaPaise === 0
+                            ? "The same now."
+                            : `${money(Math.abs(c.deltaPaise))} ${c.deltaPaise > 0 ? "more" : "less"} now.`
+                        }`
+                      : `Not enough data to compare yet. ${group.comparisonNote}`}
+                  </p>
+                  <details>
+                    <summary className="inline-flex min-h-10 cursor-pointer items-center type-body font-medium text-muted-foreground hover:text-foreground pointer-coarse:min-h-11">
+                      See the {group.transactionIds.length} entries
+                    </summary>
+                    <Surface variant="inset" className="mt-1 gap-1 p-1">
+                      <ul className="flex flex-col">
                         {entriesOf(group.transactionIds).map((entry) => (
                           <EntryCard key={entry.id} entry={entry} />
                         ))}
                       </ul>
-                      <Link href={href} className="text-sm font-medium text-primary underline">
+                      <Link
+                        href={href}
+                        className="inline-flex min-h-11 items-center self-start px-2 type-body font-medium text-primary underline underline-offset-2"
+                      >
                         Open in Transactions
                       </Link>
-                    </details>
-                  </Card>
+                    </Surface>
+                  </details>
                 </li>
               );
             })}
@@ -249,7 +313,7 @@ export default async function MoneyLeaksPage({
               ? ` ${report.ungroupedCount} small ${report.ungroupedCount === 1 ? "purchase has" : "purchases have"} nothing to group by in this view.`
               : ""}
           </NoteLine>
-        </>
+        </Surface>
       )}
     </>
   );

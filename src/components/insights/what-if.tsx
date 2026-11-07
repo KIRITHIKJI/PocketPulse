@@ -4,6 +4,7 @@ import * as React from "react";
 import { Minus, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Surface } from "@/components/ui/surface";
 import {
   type CurrencyCode,
   type PurchaseGroup,
@@ -28,23 +29,26 @@ export function WhatIf({
   const result = whatIf(group, fewer);
   const money = moneyFormatter(currency);
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-xl bg-muted/50 p-3 text-sm">
+    <Surface
+      variant="inset"
+      className="flex-row flex-wrap items-center gap-x-3 gap-y-2 p-2 type-body"
+    >
       <span className="flex items-center gap-1">
         <Button
           type="button"
           variant="outline"
-          size="icon"
+          size="icon-sm"
           aria-label="One fewer"
           disabled={result.fewer <= 1}
           onClick={() => setFewer(result.fewer - 1)}
         >
           <Minus aria-hidden="true" />
         </Button>
-        <span className="tabular w-8 text-center font-semibold">{result.fewer}</span>
+        <span className="w-7 text-center font-semibold money">{result.fewer}</span>
         <Button
           type="button"
           variant="outline"
-          size="icon"
+          size="icon-sm"
           aria-label="One more"
           disabled={result.fewer >= group.count}
           onClick={() => setFewer(result.fewer + 1)}
@@ -52,9 +56,13 @@ export function WhatIf({
           <Plus aria-hidden="true" />
         </Button>
       </span>
-      <p className="min-w-0 flex-1" aria-live="polite" data-testid="what-if">
+      <p
+        className="min-w-0 flex-1 basis-48 text-text-secondary money"
+        aria-live="polite"
+        data-testid="what-if"
+      >
         {whatIfText(name, result, money, span)}
       </p>
-    </div>
+    </Surface>
   );
 }

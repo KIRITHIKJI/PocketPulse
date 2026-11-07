@@ -38,7 +38,7 @@ function HistoryList({ rows, view }: { rows: HistoryRow[]; view: ProgressView })
         <li key={row.key} className="flex items-center gap-3 py-2">
           <span className="min-w-0 flex-1 type-body">{row.label}</span>
           <span className="shrink-0 type-caption text-muted-foreground">{dayOf(row.at, view)}</span>
-          <span className="w-14 shrink-0 text-right type-caption money text-progress-xp">
+          <span className="w-14 shrink-0 text-right type-caption text-progress-xp money">
             +{row.xp} XP
           </span>
         </li>

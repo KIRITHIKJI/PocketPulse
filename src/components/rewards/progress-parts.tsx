@@ -44,7 +44,7 @@ export function StatusPanel({
       <div className="flex items-start gap-4">
         <span
           aria-hidden="true"
-          className="flex size-16 shrink-0 items-center justify-center rounded-2xl border border-progress-xp/40 bg-primary-soft type-title money text-progress-xp"
+          className="flex size-16 shrink-0 items-center justify-center rounded-2xl border border-progress-xp/40 bg-primary-soft type-title text-progress-xp money"
         >
           {status.level}
         </span>
@@ -190,7 +190,7 @@ export function MissionRow({ mission }: { mission: MissionView }) {
           </h3>
           <p className="type-caption text-muted-foreground">{mission.description}</p>
         </div>
-        <span className="shrink-0 type-caption money text-progress-xp">+{mission.xp} XP</span>
+        <span className="shrink-0 type-caption text-progress-xp money">+{mission.xp} XP</span>
       </div>
       {multi && (
         <Progress

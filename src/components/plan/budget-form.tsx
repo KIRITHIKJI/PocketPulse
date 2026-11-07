@@ -14,6 +14,7 @@ import {
 import { useDialogAction } from "@/components/forms/use-dialog-action";
 import { PlanNote } from "@/components/plan/parts";
 import { Button } from "@/components/ui/button";
+import { Surface } from "@/components/ui/surface";
 import {
   Dialog,
   DialogContent,
@@ -52,11 +53,14 @@ export function BudgetFormDialog({
   categories,
   suggestions,
   today,
+  startFromSuggestion = false,
 }: {
   budget?: EditableBudget;
   categories: { id: string; name: string }[];
   suggestions: BudgetSuggestion[];
   today: string;
+  /** A new monthly total budget that opens with the suggested limit already filled in. */
+  startFromSuggestion?: boolean;
 }) {
   const editing = Boolean(budget);
   const { open, setOpen, state, formAction, pending, formKey } = useDialogAction(saveBudget);
@@ -68,13 +72,18 @@ export function BudgetFormDialog({
   const err = state.fieldErrors ?? {};
   const prefix = budget ? `budget-${budget.id}` : "budget-new";
   const suggestion = suggestions.find((s) => s.scope === scope);
+  const totalSuggestion = suggestions.find((s) => s.scope === "");
 
   const onOpenChange = (next: boolean) => {
     if (next) {
       setNewBudgetId(newId());
       setScope(budget?.categoryId ?? "");
       setPeriod(budget?.period ?? "monthly");
-      setLimit(paiseToInput(budget?.limitPaise ?? null));
+      setLimit(
+        paiseToInput(
+          budget?.limitPaise ?? (startFromSuggestion ? totalSuggestion?.limitPaise : null) ?? null,
+        ),
+      );
     }
     setOpen(next);
   };
@@ -87,6 +96,8 @@ export function BudgetFormDialog({
             <Pencil aria-hidden="true" />
             Edit
           </Button>
+        ) : startFromSuggestion ? (
+          <Button variant="outline">Suggest one from last month</Button>
         ) : (
           <Button>
             <Plus aria-hidden="true" />
@@ -131,8 +142,10 @@ export function BudgetFormDialog({
           />
           {period === "monthly" &&
             (suggestion ? (
-              <div className="flex flex-wrap items-center gap-2 rounded-lg bg-muted/60 p-3 text-xs">
-                <p className="min-w-0 flex-1 text-muted-foreground">{suggestion.explanation}</p>
+              <Surface variant="inset" className="flex-row flex-wrap items-center gap-2">
+                <p className="min-w-0 flex-1 type-caption text-muted-foreground">
+                  {suggestion.explanation}
+                </p>
                 <Button
                   type="button"
                   variant="outline"
@@ -141,9 +154,9 @@ export function BudgetFormDialog({
                 >
                   Use suggestion
                 </Button>
-              </div>
+              </Surface>
             ) : (
-              <p className="text-xs text-muted-foreground">
+              <p className="type-caption text-muted-foreground">
                 A suggestion appears after one complete month of spending here.
               </p>
             ))}

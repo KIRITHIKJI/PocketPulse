@@ -5,7 +5,7 @@ import { ArrowLeft, Download, FileJson, FileSpreadsheet, TriangleAlert } from "l
 import { PageHeader } from "@/components/layout/page-header";
 import { DeleteAccountForm } from "@/components/settings/delete-account-form";
 import { Button } from "@/components/ui/button";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Surface } from "@/components/ui/surface";
 import { requireSession } from "@/lib/data/session";
 
 export const metadata: Metadata = { title: "Your data" };
@@ -21,7 +21,7 @@ const EXPORT_CONTENTS = [
 export default async function DataSettingsPage() {
   const { userId } = await requireSession();
   return (
-    <>
+    <div className="flex w-full max-w-2xl flex-col gap-6">
       <Button variant="ghost" size="sm" asChild className="-ml-2 self-start">
         <Link href="/settings">
           <ArrowLeft aria-hidden="true" />
@@ -33,22 +33,24 @@ export default async function DataSettingsPage() {
         description="Export everything you’ve recorded, or permanently delete your account."
       />
 
-      <Card role="region" aria-labelledby="data-export">
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Download className="size-5 text-primary" aria-hidden="true" />
-            <CardTitle id="data-export">Export your data</CardTitle>
-          </div>
-          <CardDescription>
+      <Surface role="region" aria-labelledby="data-export">
+        <div className="flex flex-col gap-0.5">
+          <h2 id="data-export" className="flex items-center gap-2 type-heading">
+            <Download className="size-4 text-text-secondary" aria-hidden="true" />
+            Export your data
+          </h2>
+          <p className="type-body text-muted-foreground">
             A copy of everything in your account, generated when you ask and downloaded to this
             device only. Deleted entries are included and marked as deleted.
-          </CardDescription>
-        </CardHeader>
-        <ul className="flex list-disc flex-col gap-1 pl-5 text-sm text-muted-foreground">
-          {EXPORT_CONTENTS.map((item) => (
-            <li key={item}>{item}</li>
-          ))}
-        </ul>
+          </p>
+        </div>
+        <Surface variant="inset" asChild>
+          <ul className="list-disc gap-1 pl-8 type-body text-muted-foreground">
+            {EXPORT_CONTENTS.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </Surface>
         <div className="flex flex-wrap gap-2">
           <Button asChild>
             <a href="/settings/data/export?format=json" download>
@@ -63,26 +65,28 @@ export default async function DataSettingsPage() {
             </a>
           </Button>
         </div>
-      </Card>
+      </Surface>
 
-      <Card role="region" aria-labelledby="data-delete" className="border-destructive/30">
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <TriangleAlert className="size-5 text-destructive" aria-hidden="true" />
-            <CardTitle id="data-delete">Delete your account</CardTitle>
-          </div>
-          <CardDescription>
+      <Surface role="region" aria-labelledby="data-delete" className="border-feedback-error/30">
+        <div className="flex flex-col gap-0.5">
+          <h2 id="data-delete" className="flex items-center gap-2 type-heading">
+            <TriangleAlert className="size-4 text-feedback-error" aria-hidden="true" />
+            Delete your account
+          </h2>
+          <p className="type-body text-muted-foreground">
             Permanently removes your account and every record in it — entries, wallets, categories,
             budgets, goals and rewards — on all devices. It can’t be undone.
-          </CardDescription>
-        </CardHeader>
-        <ol className="flex list-decimal flex-col gap-1 pl-5 text-sm text-muted-foreground">
-          <li>Export your data first if you want to keep a copy.</li>
-          <li>Confirm by typing a phrase and re-entering your password.</li>
-          <li>You’re signed out, and the account can’t be recovered.</li>
-        </ol>
+          </p>
+        </div>
+        <Surface variant="inset" asChild>
+          <ol className="list-decimal gap-1 pl-8 type-body text-muted-foreground">
+            <li>Export your data first if you want to keep a copy.</li>
+            <li>Confirm by typing a phrase and re-entering your password.</li>
+            <li>You’re signed out, and the account can’t be recovered.</li>
+          </ol>
+        </Surface>
         <DeleteAccountForm ownerId={userId} />
-      </Card>
-    </>
+      </Surface>
+    </div>
   );
 }

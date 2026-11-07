@@ -31,6 +31,7 @@ type StatePanelProps = {
   /** Buttons or links, inside the panel; each must perform a real action. */
   actions?: React.ReactNode;
   className?: string;
+  "data-testid"?: string;
 };
 
 /**
@@ -45,6 +46,7 @@ export function StatePanel({
   icon,
   actions,
   className,
+  "data-testid": testId,
 }: StatePanelProps) {
   const config = VARIANTS[variant];
   const Icon = icon ?? config.icon;
@@ -52,6 +54,7 @@ export function StatePanel({
   return (
     <section
       role={config.role}
+      data-testid={testId}
       data-state={variant}
       data-size={size}
       className={cn(

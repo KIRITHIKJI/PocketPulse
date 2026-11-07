@@ -152,7 +152,7 @@ describe("QuickAdd tiles", () => {
   it("a tile without an amount opens the sheet and offers to save it as the usual amount", async () => {
     const user = userEvent.setup();
     renderTiles([tile({ amountPaise: null })]);
-    await user.click(screen.getByRole("button", { name: "Tea. Set the amount" }));
+    await user.click(screen.getByRole("button", { name: "Tea. Set amount" }));
     expect(runLedgerCommand).not.toHaveBeenCalled();
     const sheet = screen.getByRole("dialog");
     await user.type(screen.getByLabelText("Amount"), "15");

@@ -33,7 +33,7 @@ export function CopyReportText({ text }: { text: string }) {
           aria-label="Report summary"
           value={text}
           rows={10}
-          className="w-full rounded-lg border bg-background p-3 text-sm"
+          className="w-full basis-full rounded-lg border bg-surface-inset p-3 type-body money"
         />
       )}
     </>

@@ -3,15 +3,22 @@ import { Info } from "lucide-react";
 import { BUDGET_TARGET_NOTE } from "@/domain";
 import { cn } from "@/lib/utils";
 
-const METER_TONES = { primary: "bg-primary", positive: "bg-positive", warning: "bg-warning" };
+const METER_TONES = {
+  primary: "bg-progress-money",
+  positive: "bg-progress-money",
+  warning: "bg-feedback-warning",
+} as const;
 
-/** A plain bar. The exact figures always sit beside it as text. */
+/** A plain bar beside figures that already say the same thing in text. Prefer `Progress`. */
 export function Meter({ bp, tone }: { bp: number; tone: keyof typeof METER_TONES }) {
   const width = `${Math.min(100, Math.max(0, bp / 100))}%`;
   return (
-    <div className="h-2 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+    <div
+      className="h-(--progress-height) overflow-hidden rounded-full bg-progress-track"
+      aria-hidden="true"
+    >
       <div
-        className={`h-full rounded-full ${METER_TONES[tone]} transition-[width] duration-500`}
+        className={`h-full rounded-full ${METER_TONES[tone]} transition-[width] duration-(--duration-emphasis) ease-(--ease-out)`}
         style={{ width }}
       />
     </div>
@@ -22,10 +29,13 @@ export function Meter({ bp, tone }: { bp: number; tone: keyof typeof METER_TONES
 export function ProgressRing({
   bp,
   size = 72,
+  tone = "money",
   children,
 }: {
   bp: number;
   size?: number;
+  /** `earmark`: money set aside for a goal (silver), so it never reads as spent or received. */
+  tone?: "money" | "earmark";
   children?: React.ReactNode;
 }) {
   const stroke = 7;
@@ -45,7 +55,7 @@ export function ProgressRing({
           r={radius}
           fill="none"
           strokeWidth={stroke}
-          className="stroke-muted"
+          className="stroke-progress-track"
         />
         <circle
           cx={size / 2}
@@ -55,7 +65,10 @@ export function ProgressRing({
           strokeWidth={stroke}
           strokeLinecap="round"
           strokeDasharray={`${filled} ${length}`}
-          className="stroke-positive transition-[stroke-dasharray] duration-500"
+          className={cn(
+            "transition-[stroke-dasharray] duration-(--duration-emphasis) ease-(--ease-out)",
+            tone === "earmark" ? "stroke-money-earmark" : "stroke-progress-money",
+          )}
         />
       </svg>
       <span className="absolute inset-0 flex items-center justify-center">{children}</span>
@@ -77,8 +90,8 @@ export function BudgetRemaining({
   className?: string;
 }) {
   return (
-    <p className={cn("tabular text-sm", className)} data-testid="budget-remaining">
-      <span className="font-medium">
+    <p className={cn("type-body", className)} data-testid="budget-remaining">
+      <span className="font-medium money">
         {remainingPaise >= 0
           ? `${money(remainingPaise)} left`
           : `${money(-remainingPaise)} over target`}
@@ -90,8 +103,8 @@ export function BudgetRemaining({
 
 export function PlanNote({ children }: { children: React.ReactNode }) {
   return (
-    <p className="flex gap-2 rounded-lg bg-muted/60 p-3 text-xs text-muted-foreground">
-      <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+    <p className="flex gap-2 rounded-xl bg-surface-inset p-3 type-caption text-muted-foreground">
+      <Info className="mt-0.5 size-3.5 shrink-0 text-feedback-info" aria-hidden="true" />
       <span>{children}</span>
     </p>
   );
@@ -104,7 +117,10 @@ export function FigureRow({
   explanation,
   testId,
   strong,
+  valueClassName,
 }: {
+  /** e.g. `text-money-earmark` for money set aside. */
+  valueClassName?: string;
   label: string;
   value: string;
   explanation?: React.ReactNode;
@@ -114,17 +130,22 @@ export function FigureRow({
   return (
     <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 py-2.5">
       <dt
-        className={cn("min-w-0 flex-1 text-sm", strong ? "font-semibold" : "text-muted-foreground")}
+        className={cn(
+          "min-w-0 flex-1 type-body",
+          strong ? "font-semibold" : "text-muted-foreground",
+        )}
       >
         {label}
       </dt>
       <dd
-        className={cn("tabular shrink-0", strong && "text-lg font-semibold")}
+        className={cn("shrink-0 type-body money", strong && "type-heading", valueClassName)}
         data-testid={testId}
       >
         {value}
       </dd>
-      {explanation && <dd className="basis-full text-xs text-muted-foreground">{explanation}</dd>}
+      {explanation && (
+        <dd className="basis-full type-caption text-pretty text-muted-foreground">{explanation}</dd>
+      )}
     </div>
   );
 }

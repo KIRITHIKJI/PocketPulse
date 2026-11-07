@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { PageHeader } from "@/components/layout/page-header";
 import { SectionTabs } from "@/components/layout/section-tabs";
 import { TransactionForm } from "@/components/transactions/transaction-form";
-import { Card } from "@/components/ui/card";
+import { Surface } from "@/components/ui/surface";
 import { indexById, toLocalTime } from "@/domain";
 import { loadEntryKit } from "@/lib/data/entry-kit";
 import { getSpendingLedger } from "@/lib/data/queries";
@@ -37,10 +37,10 @@ export default async function NewTransactionPage({
     <>
       <PageHeader
         title="Full form"
-        description="Amount and category are all you need. The date, time and your default wallet are already filled in."
+        description="Only amount and category are needed; the date, time and wallet are filled in."
       />
       <SectionTabs section="record" />
-      <Card>
+      <Surface className="w-full max-w-3xl">
         <TransactionForm
           kit={kit}
           mode="create"
@@ -65,7 +65,7 @@ export default async function NewTransactionPage({
             tags: "",
           }}
         />
-      </Card>
+      </Surface>
     </>
   );
 }

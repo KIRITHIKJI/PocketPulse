@@ -7,7 +7,7 @@ import { useToast } from "@/components/feedback/toast";
 import { useOffline } from "@/components/offline/offline-provider";
 import { StatePanel } from "@/components/states/state-panel";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Surface } from "@/components/ui/surface";
 import { type CurrencyCode } from "@/domain";
 import { useOnlineStatus } from "@/hooks/use-online-status";
 import type { QueuedOp } from "@/lib/offline/ops";
@@ -52,52 +52,55 @@ function OpRow({
   }
 
   return (
-    <li>
-      <Card className="gap-2 p-3" data-testid="sync-op" data-op-id={op.opId}>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="min-w-0 flex-1 basis-40">
-            <p className="font-medium break-words">{op.label}</p>
-            <p className="text-xs text-muted-foreground">
-              {op.syncedAt
-                ? `Synced ${at(op.syncedAt, timeZone)}`
-                : `Recorded ${at(op.createdAt, timeZone)}`}
-            </p>
-          </div>
-          {amount && <p className="tabular font-semibold">{amount}</p>}
-          <StatusBadge status={op.status} />
-        </div>
-        {op.message && <p className="text-sm text-muted-foreground">{op.message}</p>}
-        {op.status === "pending" && op.attempts > 0 && (
-          <p className="text-sm text-muted-foreground">
-            Couldn’t get through yet. It’ll keep trying, and it can’t be saved twice.
+    <li
+      className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0"
+      data-testid="sync-op"
+      data-op-id={op.opId}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <div className="min-w-0 flex-1 basis-40">
+          <p className="type-body font-medium break-words">{op.label}</p>
+          <p className="type-caption text-text-secondary">
+            {op.syncedAt
+              ? `Synced ${at(op.syncedAt, timeZone)}`
+              : `Recorded ${at(op.createdAt, timeZone)}`}
           </p>
-        )}
-        <CompareVersions op={op} timeZone={timeZone} />
-        {open && (
-          <div className="flex flex-wrap gap-2">
-            {op.status === "failed" && (
-              <Button size="sm" onClick={retry}>
-                <RefreshCw aria-hidden="true" />
-                Try again
+        </div>
+        {amount && <p className="type-body font-semibold money">{amount}</p>}
+        <StatusBadge status={op.status} />
+      </div>
+      {op.message && <p className="type-body text-muted-foreground">{op.message}</p>}
+      {op.status === "pending" && op.attempts > 0 && (
+        <p className="type-body text-muted-foreground">
+          Couldn’t get through yet. It’ll keep trying, and it can’t be saved twice.
+        </p>
+      )}
+      <CompareVersions op={op} timeZone={timeZone} />
+      {open && (
+        <div className="flex flex-wrap gap-2">
+          {op.status === "failed" && (
+            <Button size="sm" onClick={retry}>
+              <RefreshCw aria-hidden="true" />
+              Try again
+            </Button>
+          )}
+          {canEdit(op) && <EditQueuedEntry op={op} />}
+          {resolutionsFor(op).map((resolution, index) =>
+            resolution.key === "discard" ? (
+              <ConfirmDiscard key={resolution.key} op={op} resolution={resolution} />
+            ) : (
+              <Button
+                key={resolution.key}
+                size="sm"
+                variant={index === 0 && op.status !== "failed" ? "default" : "outline"}
+                onClick={() => resolve(resolution.key as ResolutionKey)}
+              >
+                {resolution.label}
               </Button>
-            )}
-            {canEdit(op) && <EditQueuedEntry op={op} />}
-            {resolutionsFor(op).map((resolution) =>
-              resolution.key === "discard" ? (
-                <ConfirmDiscard key={resolution.key} op={op} resolution={resolution} />
-              ) : (
-                <Button
-                  key={resolution.key}
-                  size="sm"
-                  onClick={() => resolve(resolution.key as ResolutionKey)}
-                >
-                  {resolution.label}
-                </Button>
-              ),
-            )}
-          </div>
-        )}
-      </Card>
+            ),
+          )}
+        </div>
+      )}
     </li>
   );
 }
@@ -115,14 +118,18 @@ function Section({
 }) {
   if (ops.length === 0) return null;
   return (
-    <section className="flex flex-col gap-2" aria-label={title}>
-      <h2 className="font-semibold">{title}</h2>
-      <ul className="flex flex-col gap-2">
-        {ops.map((op) => (
-          <OpRow key={op.seq} op={op} currency={currency} timeZone={timeZone} />
-        ))}
-      </ul>
-    </section>
+    <Surface asChild>
+      <section aria-label={title}>
+        <h2 className="type-heading">
+          {title} <span className="type-body font-normal text-text-secondary">· {ops.length}</span>
+        </h2>
+        <ul className="flex flex-col divide-y">
+          {ops.map((op) => (
+            <OpRow key={op.seq} op={op} currency={currency} timeZone={timeZone} />
+          ))}
+        </ul>
+      </section>
+    </Surface>
   );
 }
 
@@ -136,35 +143,47 @@ export function SyncCenter({ currency, timeZone }: { currency: CurrencyCode; tim
 
   return (
     <div className="flex flex-col gap-6" data-testid="sync-center">
-      {waiting.length === 0 ? (
-        <StatePanel
-          icon={CheckCircle2}
-          title="Everything on this device is synced"
-          description={
-            lastSyncedAt
-              ? `Last synced ${at(lastSyncedAt, timeZone)}.`
-              : "Entries you save without a connection will appear here until they reach your account."
-          }
-        />
-      ) : (
-        <Card className="flex-row flex-wrap items-center justify-between gap-3">
-          <p className="min-w-0 flex-1 basis-56 text-sm" role="status">
-            {signedOut
-              ? "You’ve been signed out. Sign in again to sync these."
-              : online
-                ? `${waiting.length} not on your account yet.`
-                : `${waiting.length} waiting. They’ll sync once you’re back online.`}
+      <Surface role="region" aria-labelledby="sync-status-title">
+        <div className="flex flex-col gap-0.5">
+          <h2 id="sync-status-title" className="type-heading">
+            This device
+          </h2>
+          <p className="type-caption text-text-secondary" data-testid="sync-summary">
+            {synced.length} synced · {unstuck.length} waiting · {stuck.length}{" "}
+            {stuck.length === 1 ? "needs" : "need"} attention
           </p>
-          <Button onClick={() => void syncNow()} disabled={!online || syncing}>
-            {online ? (
-              <RefreshCw className={syncing ? "animate-spin" : undefined} aria-hidden="true" />
-            ) : (
-              <CloudOff aria-hidden="true" />
-            )}
-            {syncing ? "Syncing…" : "Sync now"}
-          </Button>
-        </Card>
-      )}
+        </div>
+        {waiting.length === 0 ? (
+          <StatePanel
+            size="section"
+            icon={CheckCircle2}
+            title="Everything on this device is on the server."
+            description={
+              lastSyncedAt
+                ? `Last synced ${at(lastSyncedAt, timeZone)}.`
+                : "Entries you save without a connection will appear here until they reach your account."
+            }
+          />
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="min-w-0 flex-1 basis-56 type-body" role="status">
+              {signedOut
+                ? "You’ve been signed out. Sign in again to sync these."
+                : online
+                  ? `${waiting.length} not on your account yet.`
+                  : `${waiting.length} waiting. They’ll sync once you’re back online.`}
+            </p>
+            <Button onClick={() => void syncNow()} disabled={!online || syncing}>
+              {online ? (
+                <RefreshCw className={syncing ? "animate-spin" : undefined} aria-hidden="true" />
+              ) : (
+                <CloudOff aria-hidden="true" />
+              )}
+              {syncing ? "Syncing…" : "Sync now"}
+            </Button>
+          </div>
+        )}
+      </Surface>
       <Section title="Needs your attention" ops={stuck} currency={currency} timeZone={timeZone} />
       <Section title="Waiting" ops={unstuck} currency={currency} timeZone={timeZone} />
       <Section title="Recently synced" ops={synced} currency={currency} timeZone={timeZone} />

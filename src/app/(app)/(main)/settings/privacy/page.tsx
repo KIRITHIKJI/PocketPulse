@@ -5,7 +5,7 @@ import { ArrowLeft, Bot, Database, Landmark, Lock, Send } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { PrivacyForm } from "@/components/settings/preference-forms";
 import { Button } from "@/components/ui/button";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Surface } from "@/components/ui/surface";
 import { getProfile } from "@/lib/data/queries";
 
 export const metadata: Metadata = { title: "Privacy" };
@@ -41,7 +41,7 @@ const FACTS = [
 export default async function PrivacySettingsPage() {
   const profile = await getProfile();
   return (
-    <>
+    <div className="flex w-full max-w-2xl flex-col gap-6">
       <Button variant="ghost" size="sm" asChild className="-ml-2 self-start">
         <Link href="/settings">
           <ArrowLeft aria-hidden="true" />
@@ -52,30 +52,35 @@ export default async function PrivacySettingsPage() {
         title="Privacy"
         description="Your financial data is private to your account. Nothing is shared with parents or third parties without your action."
       />
-      <ul className="grid gap-3 md:grid-cols-2">
-        {FACTS.map(({ icon: Icon, title, body }) => (
-          <li key={title}>
-            <Card className="h-full flex-row gap-3">
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary">
-                <Icon className="size-5" aria-hidden="true" />
+      <Surface role="region" aria-labelledby="privacy-facts">
+        <h2 id="privacy-facts" className="type-heading">
+          How your data is handled
+        </h2>
+        <ul className="flex flex-col divide-y">
+          {FACTS.map(({ icon: Icon, title, body }) => (
+            <li key={title} className="flex gap-3 py-3 first:pt-0 last:pb-0">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-surface-inset text-text-secondary">
+                <Icon className="size-4" aria-hidden="true" />
               </span>
-              <div className="flex flex-col gap-1">
-                <h2 className="font-semibold">{title}</h2>
-                <p className="text-sm text-muted-foreground">{body}</p>
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <h3 className="type-body font-medium">{title}</h3>
+                <p className="type-body text-muted-foreground">{body}</p>
               </div>
-            </Card>
-          </li>
-        ))}
-      </ul>
-      <Card>
-        <CardHeader>
-          <CardTitle>Report defaults</CardTitle>
-          <CardDescription>
+            </li>
+          ))}
+        </ul>
+      </Surface>
+      <Surface role="region" aria-labelledby="privacy-report-defaults">
+        <div className="flex flex-col gap-0.5">
+          <h2 id="privacy-report-defaults" className="type-heading">
+            Report defaults
+          </h2>
+          <p className="type-caption text-text-secondary">
             Applies when you create a parent report; you review it first.
-          </CardDescription>
-        </CardHeader>
-        <PrivacyForm includeNotesInReports={profile.includeNotesInReports} />
-      </Card>
-    </>
+          </p>
+        </div>
+        <PrivacyForm includeNotesInReports={profile.includeNotesInReports} summary={false} />
+      </Surface>
+    </div>
   );
 }

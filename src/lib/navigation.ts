@@ -35,7 +35,12 @@ export type NavItem = {
   progress?: true;
 };
 
-type NavGroup = { label: string; items: readonly NavItem[] };
+type NavGroup = {
+  label: string;
+  items: readonly NavItem[];
+  /** Drawn as a 2 × 2 grid of compact buttons in the sidebar (Record). */
+  grid?: true;
+};
 
 const PROGRESS_ITEMS: readonly NavItem[] = [
   { href: "/rewards/status", label: "Player status", icon: UserRound, progress: true },
@@ -44,7 +49,7 @@ const PROGRESS_ITEMS: readonly NavItem[] = [
   { href: "/rewards", label: "Rewards", icon: Trophy, progress: true },
 ];
 
-/** Full app navigation used by the desktop sidebar and the mobile "More" sheet. */
+/** Full app navigation used by the desktop sidebar and the mobile You sheet (doc/DESIGN_PLAN.md §5). */
 export const NAV_GROUPS: readonly NavGroup[] = [
   {
     label: "Overview",
@@ -52,6 +57,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
   },
   {
     label: "Record",
+    grid: true,
     items: [
       { href: "/add", label: "Quick add", icon: Zap },
       { href: "/add/text", label: "Type it", icon: MessageSquareText },
@@ -60,7 +66,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     ],
   },
   {
-    label: "Money",
+    label: "Activity",
     items: [
       { href: "/transactions", label: "Transactions", icon: Receipt },
       { href: "/accounts", label: "Wallets", icon: Wallet },
@@ -69,7 +75,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     ],
   },
   {
-    label: "Understand",
+    label: "Insights",
     items: [
       { href: "/insights", label: "Insights", icon: ChartPie },
       { href: "/insights/leaks", label: "Money leaks", icon: Droplets },
@@ -84,14 +90,11 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { href: "/survival", label: "Survival mode", icon: LifeBuoy },
     ],
   },
-  {
-    label: "Share",
-    items: [{ href: "/reports", label: "Parent report", icon: FileText }],
-  },
   { label: "Progress", items: PROGRESS_ITEMS },
   {
     label: "You",
     items: [
+      { href: "/reports", label: "Parent report", icon: FileText },
       { href: "/reminders", label: "Reminders", icon: Bell },
       { href: "/settings", label: "Settings", icon: Settings },
     ],

@@ -12,7 +12,7 @@ import {
   SubmitButton,
 } from "@/components/forms/form-parts";
 import { useDialogAction } from "@/components/forms/use-dialog-action";
-import { PlanNote } from "@/components/plan/parts";
+import { Notice } from "@/components/feedback/notice";
 import { RecordDialog } from "@/components/plan/record-dialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -105,7 +105,11 @@ export function RecordDueButton({ item, kit }: { item: DueItem; kit: EntryKit })
   return (
     <RecordDialog
       trigger={
-        <Button size="sm" aria-label={`${label}: ${item.title}, ${formatLocalDate(item.dueDate)}`}>
+        <Button
+          size="sm"
+          variant="outline"
+          aria-label={`${label}: ${item.title}, ${formatLocalDate(item.dueDate)}`}
+        >
           <Repeat aria-hidden="true" />
           {label}
         </Button>
@@ -146,10 +150,10 @@ export function RecordDueButton({ item, kit }: { item: DueItem; kit: EntryKit })
       }
       note={() =>
         income ? null : (
-          <PlanNote>
+          <Notice>
             Its entry is the only thing that lowers your balance from here. It won’t be subtracted
             again as a bill.
-          </PlanNote>
+          </Notice>
         )
       }
     />

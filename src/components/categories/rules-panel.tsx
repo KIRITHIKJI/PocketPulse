@@ -13,8 +13,9 @@ import {
 } from "@/components/forms/form-parts";
 import { ConfirmAction } from "@/components/forms/inline-action";
 import { useDialogAction } from "@/components/forms/use-dialog-action";
+import { StatePanel } from "@/components/states/state-panel";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Surface, SurfaceHeader } from "@/components/ui/surface";
 import {
   Dialog,
   DialogContent,
@@ -118,10 +119,10 @@ function SuggestionTester({
     ? suggestCategory({ description: text, kind: "expense" }, { categories, rules })
     : null;
   return (
-    <Card className="gap-3">
+    <Surface className="min-w-0 lg:col-span-5">
       <div className="flex items-center gap-2">
         <WandSparkles className="size-4 text-primary" aria-hidden="true" />
-        <h3 className="text-sm font-semibold">Try a description</h3>
+        <h2 className="type-heading">Try a description</h2>
       </div>
       <Field
         id="rule-tester"
@@ -132,7 +133,7 @@ function SuggestionTester({
         onChange={(e) => setText(e.target.value)}
         autoComplete="off"
       />
-      <p className="text-sm" aria-live="polite">
+      <p className="type-body" aria-live="polite">
         {!text.trim() ? (
           <span className="text-muted-foreground">
             Suggestions use your rules first, then what you chose before, then common words.
@@ -148,11 +149,11 @@ function SuggestionTester({
           </span>
         )}
       </p>
-      <p className="text-xs text-muted-foreground">
+      <p className="type-caption text-muted-foreground">
         This preview checks rules and common words only; entry forms also learn from your past
         choices.
       </p>
-    </Card>
+    </Surface>
   );
 }
 
@@ -167,57 +168,64 @@ export function RulesPanel({
 }) {
   const byId = new Map(categories.map((c) => [c.id, c]));
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-muted-foreground">
-          Rules make categorising automatic, e.g. “chai” → Food & Drinks › Tea.
-        </p>
-        <RuleFormDialog tree={tree} />
-      </div>
-      {rules.length === 0 ? (
-        <p className="rounded-2xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-          No rules yet. Add one, or tick “Remember” when you categorise an entry.
-        </p>
-      ) : (
-        <ul className="flex flex-col divide-y rounded-2xl border bg-card">
-          {rules.map((rule) => (
-            <li key={rule.id} className="flex flex-wrap items-center gap-2 px-4 py-3">
-              <p className="min-w-0 flex-1 text-sm">
-                <span className="text-muted-foreground">
-                  {rule.matchField === "merchant" ? "Merchant" : "Description"} has
-                </span>{" "}
-                <span className="font-medium">“{rule.matchText}”</span>{" "}
-                <span className="text-muted-foreground">→</span>{" "}
-                <span className="font-medium">
-                  {categoryLabel(rule, byId) ?? "a category that no longer exists"}
+    <div className="grid gap-4 lg:grid-cols-12 lg:items-start lg:gap-6">
+      <Surface className="min-w-0 lg:col-span-7">
+        <SurfaceHeader
+          title="Your rules"
+          meta="Rules make categorising automatic, e.g. “chai” → Food & Drinks › Tea."
+          action={rules.length > 0 ? <RuleFormDialog tree={tree} /> : undefined}
+        />
+        {rules.length === 0 ? (
+          <StatePanel
+            size="section"
+            icon={WandSparkles}
+            title="No rules yet"
+            description="Add one, or tick “Remember” when you categorise an entry."
+            actions={<RuleFormDialog tree={tree} />}
+          />
+        ) : (
+          <ul className="-my-1 flex flex-col divide-y">
+            {rules.map((rule) => (
+              <li key={rule.id} className="flex min-h-14 flex-wrap items-center gap-2 py-2">
+                <p className="min-w-0 flex-1 type-body">
+                  <span className="text-muted-foreground">
+                    {rule.matchField === "merchant" ? "Merchant" : "Description"} has
+                  </span>{" "}
+                  <span className="font-medium">“{rule.matchText}”</span>{" "}
+                  <span className="text-muted-foreground">→</span>{" "}
+                  <span className="font-medium">
+                    {categoryLabel(rule, byId) ?? "a category that no longer exists"}
+                  </span>
+                  {rule.priority !== 0 && (
+                    <span className="text-muted-foreground"> · priority {rule.priority}</span>
+                  )}
+                </p>
+                <span className="flex items-center">
+                  <RuleFormDialog rule={rule} tree={tree} />
+                  <ConfirmAction
+                    action={deleteRule}
+                    fields={{ id: rule.id }}
+                    trigger={
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Delete rule “${rule.matchText}”`}
+                      >
+                        <Trash2 aria-hidden="true" />
+                      </Button>
+                    }
+                    title="Delete this rule?"
+                    description={<p>Entries it already categorised keep their category.</p>}
+                    confirmLabel="Delete rule"
+                    pendingLabel="Deleting…"
+                    destructive
+                  />
                 </span>
-                {rule.priority !== 0 && (
-                  <span className="text-muted-foreground"> · priority {rule.priority}</span>
-                )}
-              </p>
-              <RuleFormDialog rule={rule} tree={tree} />
-              <ConfirmAction
-                action={deleteRule}
-                fields={{ id: rule.id }}
-                trigger={
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={`Delete rule “${rule.matchText}”`}
-                  >
-                    <Trash2 aria-hidden="true" />
-                  </Button>
-                }
-                title="Delete this rule?"
-                description={<p>Entries it already categorised keep their category.</p>}
-                confirmLabel="Delete rule"
-                pendingLabel="Deleting…"
-                destructive
-              />
-            </li>
-          ))}
-        </ul>
-      )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Surface>
       <SuggestionTester categories={categories} rules={rules} />
     </div>
   );

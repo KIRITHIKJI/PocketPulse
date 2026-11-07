@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Copy, LoaderCircle, Trash2 } from "lucide-react";
+import { Copy, Trash2 } from "lucide-react";
 
 import { useLedger } from "@/components/transactions/use-ledger";
 import { Button } from "@/components/ui/button";
@@ -68,7 +68,7 @@ export function DeleteEntryButton({
           <DialogTitle>Delete this entry?</DialogTitle>
           <DialogDescription asChild>
             <div className="flex flex-col gap-2">
-              <p className="font-medium text-foreground">{summary}</p>
+              <p className="font-medium text-foreground money">{summary}</p>
               {blockedReason ? (
                 <p>{blockedReason}</p>
               ) : (
@@ -88,8 +88,8 @@ export function DeleteEntryButton({
             </Button>
           </DialogClose>
           {!blockedReason && (
-            <Button variant="destructive" onClick={confirm} disabled={pending}>
-              {pending && <LoaderCircle className="animate-spin" aria-hidden="true" />}
+            <Button variant="destructive" onClick={confirm} loading={pending}>
+              <Trash2 aria-hidden="true" />
               {pending ? "Deleting…" : "Delete"}
             </Button>
           )}
@@ -129,12 +129,8 @@ export function RepeatEntryButton({
   }
 
   return (
-    <Button variant="outline" onClick={repeat} disabled={pending}>
-      {pending ? (
-        <LoaderCircle className="animate-spin" aria-hidden="true" />
-      ) : (
-        <Copy aria-hidden="true" />
-      )}
+    <Button variant="outline" onClick={repeat} loading={pending}>
+      <Copy aria-hidden="true" />
       Log again now
     </Button>
   );

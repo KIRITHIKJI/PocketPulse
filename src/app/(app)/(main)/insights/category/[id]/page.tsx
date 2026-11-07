@@ -3,13 +3,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, CalendarSearch } from "lucide-react";
 
-import { FigureLink, NoteLine, PeriodPicker, RowLink } from "@/components/insights/parts";
-import { ChangeArrow, PeriodTrend } from "@/components/insights/sections";
+import { NoteLine, PeriodPicker, RowLink } from "@/components/insights/parts";
+import { ChangeArrow, HeroStat, PeriodTrend } from "@/components/insights/sections";
 import { PageHeader } from "@/components/layout/page-header";
 import { StatePanel } from "@/components/states/state-panel";
 import { type ListedDay, EntryList } from "@/components/transactions/entry-list";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Surface, SurfaceHeader } from "@/components/ui/surface";
 import {
   buildInsights,
   formatBasisPoints,
@@ -111,147 +111,194 @@ export default async function CategoryInsightsPage({
       })),
     };
   });
+  const note = group ? spendingDisplay(group, money).note : null;
+  const hasSubs = group?.subcategories.some((s) => s.key !== UNCATEGORIZED) ?? false;
 
   return (
     <>
-      <Button variant="ghost" size="sm" asChild className="self-start">
+      <Button variant="ghost" size="sm" asChild className="-mb-2 self-start">
         <Link href={insightHref("/insights", selection)}>
           <ArrowLeft aria-hidden="true" />
           Insights
         </Link>
       </Button>
-      <PageHeader
-        title={name}
-        description={`Everything in ${name} ${words.period}, and the entries behind it.`}
-      />
-      <PeriodPicker
-        kind={selection.kind}
-        customFrom={selection.customFrom}
-        customTo={selection.customTo}
-        error={selection.error}
-      />
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+        <PageHeader
+          title={name}
+          description={`Everything in ${name} ${words.period}, and the entries behind it.`}
+        />
+        <div className="min-w-0 xl:shrink-0">
+          <PeriodPicker
+            kind={selection.kind}
+            customFrom={selection.customFrom}
+            customTo={selection.customTo}
+            error={selection.error}
+          />
+        </div>
+      </div>
 
       {!group ? (
         <StatePanel
           icon={CalendarSearch}
           title={`Nothing in ${name} ${words.period}`}
           description="Pick another period to see this category."
+          actions={
+            <Button variant="outline" asChild>
+              <Link href={insightHref("/insights", selection)}>Back to Insights</Link>
+            </Button>
+          }
         />
       ) : (
         <>
-          {unassigned && (
-            <NoteLine>
-              These entries have no category yet.{" "}
-              <Link href={UNCATEGORIZED_QUEUE} className="underline">
-                Sort them in the Uncategorized queue
-              </Link>
-            </NoteLine>
-          )}
-          <section aria-label="Totals" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <FigureLink
-              href={href}
-              label={`Net spending ${words.period}`}
-              value={money(group.netPaise)}
-              hint={
-                group.shareBp === null
-                  ? "Expenses minus refunds"
-                  : `${formatBasisPoints(group.shareBp, 0)} of your spending`
-              }
-              testId="category-net"
-            />
-            <FigureLink href={href} label="Purchases" value={group.count} testId="category-count" />
-            <FigureLink
-              href={null}
-              label="Average purchase"
-              value={
-                group.count >= 2 && group.averagePaise !== null ? money(group.averagePaise) : "—"
-              }
-              hint={group.count >= 2 ? undefined : "Needs at least 2 purchases"}
-            />
-            <FigureLink
-              href={null}
-              label="Median purchase"
-              value={
-                group.count >= 3 && group.medianPaise !== null ? money(group.medianPaise) : "—"
-              }
-              hint={group.count >= 3 ? undefined : "Needs at least 3 purchases"}
-            />
-          </section>
-          {spendingDisplay(group, money).note && (
-            <NoteLine>{spendingDisplay(group, money).note}</NoteLine>
-          )}
-
-          <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
-            <PeriodTrend
-              title={`${name} over time`}
-              ledger={ledger}
-              period={period}
-              today={today}
-              settings={settings}
-              requested={parseGranularity(query.trend)}
-              only={(entry) => (entry.categoryId ?? UNCATEGORIZED) === id}
-              scope={{ type: "spending", category: id }}
-              optionHref={(g) => insightHref(`/insights/category/${id}`, selection, `&trend=${g}`)}
-              currency={profile.currency}
-            />
-            <Card className="min-w-0 gap-3" data-testid="category-compare">
-              <h2 className="font-semibold">
-                {words.previous ? `Compared with ${words.previous}` : "Compared with before"}
-              </h2>
-              {model.comparison?.comparable && change && model.previousWindow ? (
-                <p className="flex items-center gap-2 text-sm">
-                  <ChangeArrow up={change.deltaPaise > 0} />
-                  <span className="tabular">
-                    {money(change.previousPaise)} → {money(change.currentPaise)}
+          <div className="grid gap-4 lg:grid-cols-12 lg:items-start lg:gap-6">
+            <Surface
+              variant="hero"
+              role="region"
+              aria-label="Totals"
+              className="min-w-0 lg:col-span-5"
+            >
+              <div className="flex flex-col gap-1">
+                <h2 className="type-caption text-muted-foreground">Net spending {words.period}</h2>
+                <Link
+                  href={href}
+                  className="self-start rounded-lg outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                >
+                  <span className="type-display money" data-testid="category-net">
+                    {money(group.netPaise)}
                   </span>
-                  <Link
-                    href={historyHref({
-                      type: "spending",
-                      ...periodScope(model.previousWindow),
-                      category: id,
-                    })}
-                    className="underline"
-                  >
-                    See the earlier entries
+                </Link>
+                <p className="type-caption text-muted-foreground">
+                  {group.shareBp === null
+                    ? "Expenses minus refunds"
+                    : `${formatBasisPoints(group.shareBp, 0)} of your spending`}
+                </p>
+              </div>
+              <div data-testid="category-compare">
+                {model.comparison?.comparable && change && model.previousWindow ? (
+                  <p className="flex flex-wrap items-center gap-x-2 gap-y-1 type-body text-text-secondary">
+                    <ChangeArrow up={change.deltaPaise > 0} />
+                    <span>
+                      {words.previous
+                        ? `Compared with ${words.previous}:`
+                        : "Compared with before:"}{" "}
+                      <span className="money">
+                        {money(change.previousPaise)} → {money(change.currentPaise)}
+                      </span>
+                    </span>
+                    <Link
+                      href={historyHref({
+                        type: "spending",
+                        ...periodScope(model.previousWindow),
+                        category: id,
+                      })}
+                      className="underline underline-offset-2"
+                    >
+                      See the earlier entries
+                    </Link>
+                  </p>
+                ) : (
+                  <p className="type-body text-muted-foreground">
+                    Not enough data to compare yet. {model.comparisonNote}
+                  </p>
+                )}
+              </div>
+              <div className="grid grid-cols-3 gap-x-4 gap-y-3 border-t pt-3">
+                <HeroStat
+                  href={href}
+                  label="Purchases"
+                  value={group.count}
+                  testId="category-count"
+                />
+                <HeroStat
+                  href={null}
+                  label="Average"
+                  value={
+                    group.count >= 2 && group.averagePaise !== null
+                      ? money(group.averagePaise)
+                      : "—"
+                  }
+                  hint={group.count >= 2 ? undefined : "Needs at least 2 purchases"}
+                />
+                <HeroStat
+                  href={null}
+                  label="Median"
+                  value={
+                    group.count >= 3 && group.medianPaise !== null ? money(group.medianPaise) : "—"
+                  }
+                  hint={group.count >= 3 ? undefined : "Needs at least 3 purchases"}
+                />
+              </div>
+              {note && <NoteLine>{note}</NoteLine>}
+              {unassigned && (
+                <NoteLine>
+                  These entries have no category yet.{" "}
+                  <Link href={UNCATEGORIZED_QUEUE} className="underline underline-offset-2">
+                    Sort them in the Uncategorized queue
                   </Link>
-                </p>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  Not enough data to compare yet. {model.comparisonNote}
-                </p>
+                </NoteLine>
               )}
-              {group.subcategories.some((s) => s.key !== UNCATEGORIZED) && (
-                <ul className="-mx-2 flex flex-col">
-                  {group.subcategories.map((sub) => {
-                    const none = sub.key === UNCATEGORIZED;
-                    return (
-                      <li key={sub.key}>
-                        <RowLink
-                          href={historyHref({
-                            ...scope,
-                            category: none ? id : sub.key,
-                            noSubcategory: none,
-                          })}
-                        >
-                          <span className="flex items-baseline justify-between gap-2 text-sm">
-                            <span className="truncate">
-                              {none ? "No subcategory" : words.labelOf(sub.key).split(" › ").at(-1)}
+            </Surface>
+
+            <div className="flex min-w-0 flex-col gap-4 lg:col-span-7 lg:gap-6">
+              <PeriodTrend
+                subject={`${name} spending`}
+                ledger={ledger}
+                period={period}
+                today={today}
+                settings={settings}
+                requested={parseGranularity(query.trend)}
+                only={(entry) => (entry.categoryId ?? UNCATEGORIZED) === id}
+                scope={{ type: "spending", category: id }}
+                optionHref={(g) =>
+                  insightHref(`/insights/category/${id}`, selection, `&trend=${g}`)
+                }
+                currency={profile.currency}
+              />
+              {hasSubs && (
+                <Surface className="min-w-0" data-testid="category-subcategories">
+                  <SurfaceHeader title="Subcategories" meta="Open one for its entries" />
+                  <ul className="-mx-2 flex flex-col divide-y">
+                    {group.subcategories.map((sub) => {
+                      const none = sub.key === UNCATEGORIZED;
+                      return (
+                        <li key={sub.key}>
+                          <RowLink
+                            href={historyHref({
+                              ...scope,
+                              category: none ? id : sub.key,
+                              noSubcategory: none,
+                            })}
+                          >
+                            <span className="flex items-baseline justify-between gap-2 type-body">
+                              <span className="truncate">
+                                {none
+                                  ? "No subcategory"
+                                  : words.labelOf(sub.key).split(" › ").at(-1)}
+                              </span>
+                              <span className="shrink-0 money">
+                                {money(sub.netPaise)}
+                                <span className="text-muted-foreground"> · {sub.count}×</span>
+                              </span>
                             </span>
-                            <span className="tabular shrink-0">
-                              {money(sub.netPaise)} · {sub.count}×
-                            </span>
-                          </span>
-                        </RowLink>
-                      </li>
-                    );
-                  })}
-                </ul>
+                          </RowLink>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </Surface>
               )}
-            </Card>
+            </div>
           </div>
 
           <section aria-label={`${name} entries`} className="flex flex-col gap-3">
-            <h2 className="font-semibold">Entries</h2>
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="type-heading">Entries</h2>
+              <p className="type-caption text-muted-foreground">
+                {entries.length > LISTED_ENTRIES
+                  ? `Newest ${LISTED_ENTRIES} of ${entries.length}`
+                  : `${entries.length} ${entries.length === 1 ? "entry" : "entries"}`}
+              </p>
+            </div>
             <EntryList days={days} />
             {entries.length > LISTED_ENTRIES && (
               <Button variant="outline" asChild className="self-center">

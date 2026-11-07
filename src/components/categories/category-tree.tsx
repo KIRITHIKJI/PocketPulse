@@ -8,6 +8,7 @@ import { SelectField } from "@/components/forms/form-parts";
 import { ConfirmAction, InlineAction } from "@/components/forms/inline-action";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Surface, SurfaceHeader } from "@/components/ui/surface";
 import type { CategoryKind } from "@/domain";
 import { mergeCategory, moveCategory, setCategoryArchived } from "@/lib/actions/categories";
 
@@ -155,116 +156,149 @@ export function CategoryTree({
         .map((s) => ({ value: s.id, label: `${n.name} › ${s.name}` })),
     ]);
 
+  const subCount = nodes.reduce((sum, n) => sum + n.subcategories.length, 0);
+
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-muted-foreground">
+    // Phones: the note and Add category first, then the tree. Desktop: the tree on the left.
+    <div className="grid gap-4 lg:grid-cols-12 lg:items-start lg:gap-6">
+      <Surface className="lg:col-span-4 lg:col-start-9 lg:row-start-1">
+        <SurfaceHeader
+          title={kind === "expense" ? "Spending categories" : "Income categories"}
+          meta={`${nodes.length} categories · ${subCount} subcategories`}
+        />
+        <p className="type-body text-muted-foreground">
           {kind === "expense"
             ? "Savings and transfers between your own wallets aren’t spending, so they never use these."
             : "Where money comes from. Refunds aren’t income: they reduce the spending they refund."}
         </p>
-        <CategoryFormDialog kind={kind} />
-      </div>
+        <div>
+          <CategoryFormDialog kind={kind} />
+        </div>
+      </Surface>
 
-      <ul className="flex flex-col gap-2">
-        {nodes.map((node, index) => (
-          <li key={node.id} className="rounded-2xl border bg-card">
-            <details className="group" data-testid={`category-${node.name}`}>
-              <summary className="flex cursor-pointer list-none items-center gap-3 rounded-2xl p-3 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden">
-                <ChevronRight
-                  className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
-                  aria-hidden="true"
-                />
-                <CategoryBadge icon={node.icon} color={node.color} />
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate font-medium">{node.name}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {node.subcategories.length > 0
-                      ? `${node.subcategories.length} subcategories · `
-                      : ""}
-                    {uses(node.usage)}
-                  </span>
-                </span>
-              </summary>
-              <div className="flex flex-col gap-2 border-t px-3 pt-2 pb-3">
-                <div className="flex flex-wrap items-center gap-1">
-                  <CategoryFormDialog kind={kind} category={node} />
-                  <MoveButtons item={node} index={index} count={nodes.length} />
-                  <MergeAction item={node} targets={mainTargets(node.id)} isSub={false} />
-                  <ArchiveAction item={node} isSub={false} />
-                  {kind === "expense" && (
-                    <span className="ml-auto">
-                      <CategoryFormDialog kind={kind} parent={node} />
+      <div className="flex min-w-0 flex-col gap-4 lg:col-span-8 lg:col-start-1 lg:row-start-1 lg:gap-6">
+        <Surface className="px-0 py-1">
+          <ul className="flex flex-col divide-y">
+            {nodes.map((node, index) => (
+              <li key={node.id}>
+                <details className="group" data-testid={`category-${node.name}`}>
+                  <summary className="mx-2 flex min-h-14 cursor-pointer list-none items-center gap-3 rounded-lg px-2 py-2 transition-colors duration-(--duration-quick) outline-none hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden">
+                    <ChevronRight
+                      className="size-4 shrink-0 text-muted-foreground transition-transform duration-(--duration-quick) group-open:rotate-90"
+                      aria-hidden="true"
+                    />
+                    <CategoryBadge icon={node.icon} color={node.color} />
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate type-body font-medium">{node.name}</span>
+                      <span className="type-caption text-muted-foreground">
+                        {node.subcategories.length > 0
+                          ? `${node.subcategories.length} subcategories · `
+                          : ""}
+                        {uses(node.usage)}
+                      </span>
                     </span>
-                  )}
-                </div>
-                {node.subcategories.length > 0 && (
-                  <ul className="flex flex-col divide-y rounded-xl border">
-                    {node.subcategories.map((sub, subIndex) => (
-                      <li key={sub.id} className="flex flex-wrap items-center gap-2 px-3 py-2">
-                        <CategoryBadge
-                          icon={sub.icon ?? node.icon}
-                          color={sub.color ?? node.color}
-                          size="sm"
-                        />
-                        <span className="flex min-w-0 flex-1 flex-col">
-                          <span className="truncate text-sm font-medium">{sub.name}</span>
-                          <span className="text-xs text-muted-foreground">{uses(sub.usage)}</span>
+                  </summary>
+                  <div className="flex flex-col gap-3 px-surface pt-1 pb-3">
+                    <div
+                      className="flex flex-wrap items-center gap-1"
+                      role="group"
+                      aria-label={`Change ${node.name}`}
+                    >
+                      <CategoryFormDialog kind={kind} category={node} />
+                      <MoveButtons item={node} index={index} count={nodes.length} />
+                      <MergeAction item={node} targets={mainTargets(node.id)} isSub={false} />
+                      <ArchiveAction item={node} isSub={false} />
+                      {kind === "expense" && (
+                        <span className="ml-auto">
+                          <CategoryFormDialog kind={kind} parent={node} />
                         </span>
-                        <span className="flex items-center">
-                          <CategoryFormDialog kind={kind} category={sub} parent={node} />
-                          <MoveButtons
-                            item={sub}
-                            index={subIndex}
-                            count={node.subcategories.length}
-                          />
-                          <MergeAction item={sub} targets={subTargets(sub.id)} isSub />
-                          <ArchiveAction item={sub} isSub />
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </details>
-          </li>
-        ))}
-      </ul>
-
-      {inactive.length > 0 && (
-        <section aria-label="Archived and merged" className="flex flex-col gap-2">
-          <h3 className="text-sm font-semibold">Archived and merged</h3>
-          <ul className="flex flex-col divide-y rounded-2xl border bg-card/60">
-            {inactive.map((item) => (
-              <li key={item.id} className="flex flex-wrap items-center gap-3 px-3 py-2">
-                <CategoryBadge icon={item.icon} color={item.color} size="sm" />
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate text-sm font-medium">
-                    {item.parentName ? `${item.parentName} › ${item.name}` : item.name}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {item.mergedIntoLabel
-                      ? `Merged into ${item.mergedIntoLabel} — its entries live there now`
-                      : "Archived — hidden from pickers; its entries still show it"}
-                  </span>
-                </span>
-                {item.mergedIntoLabel ? (
-                  <Badge variant="outline">Merged</Badge>
-                ) : (
-                  <InlineAction
-                    action={setCategoryArchived}
-                    fields={{ id: item.id, archive: "false" }}
-                    pendingLabel="Restoring…"
-                  >
-                    <ArchiveRestore aria-hidden="true" />
-                    Restore
-                  </InlineAction>
-                )}
+                      )}
+                    </div>
+                    {node.subcategories.length > 0 && (
+                      <Surface variant="inset" className="gap-0 px-3 py-1">
+                        <ul className="flex flex-col divide-y">
+                          {node.subcategories.map((sub, subIndex) => (
+                            <li
+                              key={sub.id}
+                              className="flex min-h-14 flex-wrap items-center gap-x-2 gap-y-1 py-2"
+                            >
+                              <CategoryBadge
+                                icon={sub.icon ?? node.icon}
+                                color={sub.color ?? node.color}
+                                size="sm"
+                              />
+                              <span className="flex min-w-0 flex-1 flex-col">
+                                <span className="truncate type-body font-medium">{sub.name}</span>
+                                <span className="type-caption text-muted-foreground">
+                                  {uses(sub.usage)}
+                                </span>
+                              </span>
+                              <span
+                                className="flex items-center"
+                                role="group"
+                                aria-label={`Change ${sub.name}`}
+                              >
+                                <CategoryFormDialog kind={kind} category={sub} parent={node} />
+                                <MoveButtons
+                                  item={sub}
+                                  index={subIndex}
+                                  count={node.subcategories.length}
+                                />
+                                <MergeAction item={sub} targets={subTargets(sub.id)} isSub />
+                                <ArchiveAction item={sub} isSub />
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </Surface>
+                    )}
+                  </div>
+                </details>
               </li>
             ))}
           </ul>
-        </section>
-      )}
+        </Surface>
+
+        {inactive.length > 0 && (
+          <section aria-label="Archived and merged" className="flex flex-col gap-3">
+            <h3 className="type-heading">Archived and merged</h3>
+            <Surface className="py-1">
+              <ul className="flex flex-col divide-y">
+                {inactive.map((item) => (
+                  <li
+                    key={item.id}
+                    className="flex min-h-14 flex-wrap items-center gap-x-3 gap-y-1 py-2"
+                  >
+                    <CategoryBadge icon={item.icon} color={item.color} size="sm" />
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate type-body font-medium">
+                        {item.parentName ? `${item.parentName} › ${item.name}` : item.name}
+                      </span>
+                      <span className="type-caption text-muted-foreground">
+                        {item.mergedIntoLabel
+                          ? `Merged into ${item.mergedIntoLabel} — its entries live there now`
+                          : "Archived — hidden from pickers; its entries still show it"}
+                      </span>
+                    </span>
+                    {item.mergedIntoLabel ? (
+                      <Badge variant="outline">Merged</Badge>
+                    ) : (
+                      <InlineAction
+                        action={setCategoryArchived}
+                        fields={{ id: item.id, archive: "false" }}
+                        pendingLabel="Restoring…"
+                      >
+                        <ArchiveRestore aria-hidden="true" />
+                        Restore
+                      </InlineAction>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </Surface>
+          </section>
+        )}
+      </div>
     </div>
   );
 }

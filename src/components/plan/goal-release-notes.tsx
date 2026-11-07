@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { Info, LoaderCircle, Undo2 } from "lucide-react";
+import { LoaderCircle, Undo2 } from "lucide-react";
 
+import { Notice } from "@/components/feedback/notice";
 import { useLedger } from "@/components/transactions/use-ledger";
 import { Button } from "@/components/ui/button";
 import { type CurrencyCode, KEPT_FLEXIBLE_TAG, formatMoney } from "@/domain";
@@ -45,31 +46,28 @@ function ReleaseNote({ note, currency }: { note: GoalReleaseNote; currency: Curr
   }
 
   return (
-    <div
-      role="status"
-      data-testid="goal-release-note"
-      className="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-3"
-    >
-      <p className="flex min-w-0 flex-1 basis-64 gap-2 text-sm">
-        <Info className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
-        <span>
-          You deleted a purchase made with savings for {note.goalTitle}. The {amount} wasn’t put
-          back into the goal.
-        </span>
-      </p>
-      <div className="flex flex-wrap gap-1">
-        <Button size="sm" onClick={setAsideAgain} disabled={pending !== null}>
-          {pending === "restore" ? (
-            <LoaderCircle className="animate-spin" aria-hidden="true" />
-          ) : (
-            <Undo2 aria-hidden="true" />
-          )}
-          Set {amount} aside again
-        </Button>
-        <Button variant="ghost" size="sm" onClick={keepFlexible} disabled={pending !== null}>
-          Keep it flexible
-        </Button>
-      </div>
+    <div data-testid="goal-release-note">
+      <Notice
+        tone="info"
+        action={
+          <div className="flex flex-wrap gap-1 pl-3">
+            <Button size="sm" onClick={setAsideAgain} disabled={pending !== null}>
+              {pending === "restore" ? (
+                <LoaderCircle className="animate-spin" aria-hidden="true" />
+              ) : (
+                <Undo2 aria-hidden="true" />
+              )}
+              Set {amount} aside again
+            </Button>
+            <Button variant="ghost" size="sm" onClick={keepFlexible} disabled={pending !== null}>
+              Keep it flexible
+            </Button>
+          </div>
+        }
+      >
+        You deleted a purchase made with savings for {note.goalTitle}. The{" "}
+        <span className="text-money-earmark money">{amount}</span> wasn’t put back into the goal.
+      </Notice>
     </div>
   );
 }

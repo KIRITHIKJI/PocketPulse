@@ -1,15 +1,17 @@
 import type { Metadata } from "next";
-import { Bell, Target, Trash2 } from "lucide-react";
+import { Target, Trash2 } from "lucide-react";
 
+import { Notice } from "@/components/feedback/notice";
 import { ConfirmAction } from "@/components/forms/inline-action";
 import { PageHeader } from "@/components/layout/page-header";
 import { SectionTabs } from "@/components/layout/section-tabs";
 import { BudgetFormDialog, type BudgetSuggestion } from "@/components/plan/budget-form";
-import { BudgetRemaining, Meter, PlanNote } from "@/components/plan/parts";
+import { BudgetRemaining, PlanNote } from "@/components/plan/parts";
 import { StatePanel } from "@/components/states/state-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Progress, type ProgressTone } from "@/components/ui/progress";
+import { Surface } from "@/components/ui/surface";
 import {
   type Budget,
   type BudgetEvaluation,
@@ -39,6 +41,7 @@ import { requestNow } from "@/lib/data/session";
 import { isoInstant, startForAnyZone } from "@/lib/data/slices";
 import { formatLocalDate } from "@/lib/format";
 import { mainExpenseCategories } from "@/lib/plan-view";
+import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Budgets" };
 
@@ -52,6 +55,13 @@ const STATUS: Record<
   exceeded: { label: "Over target", variant: "warning" },
   ended: { label: "Ended", variant: "outline" },
 };
+
+/** Over the limit is red; past an alert level or ahead of pace is amber; otherwise green. */
+function progressTone(evaluation: BudgetEvaluation): ProgressTone {
+  if (evaluation.usedBp > 10_000) return "over";
+  if (evaluation.status === "over_pace" || evaluation.status === "exceeded") return "warning";
+  return evaluation.reachedThresholdsBp.length > 0 ? "warning" : "money";
+}
 
 function periodText(budget: Budget, evaluation: BudgetEvaluation) {
   const from = formatLocalDate(evaluation.period.startDate!);
@@ -125,6 +135,7 @@ export default async function BudgetsPage() {
         Number(a.budget.categoryId !== null) - Number(b.budget.categoryId !== null) ||
         b.evaluation.usedBp - a.evaluation.usedBp,
     );
+  type Row = (typeof rows)[number];
 
   const alertsOn = !reminders.allDisabled && reminders.budgetAlerts;
   const alerts = alertsOn
@@ -134,20 +145,143 @@ export default async function BudgetsPage() {
       })
     : [];
 
+  // The monthly total is the screen's main figure; without one, another total budget takes it.
+  const totals = rows.filter((row) => row.budget.categoryId === null);
+  const hero = totals.find((row) => row.budget.period === "monthly") ?? totals[0] ?? null;
+  const rest = rows.filter((row) => row !== hero);
+  const totalSuggestion = suggestions.find((s) => s.scope === "");
+
+  const actions = (row: Row) => (
+    <div className="mt-auto flex flex-wrap items-center gap-1 border-t pt-2">
+      <BudgetFormDialog
+        budget={{ ...row.budget, label: row.label }}
+        categories={pickable}
+        suggestions={suggestions}
+        today={today}
+      />
+      <ConfirmAction
+        action={archiveBudget}
+        fields={{ id: row.budget.id }}
+        trigger={
+          <Button variant="ghost" size="sm" aria-label={`Remove ${row.label} budget`}>
+            <Trash2 aria-hidden="true" />
+            Remove
+          </Button>
+        }
+        title={`Remove the ${row.label} budget?`}
+        description={<p>This removes the target only. Your entries and balance don’t change.</p>}
+        confirmLabel="Remove budget"
+        pendingLabel="Removing…"
+      />
+    </div>
+  );
+
+  const pace = ({ budget, evaluation, previous }: Row) => (
+    <p className="type-caption text-muted-foreground">
+      {formatBasisPoints(evaluation.elapsedBp, 0)} of the period has passed.
+      {evaluation.projectedPaise !== null &&
+      evaluation.status !== "ended" &&
+      evaluation.status !== "not_started" ? (
+        <>
+          {" "}
+          At this pace: about <span className="money">{money(evaluation.projectedPaise)}</span>.
+        </>
+      ) : null}
+      {previous ? (
+        <>
+          {" "}
+          Last {budget.period === "weekly" ? "week" : "month"}:{" "}
+          <span className="money">{money(Math.max(0, previous.spentPaise))}</span> of{" "}
+          <span className="money">{money(previous.limitPaise)}</span>.
+        </>
+      ) : null}
+    </p>
+  );
+
+  /** One budget. The hero shows its spending as the screen's one display figure. */
+  const budgetCard = (row: Row, main: boolean) => {
+    const { budget, evaluation, label } = row;
+    const status = STATUS[evaluation.status];
+    const Heading = main ? "h2" : "h3";
+    const used = formatBasisPoints(evaluation.usedBp, 0);
+    return (
+      <Surface variant={main ? "hero" : "card"} className="h-full" data-testid="budget-card">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <Heading className="truncate type-heading">{label}</Heading>
+            <p className="type-caption text-text-secondary">{periodText(budget, evaluation)}</p>
+          </div>
+          <Badge variant={status.variant}>{status.label}</Badge>
+        </div>
+        <p className="type-body text-text-secondary">
+          <span
+            className={cn("text-foreground money", main ? "type-display" : "type-heading")}
+            data-testid="budget-spent"
+          >
+            {money(Math.max(0, evaluation.spentPaise))}
+          </span>{" "}
+          of <span className="money">{money(evaluation.limitPaise)}</span> ·{" "}
+          <span className="money" data-testid="budget-used">
+            {used}
+          </span>{" "}
+          used
+        </p>
+        <Progress
+          bp={evaluation.usedBp}
+          tone={progressTone(evaluation)}
+          aria-label={`${label} budget used`}
+          valueText={`${used} used`}
+        />
+        <BudgetRemaining remainingPaise={evaluation.remainingPaise} money={money} />
+        {pace(row)}
+        {actions(row)}
+      </Surface>
+    );
+  };
+
   return (
     <>
       <PageHeader
         title="Budgets"
-        description="Targets for your total spending and each category. They guide you and never block a purchase."
-        actions={<BudgetFormDialog categories={pickable} suggestions={suggestions} today={today} />}
+        description="Targets for your spending. They guide you and never block a purchase."
+        actions={
+          rows.length > 0 ? (
+            <BudgetFormDialog categories={pickable} suggestions={suggestions} today={today} />
+          ) : undefined
+        }
       />
       <SectionTabs section="plan" />
 
       {rows.length === 0 ? (
         <StatePanel
           icon={Target}
-          title="No budgets set"
-          description="Set a total or per-category limit and track spent, remaining and pace. A budget is a target, not reserved money."
+          title="Set a monthly budget"
+          description={
+            <>
+              Set a total or per-category target and see spent, remaining and pace. A budget is a
+              target, not reserved money.
+              {totalSuggestion ? (
+                <>
+                  {" "}
+                  Your last full month suggests about{" "}
+                  <span className="money">{money(totalSuggestion.limitPaise)}</span>.
+                </>
+              ) : null}
+            </>
+          }
+          actions={
+            <>
+              <BudgetFormDialog categories={pickable} suggestions={suggestions} today={today} />
+              {totalSuggestion ? (
+                <BudgetFormDialog
+                  categories={pickable}
+                  suggestions={suggestions}
+                  today={today}
+                  startFromSuggestion
+                />
+              ) : null}
+            </>
+          }
         />
       ) : (
         <>
@@ -158,98 +292,34 @@ export default async function BudgetsPage() {
               data-testid="budget-alerts"
             >
               {alerts.map((alert) => (
-                <p
-                  key={alert.budgetId}
-                  className="flex items-start gap-2 rounded-xl bg-warning/10 p-3 text-sm"
-                >
-                  <Bell className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden="true" />
+                <Notice key={alert.budgetId} tone="warning">
                   {alert.exceeded
                     ? `${alert.label} is over its target, at ${formatBasisPoints(alert.usedBp, 0)}. That’s worth knowing; nothing is blocked.`
                     : `${alert.label} has reached ${formatBasisPoints(alert.thresholdBp, 0)} of its target.`}
-                </p>
+                </Notice>
               ))}
             </section>
           )}
 
-          <ul className="grid gap-4 lg:grid-cols-2">
-            {rows.map(({ budget, evaluation, previous, label }) => {
-              const status = STATUS[evaluation.status];
-              return (
-                <li key={budget.id} className="min-w-0">
-                  <Card className="h-full gap-3" data-testid="budget-card">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <h2 className="truncate font-semibold">{label}</h2>
-                        <p className="text-xs text-muted-foreground">
-                          {periodText(budget, evaluation)}
-                        </p>
-                      </div>
-                      <Badge variant={status.variant}>{status.label}</Badge>
-                    </div>
-                    <p className="tabular text-sm">
-                      <span className="text-xl font-semibold" data-testid="budget-spent">
-                        {money(Math.max(0, evaluation.spentPaise))}
-                      </span>{" "}
-                      of {money(evaluation.limitPaise)} ·{" "}
-                      <span data-testid="budget-used">
-                        {formatBasisPoints(evaluation.usedBp, 0)}
-                      </span>{" "}
-                      used
-                    </p>
-                    <Meter
-                      bp={evaluation.usedBp}
-                      tone={
-                        evaluation.status === "exceeded" || evaluation.status === "over_pace"
-                          ? "warning"
-                          : "primary"
-                      }
-                    />
-                    <BudgetRemaining remainingPaise={evaluation.remainingPaise} money={money} />
-                    <p className="text-xs text-muted-foreground">
-                      {formatBasisPoints(evaluation.elapsedBp, 0)} of the period has passed.
-                      {evaluation.projectedPaise !== null &&
-                      evaluation.status !== "ended" &&
-                      evaluation.status !== "not_started"
-                        ? ` At this pace: about ${money(evaluation.projectedPaise)}.`
-                        : ""}
-                      {previous
-                        ? ` Last ${budget.period === "weekly" ? "week" : "month"}: ${money(Math.max(0, previous.spentPaise))} of ${money(previous.limitPaise)}.`
-                        : ""}
-                    </p>
-                    <div className="mt-auto flex flex-wrap items-center gap-1 border-t pt-2">
-                      <BudgetFormDialog
-                        budget={{ ...budget, label }}
-                        categories={pickable}
-                        suggestions={suggestions}
-                        today={today}
-                      />
-                      <ConfirmAction
-                        action={archiveBudget}
-                        fields={{ id: budget.id }}
-                        trigger={
-                          <Button variant="ghost" size="sm" aria-label={`Remove ${label} budget`}>
-                            <Trash2 aria-hidden="true" />
-                            Remove
-                          </Button>
-                        }
-                        title={`Remove the ${label} budget?`}
-                        description={
-                          <p>
-                            This removes the target only. Your entries and balance don’t change.
-                          </p>
-                        }
-                        confirmLabel="Remove budget"
-                        pendingLabel="Removing…"
-                      />
-                    </div>
-                  </Card>
-                </li>
-              );
-            })}
-          </ul>
+          {hero ? budgetCard(hero, true) : null}
+
+          {rest.length > 0 && (
+            <section aria-labelledby="budgets-rest" className="flex flex-col gap-stack">
+              <h2 id="budgets-rest" className="type-heading">
+                {hero ? "Other budgets" : "Your budgets"}
+              </h2>
+              <ul className="grid gap-4 lg:grid-cols-2">
+                {rest.map((row) => (
+                  <li key={row.budget.id} className="min-w-0">
+                    {budgetCard(row, false)}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
           <PlanNote>
-            Budgets are targets, not reserved money. They don’t change your balance or
-            safe-to-spend.
+            Budgets don’t change your balance or safe-to-spend; no money is held for them.
             {!alertsOn ? " Budget alerts are off in Settings." : ""}
           </PlanNote>
         </>

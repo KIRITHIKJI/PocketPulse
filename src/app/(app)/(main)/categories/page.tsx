@@ -135,9 +135,9 @@ export default async function CategoriesPage({
     <>
       <PageHeader
         title="Categories"
-        description="Organise spending your way: rename, reorder, add subcategories, merge, and set rules that categorise for you."
+        description="Organise categories your way and set rules that sort entries for you."
       />
-      <Tabs defaultValue={initial} className="flex flex-col gap-4">
+      <Tabs defaultValue={initial} className="flex flex-col gap-4 lg:gap-6">
         <TabsList aria-label="Category sections" className="self-start">
           <TabsTrigger value="spending">
             <ListTree aria-hidden="true" />
@@ -154,7 +154,12 @@ export default async function CategoriesPage({
           <TabsTrigger value="uncategorized">
             <Inbox aria-hidden="true" />
             Uncategorized
-            {queue.length > 0 && <Badge>{queue.length}</Badge>}
+            {queue.length > 0 && (
+              <Badge>
+                {queue.length}
+                <span className="sr-only"> waiting</span>
+              </Badge>
+            )}
           </TabsTrigger>
         </TabsList>
         <TabsContent value="spending">
