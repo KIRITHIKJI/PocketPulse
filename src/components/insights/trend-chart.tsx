@@ -3,7 +3,16 @@
 import { useRouter } from "next/navigation";
 import type { Route } from "next";
 import { useReducedMotion } from "motion/react";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  LabelList,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 import { useMotionPreference } from "@/components/providers/motion-provider";
 import { type CurrencyCode, formatMoney } from "@/domain";
@@ -27,15 +36,18 @@ function ChartTooltip({
   const point = payload?.[0]?.payload;
   if (!active || !point) return null;
   return (
-    <div className="rounded-xl border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md">
+    <div className="rounded-xl border bg-popover px-3 py-2 type-body text-popover-foreground shadow-md">
       <p className="font-medium">{point.label}</p>
-      <p className="tabular">{point.amountLabel}</p>
-      <p className="text-xs text-muted-foreground">{point.detail}</p>
+      <p className="money">{point.amountLabel}</p>
+      <p className="type-caption text-muted-foreground">{point.detail}</p>
     </div>
   );
 }
 
-/** One series: spending over time. Clicking a bar opens the entries behind it. */
+/**
+ * One series: spending over time, in the one accent colour; axes and grid stay grey and the peak
+ * carries its amount as a direct label. Clicking a bar opens the entries behind it.
+ */
 export default function TrendChart({
   points,
   currency,
@@ -49,6 +61,10 @@ export default function TrendChart({
   const { preference } = useMotionPreference();
   const systemReduced = useReducedMotion();
   const animate = preference === "full" || (preference === "system" && !systemReduced);
+  const peakIndex = points.reduce(
+    (best, point, index) => (point.chartPaise > (points[best]?.chartPaise ?? 0) ? index : best),
+    -1,
+  );
 
   return (
     <div role="img" aria-label={summary} className="h-56 w-full" data-testid="trend-chart">
@@ -57,8 +73,8 @@ export default function TrendChart({
         height="100%"
         initialDimension={{ width: 600, height: 224 }}
       >
-        <BarChart data={points} margin={{ top: 8, right: 0, bottom: 0, left: 0 }}>
-          <CartesianGrid vertical={false} stroke="var(--border)" />
+        <BarChart data={points} margin={{ top: 22, right: 0, bottom: 0, left: 0 }}>
+          <CartesianGrid vertical={false} stroke="var(--progress-track)" />
           <XAxis
             dataKey="label"
             tickLine={false}
@@ -88,13 +104,24 @@ export default function TrendChart({
             radius={[4, 4, 0, 0]}
             maxBarSize={32}
             isAnimationActive={animate}
-            animationDuration={300}
+            animationDuration={280}
             cursor="pointer"
             onClick={(bar) => {
               const href = (bar.payload as ChartPoint | undefined)?.href;
               if (href) router.push(href);
             }}
-          />
+          >
+            <LabelList
+              position="top"
+              offset={6}
+              fill="var(--muted-foreground)"
+              fontSize={12}
+              className="money"
+              valueAccessor={(_entry: unknown, index: number) =>
+                index === peakIndex ? points[index]!.amountLabel : ""
+              }
+            />
+          </Bar>
         </BarChart>
       </ResponsiveContainer>
     </div>

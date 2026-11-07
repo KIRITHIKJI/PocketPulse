@@ -44,3 +44,21 @@ export function PlayerChipSkeleton() {
     </Surface>
   );
 }
+
+/** The sidebar's compact chip. Streamed after the page; a failed read just leaves it out. */
+export async function SidebarPlayerChip() {
+  const status = await getPlayerStatus().catch(() => null);
+  return status ? <PlayerChipView initial={status} compact /> : null;
+}
+
+export function SidebarPlayerChipSkeleton() {
+  return (
+    <div
+      aria-hidden="true"
+      className="flex h-15 flex-col justify-center gap-2 rounded-xl border px-3"
+    >
+      <Skeleton className="h-3 w-28" />
+      <Skeleton className="h-2 w-full rounded-full" />
+    </div>
+  );
+}

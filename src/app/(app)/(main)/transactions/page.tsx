@@ -10,6 +10,7 @@ import { StatePanel } from "@/components/states/state-panel";
 import { type ListedDay, EntryList } from "@/components/transactions/entry-list";
 import { HistoryFilterForm } from "@/components/transactions/history-filters";
 import { Button } from "@/components/ui/button";
+import { Surface } from "@/components/ui/surface";
 import {
   indexById,
   isActive,
@@ -43,7 +44,7 @@ import { goalReleaseNotes } from "@/lib/plan-view";
 
 export const metadata: Metadata = { title: "Transactions" };
 
-const PAGE_SIZE = 150;
+const PAGE_SIZE = 50;
 
 export default async function TransactionsPage({
   searchParams,
@@ -152,7 +153,7 @@ export default async function TransactionsPage({
     <>
       <PageHeader
         title="Transactions"
-        description="Everything you’ve recorded, newest first. Tap an entry to see, edit or delete it."
+        description="Everything you’ve recorded, newest first."
         actions={
           <Button asChild>
             <Link href="/transactions/new">
@@ -184,7 +185,7 @@ export default async function TransactionsPage({
         <StatePanel
           icon={Receipt}
           title="No transactions yet"
-          description="Your history appears here, grouped by day, as soon as you record something."
+          description="No entries yet. Your first tea or bus ride starts the list."
           actions={
             <>
               <Button asChild>
@@ -209,34 +210,48 @@ export default async function TransactionsPage({
             expenseTree={pickerTree(categories, "expense")}
             incomeTree={pickerTree(categories, "income")}
           />
-          <p
-            className="text-sm text-muted-foreground"
-            aria-live="polite"
-            data-testid="history-summary"
-          >
-            {matches.length} {matches.length === 1 ? "entry" : "entries"}
-            {filtered ? " match" : ""} · net spending {money(spent)}
-            {income > 0 ? ` · income ${money(income)}` : ""}
-          </p>
-          {narrowing && (
-            <p className="text-sm text-muted-foreground" data-testid="history-narrowing">
-              Showing {narrowing}.{" "}
-              <Link href="/transactions" className="font-medium text-primary underline">
-                See everything
-              </Link>
+          <div className="flex flex-col gap-1">
+            <p
+              className="type-body text-text-secondary"
+              aria-live="polite"
+              data-testid="history-summary"
+            >
+              {matches.length} {matches.length === 1 ? "entry" : "entries"}
+              {filtered ? " match" : ""} · net spending{" "}
+              <span className="text-foreground money">{money(spent)}</span>
+              {income > 0 ? (
+                <>
+                  {" "}
+                  · income <span className="text-money-positive money">{money(income)}</span>
+                </>
+              ) : null}
             </p>
-          )}
+            {narrowing && (
+              <p className="type-body text-text-secondary" data-testid="history-narrowing">
+                Showing {narrowing}.{" "}
+                <Link
+                  href="/transactions"
+                  className="font-medium text-primary underline underline-offset-4"
+                >
+                  See everything
+                </Link>
+              </p>
+            )}
+          </div>
           {matches.length === 0 ? (
-            <StatePanel
-              icon={SearchX}
-              title="No entries match"
-              description="Try fewer words or clear a filter."
-              actions={
-                <Button variant="outline" asChild>
-                  <Link href="/transactions">Clear search and filters</Link>
-                </Button>
-              }
-            />
+            <Surface>
+              <StatePanel
+                icon={SearchX}
+                size="section"
+                title="No entries match"
+                description="Try fewer words or clear a filter."
+                actions={
+                  <Button variant="outline" asChild>
+                    <Link href="/transactions">Clear search and filters</Link>
+                  </Button>
+                }
+              />
+            </Surface>
           ) : (
             <>
               <EntryList days={days} />

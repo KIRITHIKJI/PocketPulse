@@ -20,6 +20,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Surface } from "@/components/ui/surface";
 import { ACCOUNT_KINDS } from "@/domain";
 import { createAccount, updateAccount } from "@/lib/actions/accounts";
 import { paiseToInput } from "@/lib/format";
@@ -36,15 +37,15 @@ type EditableAccount = {
 /** The note shown wherever an opening balance is set. */
 export function OpeningBalanceNote() {
   return (
-    <p className="flex gap-2 rounded-lg bg-muted/60 p-3 text-xs text-muted-foreground">
+    <Surface variant="inset" className="flex-row gap-2 type-caption text-muted-foreground">
       <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-      <span>
+      <p>
         The opening balance is what you count in this wallet at the start of the opening date.
         PocketPulse adds and subtracts your entries from there — it isn’t connected to a bank and
         doesn’t verify balances. Entries dated <em>before</em> the opening date are treated as
         already included, so they don’t change the balance.
-      </span>
-    </p>
+      </p>
+    </Surface>
   );
 }
 

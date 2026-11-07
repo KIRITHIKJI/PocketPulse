@@ -133,14 +133,14 @@ export function BrowserNotifications() {
   if (permission === null) return null;
   if (permission === "unsupported") {
     return (
-      <p className="text-sm text-muted-foreground">
+      <p className="type-body text-muted-foreground">
         This browser doesn’t support notifications. Reminders still appear here.
       </p>
     );
   }
   if (permission === "denied") {
     return (
-      <p className="text-sm text-muted-foreground" data-testid="browser-notifications">
+      <p className="type-body text-muted-foreground" data-testid="browser-notifications">
         Notifications are blocked for this site in your browser settings. Reminders still appear
         here.
       </p>
@@ -148,7 +148,7 @@ export function BrowserNotifications() {
   }
   return (
     <div className="flex flex-wrap items-center gap-3" data-testid="browser-notifications">
-      <p className="min-w-0 flex-1 basis-64 text-sm text-muted-foreground">
+      <p className="min-w-0 flex-1 basis-64 type-body text-muted-foreground">
         {on
           ? "On for this browser. They only show while PocketPulse is open, not when it’s closed."
           : "Optional. Shows reminders outside this tab, but only while PocketPulse is open."}

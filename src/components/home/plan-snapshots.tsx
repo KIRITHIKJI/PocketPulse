@@ -93,7 +93,7 @@ export function BudgetSnapshot({
             tone={budgetTone(budgetEval)}
             label={
               <>
-                <span className="font-medium money text-foreground">
+                <span className="font-medium text-foreground money">
                   {money(Math.max(0, budgetEval.spentPaise))}
                 </span>{" "}
                 of <span className="money">{money(budgetEval.limitPaise)}</span>
@@ -169,7 +169,7 @@ export function GoalSnapshot({
                   label={<span className="font-medium text-foreground">{goal.title}</span>}
                   valueText={`${money(progress.savedPaise)} of ${money(goal.targetPaise)}`}
                 />
-                <span className="type-caption money text-money-earmark">
+                <span className="type-caption text-money-earmark money">
                   <PiggyBank className="mr-1 inline size-3.5" aria-hidden="true" />
                   {money(progress.remainingPaise)} to go
                   {goal.targetDate ? ` · target ${formatLocalDate(goal.targetDate)}` : ""}

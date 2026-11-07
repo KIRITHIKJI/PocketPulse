@@ -3,7 +3,7 @@
 Durable project state. Update before a context reset or at the end of each work session.
 Source of truth for requirements: `PROJECT_SPEC.md`. Working rules: `CLAUDE.md`.
 
-_Last updated: 2026-11-07 — Design 3 of 4 (Player status, Missions, Achievements, Rewards hub, the feedback ladder, permanent achievements, Safe to Spend on Home; see "Design 3"). Migration `20261106000200_missions` is applied on the hosted project (you ran `db push` on 2026-11-07). Before that, Design 2 of 4 (Home, Quick Add, mobile bar, rewards that follow Undo; see "Design 2"). Before that, Design 1 (audit, `doc/DESIGN_PLAN.md`, foundation). Before that, Code tidy (no behaviour change). Before that, Speed fixes 2. Migrations 0100–1000, 20261105000100 (ledger keyset index) and 20261106000100 (`wallet_balances`) are applied on the hosted project (you ran `db push`; `migration list` confirmed). The app is not deployed yet, so nothing has been tried on a real phone._
+_Last updated: 2026-11-07 — Design 4 of 4, the last design phase (every remaining screen, sidebar groups, full QA; see "Design 4"). No migration. Before that, Design 3 of 4 (Player status, Missions, Achievements, Rewards hub, the feedback ladder, permanent achievements, Safe to Spend on Home; see "Design 3"). Migration `20261106000200_missions` is applied on the hosted project (you ran `db push` on 2026-11-07). Before that, Design 2 of 4 (Home, Quick Add, mobile bar, rewards that follow Undo; see "Design 2"). Before that, Design 1 (audit, `doc/DESIGN_PLAN.md`, foundation). Before that, Code tidy (no behaviour change). Before that, Speed fixes 2. Migrations 0100–1000, 20261105000100 (ledger keyset index) and 20261106000100 (`wallet_balances`) are applied on the hosted project (you ran `db push`; `migration list` confirmed). The app is not deployed yet, so nothing has been tried on a real phone._
 
 ## Build stages
 
@@ -570,6 +570,53 @@ The money arrives no later. The figure arrives after it, and before the player c
 | After your push | `e2e/rewards.spec.ts` on ledger-desktop, live with the 8 missions: **6 passed** |
 | E2E (hosted project, fresh build; migration NOT pushed, so the hosted catalog has the 4 old missions) | Run 1, `rewards` + `shell` on desktop, mobile, ledger-desktop, ledger-mobile (the ledger projects ran all their specs): **117 passed, 1 failed**. The failure was `motion.spec.ts` "an achievement bursts", which tested the removed confetti. It now checks that the milestone ring, the level-up rise and the dim animate (≤ 280 ms) with motion allowed and don't move under OS or in-app reduced motion. Run 2, ledger-desktop + ledger-mobile (rewards, motion, Journey A–G specs): **76 passed, 0 failed**. The spec's new tests: XP daily follows entries while achievements stay, at most 1 pop-up sampled 15 times after a save, the mission skip/bring back, Home chip → `/rewards/status`, Safe to Spend labelled an estimate |
 
+## Design 4 (2026-11-07)
+
+The last design phase: every remaining screen on the Design 1 components, the desktop sidebar groups, then QA of the whole app. Visual changes only: no money logic, query, action or migration changed. Skills applied: design-elevation (one accent, grey for what isn't the finding, finding-first chart titles, tabular figures), design-systems (shared parts changed once, screens consume them) and ux-research (heuristic review below). Five subagents restyled separate screen groups in parallel; only the lead edited shared components, tokens, navigation and layout, and every subagent's diff was checked against `doc/DESIGN_PLAN.md` §6 before it was accepted.
+
+- **Navigation (`src/lib/navigation.ts`, `components/layout/*`):** sidebar groups are now Overview · Record (a 2 × 2 grid) · Activity · Insights · Plan · Progress · You (Parent report, Reminders, Settings). A compact player chip (`SidebarPlayerChip`, streamed in `Suspense`, `data-testid="sidebar-player-chip"`) sits under the logo and is not rendered at all when progress features are off. The header's duplicate desktop "Add expense" is gone; the sidebar's is the one primary. Section-tab indexes are unchanged.
+- **Shared parts (lead):** `PageHeader` on `type-title`/`type-body`. `PeriodPicker` is one row on wider screens and a "Period" button that opens a sheet on phones (nothing clips). `TrendCard`, `FigureLink`, `ShareBar`, `NoteLine` on tokens and Surfaces. `EntryList`: goal moves get a silver piggy-bank mark and the earmark colour, two or more goal moves on one day fold into one "N goal moves · Still your money" row that opens, day headers stick on phones. `plan/parts`: `ProgressRing` takes `tone="earmark"`; `FigureRow`, `PlanNote`, `BudgetRemaining` on the type scale with `.money`. `Notice` and `StatePanel` pass `data-testid`; `SurfaceHeader` takes `titleId`. Switches get a 44 px hit area on touch; tabs are 44 px on touch.
+- **`.money` no longer sets `white-space: nowrap`.** It's used on sentences that contain figures; the nowrap pushed Money Leaks' what-if sentence 489 px off a phone screen. A figure has no space to break at, so nothing else changed (checked on every screen).
+- **Screens:** Insights (display total with comparison beside clickable category shares, trend chart titled with its finding, e.g. "Spending peaked on 3 Nov", one accent colour, peak labelled directly, findings in a 2-column grid), category drill-down, Money Leaks (one table-like Surface: group · times · average · total · what-if; empty state names the real threshold and links to Settings), Budgets (the total as a hero, category budgets in a grid, alerts as warning Notices, empty state with the action inside and "Suggest one from last month" when a suggestion exists), Goals (active goals as cards with the saved amount in the earmark colour, "set aside, still yours"; paused, complete and archived as compact rows, always visible so every goal is one tap away), goal detail (silver ring, saved figure in the earmark colour, no +/− signs on moves), Safe to Spend (estimate hero, breakdown with "Less set aside for goals" in the earmark colour, income-date form inside the empty panel), Survival, Transactions (search + filters toolbar; a "Filters" toggle with the active count on phones; 50 rows per page, was 150), entry detail (one hero amount: spending neutral, income/refunds green, goal moves earmark), Wallets, Categories, Recurring (timeline + items), Reports (options column, paper-width preview, exports above it), Reminders, Settings (section index + one Surface per section), Privacy, Sync, Data. Every route has a `loading.tsx` shaped like its screen; errors use the shared boundary.
+- **Bugs fixed while checking:**
+  - The goal page crashed with a server error once a goal reached its target: the restyle passed a Lucide icon from a server page to `Notice`, a client component. `Notice` has no hooks, so it's no longer marked `"use client"`.
+  - Zero expenses in the report read "−₹0" (preview and PDF). Now "₹0".
+  - axe `label-content-name-mismatch` on Home and Quick Add (Design 2/3 components, first caught by this phase's full a11y run): tiles' accessible names now start with their visible text, the tile's title and hint have a space between them, the "Log again" chips say their visible text first, and the player chips have no `aria-label` (their text is the name). One unit test's expected name changed with it ("Tea. Set amount").
+  - Reminder title links, category tabs and switches were under 44 px on touch.
+- **Heuristic review of the finished app (Nielsen's 10 + the plan's rules), by severity:**
+
+| Severity | Finding | Status |
+| --- | --- | --- |
+| Critical | Goal detail crashed for a goal at its target (error recovery, visibility of status) | Fixed |
+| High | Money Leaks scrolled sideways on phones with data (what-if sentence) | Fixed |
+| High | Archived goals as full cards buried active ones (11 cards on the test account); collapsing paused/complete hid goals from a direct tap | Fixed: compact rows, always visible |
+| High | Accessible names didn't match visible text on Home, Quick Add and every desktop page (sidebar chip) | Fixed |
+| Moderate | Touch targets under 44 px: category tabs, settings switches, reminder titles | Fixed |
+| Moderate | Reversible actions still ask "Are you sure?" (remove budget, delete entry, archive goal, cancel bill) against plan rule 9 | Not fixed: needs an Undo action per case, which is behaviour, not a visual change |
+| Moderate | Desktop sidebar scrolls at 900 px with progress features on (the plan expected it to fit) | Not fixed; the plan now says so |
+| Low | "−₹0" in the report | Fixed |
+| Low | Leaks: the selected group opens inline, not in a side panel/sheet; Categories: no two-pane detail on desktop; Recurring on phones uses anchor links, not a segmented control | Not done: each needs new client state or routes |
+| Low | "target, not reserved money" repeats on every budget card | Kept: e2e checks it per card |
+| Low | Reports' Options panel starts open on phones | Kept: the mobile e2e uses those controls directly |
+
+- **Responsive and themes:** every signed-in screen (27 routes incl. category tabs) screenshotted in dark and light at 375 and 1440 px on a production build, twice (before and after fixes): 108 captures each pass, with overflow, console errors, axe colour contrast and touch targets measured per capture. Final pass: no overflow, no contrast violations, no console errors. The shared test account has no expenses, so the data-filled states of Home, Insights, Leaks, Budgets, Transactions, Reports, Wallets and the Uncategorized queue were also captured on the second test account after logging 5 real entries and a ₹2,000 budget there, which were deleted again afterwards.
+- **Progress off, both states checked** on the second test account: with "Show progress features" off, the sidebar, Home, Settings, Insights and the mobile You sheet have no link to `/rewards…` and no player chip (0 found); on, they're all back. The setting was left on.
+- **Grep:** no TODO/FIXME, "coming soon", lorem or fake data in `src`; the only placeholders are input hints ("e.g. chai").
+- **Speed:** the sidebar chip adds the two small reads Home's chip already makes (`getPlayerStatus`, cached per request), streamed after the page, only when progress features are on. Not measured separately.
+
+**Checks (Design 4)**
+
+| Check | Result |
+| --- | --- |
+| lint / typecheck / format | ✅ (0 errors, 0 warnings; Prettier clean) |
+| `npm test` | ✅ 34 files / **899** tests. One run while the QA server was busy timed out 7 tests at 5 s; the same files passed alone and the final run passed whole |
+| `npm run test:db` (local PostgreSQL 18) | ✅ 14 files, 129 passed + 13 placeholders |
+| `npm run build` | ✅ |
+| E2E full suite, run 1 (all projects: setup, desktop, mobile, ledger-desktop, ledger-mobile; Journeys A–G and every other spec; **407 tests**) | 269 passed, 56 failed, 4 skipped, 78 didn't run. 54 failures were the axe name mismatch; the motion spec hit the goal-page crash, which left ₹1 set aside and made Journey D see ₹101 |
+| E2E full suite, run 2, after those fixes (**407 tests**) | **390 passed, 8 failed, 9 skipped.** All 8: the tile name mismatch on `/home` and `/add` (desktop + mobile, dark + light) |
+| After the tile fix | `a11y.spec` (desktop + mobile, every route in both themes): **129 passed**. The ledger projects' specs, both viewports: 62 passed, 1 failed: Journey E's last cleanup step (cancel the test bill) didn't see the row go within 10 s; it passed in run 2 on the same code, and cancelling worked normally by hand. The bill it left was cancelled. Then `plan.spec` and the other ledger specs again, both viewports: **70 passed, 0 failed** (Journeys D and E included) |
+
+
 ## Checks run (Phase 10, 2026-11-01)
 
 | Command / action | Result |
@@ -827,7 +874,7 @@ Note: because of the `(app)` loading boundary, Next.js streams `notFound()` page
 
 ## Next concrete tasks
 
-**Next (Design 4, only when you send its prompt):** every remaining screen per `doc/DESIGN_PLAN.md` §4, and the desktop sidebar regrouping (§5). Try Settings → Progress → off on your own account once.
+**The redesign is done (Design 1–4).** Open design items, from the Design 4 review: Undo instead of "Are you sure?" for removing a budget, deleting an entry, archiving a goal and cancelling a bill (behaviour, needs its own change); the sidebar scrolling at 900 px; the Leaks side panel, Categories two-pane view and Recurring segmented control on phones.
 
 All 10 build phases are done. What's left is yours, because it needs accounts or a phone:
 

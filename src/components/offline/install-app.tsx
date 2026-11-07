@@ -4,7 +4,7 @@ import * as React from "react";
 import { Download } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Surface } from "@/components/ui/surface";
 
 interface InstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -48,10 +48,13 @@ export function InstallApp() {
   }
 
   return (
-    <Card className="flex-row flex-wrap items-center justify-between gap-3" data-testid="install">
-      <div className="min-w-0 flex-1 basis-56">
-        <h2 className="font-semibold">Install PocketPulse</h2>
-        <p className="text-sm text-muted-foreground">
+    <Surface
+      className="flex-row flex-wrap items-center justify-between gap-3"
+      data-testid="install"
+    >
+      <div className="flex min-w-0 flex-1 basis-56 flex-col gap-0.5">
+        <h2 className="type-heading">Install PocketPulse</h2>
+        <p className="type-body text-muted-foreground">
           {prompt
             ? "Adds it to your home screen, so it opens like an app, even with no connection."
             : "On Android Chrome: menu, then Add to Home screen. On iPhone Safari: Share, then Add to Home Screen."}
@@ -63,6 +66,6 @@ export function InstallApp() {
           Install
         </Button>
       )}
-    </Card>
+    </Surface>
   );
 }

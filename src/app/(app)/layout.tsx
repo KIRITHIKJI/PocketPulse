@@ -1,3 +1,6 @@
+import { Suspense } from "react";
+
+import { SidebarPlayerChip, SidebarPlayerChipSkeleton } from "@/components/home/player-chip";
 import { AppHeader } from "@/components/layout/app-header";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { BottomNav } from "@/components/layout/bottom-nav";
@@ -37,7 +40,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             >
               Skip to content
             </a>
-            <AppSidebar showProgress={showProgress} />
+            <AppSidebar
+              showProgress={showProgress}
+              playerChip={
+                profile && showProgress ? (
+                  <Suspense fallback={<SidebarPlayerChipSkeleton />}>
+                    <SidebarPlayerChip />
+                  </Suspense>
+                ) : null
+              }
+            />
             <div className="flex min-w-0 flex-1 flex-col">
               <AppHeader />
               <OfflineBanner />

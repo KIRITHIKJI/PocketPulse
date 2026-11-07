@@ -1,5 +1,3 @@
-"use client";
-
 import * as React from "react";
 import {
   CircleAlert,
@@ -27,6 +25,8 @@ export type NoticeTone = keyof typeof TONES;
 /**
  * A persistent in-page message: a budget alert, being offline, a note about the data
  * (doc/DESIGN_PLAN.md §3). Errors are announced as alerts; everything else politely.
+ * Not a client component itself, so server pages can pass it an icon; `onDismiss` needs a
+ * client caller.
  */
 export function Notice({
   tone = "info",
@@ -36,7 +36,8 @@ export function Notice({
   onDismiss,
   icon,
   className,
-}: {
+  ...props
+}: Omit<React.ComponentProps<"div">, "title" | "children"> & {
   tone?: NoticeTone;
   title?: React.ReactNode;
   children: React.ReactNode;
@@ -52,6 +53,7 @@ export function Notice({
   return (
     <div
       role={tone === "error" ? "alert" : "status"}
+      {...props}
       data-slot="notice"
       data-tone={tone}
       className={cn("flex items-start gap-3 rounded-xl p-3 type-body", config.soft, className)}

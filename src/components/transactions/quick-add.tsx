@@ -115,7 +115,11 @@ export function QuickAdd({
                   size="sm"
                   className="h-auto min-h-10 rounded-full py-1.5"
                   onClick={() => open(entry)}
-                  aria-label={`${kind === "repeat" ? "Repeat last expense" : "Log again"}: ${entry.title}, ${money(entry.amountPaise ?? 0, kit)}`}
+                  aria-label={
+                    kind === "repeat"
+                      ? `Repeat ${entry.title} ${money(entry.amountPaise ?? 0, kit)}: your last expense`
+                      : `${entry.title} ${money(entry.amountPaise ?? 0, kit)}${count ? ` · ${count}×` : ""}: log again`
+                  }
                 >
                   {kind === "repeat" ? (
                     <Repeat2 aria-hidden="true" />
@@ -126,7 +130,7 @@ export function QuickAdd({
                     {kind === "repeat" ? "Repeat " : ""}
                     {entry.title}
                   </span>
-                  <span className="money text-muted-foreground">
+                  <span className="text-muted-foreground money">
                     {money(entry.amountPaise ?? 0, kit)}
                     {count ? ` · ${count}×` : ""}
                   </span>
@@ -172,8 +176,8 @@ function QuickTile({
   const label = ready
     ? `${tile.title}, ${amount}. Saves in one tap`
     : tile.askDetails
-      ? `${tile.title}. Enter what it was`
-      : `${tile.title}. Set the amount`;
+      ? `${tile.title}. Any item: enter what it was`
+      : `${tile.title}. Set amount`;
   return (
     <li className="relative" data-state={state}>
       <button
@@ -198,7 +202,7 @@ function QuickTile({
             </span>
           )}
         </span>
-        <span className="line-clamp-1 type-body font-medium">{tile.title}</span>
+        <span className="line-clamp-1 type-body font-medium">{tile.title}</span>{" "}
         <span
           className={cn(
             "flex items-center gap-1 type-caption money",

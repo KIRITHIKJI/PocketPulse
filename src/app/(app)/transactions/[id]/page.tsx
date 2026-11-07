@@ -1,14 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Info, Pencil, PiggyBank, RotateCcw } from "lucide-react";
+import { ArrowLeft, Pencil, PiggyBank, RotateCcw } from "lucide-react";
 
 import { CategoryBadge } from "@/components/categories/category-icon";
+import { Notice } from "@/components/feedback/notice";
 import { PageHeader } from "@/components/layout/page-header";
 import { DeleteEntryButton, RepeatEntryButton } from "@/components/transactions/entry-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Surface, SurfaceHeader } from "@/components/ui/surface";
 import {
   type TransactionSource,
   indexById,
@@ -129,6 +130,22 @@ export default async function TransactionDetailPage({
   // Savings moves (allocations/releases) are managed from the goal they belong to.
   const editable = isEntryType(record.type);
 
+  // Goal moves aren't spending: money set aside stays yours, a release goes back to flexible.
+  const goalTitle =
+    "goalId" in record ? (goals.find((g) => g.id === record.goalId)?.title ?? "a goal") : null;
+  const goalMove =
+    record.type === "allocation"
+      ? `Set aside for ${goalTitle}. Still yours, not spent.`
+      : record.type === "allocation_release"
+        ? `Released from ${goalTitle} back to your flexible money. Not income.`
+        : null;
+  const amountTone =
+    view.tone === "in"
+      ? "text-money-positive"
+      : goalMove
+        ? "text-money-earmark"
+        : "text-foreground";
+
   return (
     <>
       <div>
@@ -141,70 +158,78 @@ export default async function TransactionDetailPage({
       </div>
       <PageHeader title={view.title} />
 
-      <Card className="gap-5">
-        <div className="flex items-center gap-4">
-          <CategoryBadge icon={view.categoryIcon} color={view.categoryColor} />
-          <div className="min-w-0">
-            <p
-              className={`tabular text-3xl font-semibold tracking-tight ${view.tone === "in" ? "text-positive" : ""}`}
-              data-testid="entry-amount"
-            >
-              {view.amountLabel}
-            </p>
-            <p className="text-sm text-muted-foreground">{when}</p>
-          </div>
-        </div>
-
-        {beforeOpening.map((a) => (
-          <p key={a!.id} className="flex gap-2 rounded-lg bg-warning/10 p-2.5 text-xs" role="note">
-            <Info className="mt-0.5 size-3.5 shrink-0 text-warning" aria-hidden="true" />
-            {beforeOpeningText(a!.name, formatLocalDate(a!.openingBalanceDate), true)}
-          </p>
-        ))}
-
-        <dl className="divide-y text-sm">
-          {rows.map(([term, value]) => (
-            <div key={term} className="flex items-start justify-between gap-4 py-2.5">
-              <dt className="shrink-0 text-muted-foreground">{term}</dt>
-              <dd className="min-w-0 text-right break-words">{value}</dd>
+      {/* Phones: amount, facts, actions. Desktop: amount and actions left, facts right. */}
+      <div className="grid gap-4 lg:grid-cols-12 lg:grid-rows-[auto_1fr] lg:items-start lg:gap-6">
+        <Surface variant="hero" className="min-w-0 lg:col-span-7">
+          <div className="flex items-center gap-4">
+            <CategoryBadge icon={view.categoryIcon} color={view.categoryColor} />
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <p className="type-caption text-muted-foreground">{TYPE_LABELS[record.type]}</p>
+              <p className={`type-display money ${amountTone}`} data-testid="entry-amount">
+                {view.amountLabel}
+              </p>
+              <p className="type-caption text-muted-foreground">{when}</p>
             </div>
-          ))}
-        </dl>
-
-        {record.type === "expense" && refunds.length > 0 && (
-          <div className="flex flex-col gap-2 rounded-xl bg-positive-soft p-3 text-sm">
-            <p className="font-medium">
-              {money(refundedAmount(record.id, ledger))} of {money(record.amountPaise)} refunded
-            </p>
-            <ul className="flex flex-col gap-1">
-              {refunds.map((r) => (
-                <li key={r.id}>
-                  <Link
-                    href={`/transactions/${r.id}`}
-                    className="underline-offset-4 hover:underline"
-                  >
-                    {money(r.amountPaise)} on {formatDateTime(r.occurredAt, tz)}
-                  </Link>
-                </li>
-              ))}
-            </ul>
           </div>
-        )}
-        {original && (
-          <p className="text-sm">
-            Refund of{" "}
-            <Link
-              href={`/transactions/${original.id}`}
-              className="font-medium text-primary underline-offset-4 hover:underline"
-            >
-              {original.description || original.merchant || "the original expense"} (
-              {money(original.amountPaise)})
-            </Link>
-            . It adds money back and reduces spending; it isn’t counted as income.
-          </p>
-        )}
+          {goalMove && <p className="type-body text-text-secondary">{goalMove}</p>}
 
-        <div className="flex flex-wrap gap-2 border-t pt-4">
+          {beforeOpening.map((a) => (
+            <Notice key={a!.id} tone="warning">
+              {beforeOpeningText(a!.name, formatLocalDate(a!.openingBalanceDate), true)}
+            </Notice>
+          ))}
+
+          {record.type === "expense" && refunds.length > 0 && (
+            <Surface variant="inset" className="gap-2 type-body">
+              <p className="font-medium">
+                <span className="text-money-positive money">
+                  {money(refundedAmount(record.id, ledger))}
+                </span>{" "}
+                of <span className="money">{money(record.amountPaise)}</span> refunded
+              </p>
+              <ul className="flex flex-col">
+                {refunds.map((r) => (
+                  <li key={r.id}>
+                    <Link
+                      href={`/transactions/${r.id}`}
+                      className="inline-flex items-center text-primary underline-offset-4 hover:underline pointer-coarse:min-h-11"
+                    >
+                      <span className="money">{money(r.amountPaise)}</span>&nbsp;on{" "}
+                      {formatDateTime(r.occurredAt, tz)}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </Surface>
+          )}
+          {original && (
+            <p className="type-body text-text-secondary">
+              Refund of{" "}
+              <Link
+                href={`/transactions/${original.id}`}
+                className="font-medium text-primary underline-offset-4 hover:underline"
+              >
+                {original.description || original.merchant || "the original expense"} (
+                <span className="money">{money(original.amountPaise)}</span>)
+              </Link>
+              . It adds money back and reduces spending; it isn’t counted as income.
+            </p>
+          )}
+        </Surface>
+
+        <Surface className="min-w-0 lg:col-span-5 lg:col-start-8 lg:row-span-2 lg:row-start-1">
+          <SurfaceHeader title="Details" />
+          <dl className="-my-1 divide-y type-body">
+            {rows.map(([term, value]) => (
+              <div key={term} className="flex items-start justify-between gap-4 py-2.5">
+                <dt className="shrink-0 text-muted-foreground">{term}</dt>
+                <dd className="min-w-0 text-right break-words">{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </Surface>
+
+        <div className="flex flex-wrap gap-2 lg:col-span-7 lg:col-start-1">
           {editable && (
             <Button asChild>
               <Link href={`/transactions/${record.id}/edit`}>
@@ -266,7 +291,7 @@ export default async function TransactionDetailPage({
             })}
           />
         </div>
-      </Card>
+      </div>
     </>
   );
 }

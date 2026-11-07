@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Bell, Plus } from "lucide-react";
+import { Bell } from "lucide-react";
 
 import { Logo } from "@/components/brand/logo";
 import { AccountMenu } from "@/components/layout/account-menu";
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { getUnreadCount } from "@/lib/data/queries";
 import { optionalSession } from "@/lib/data/session";
 
-/** Top bar: brand on mobile (the bottom bar holds navigation); quick actions on desktop. */
+/** Top bar: brand on mobile (the bottom bar holds navigation), the bell, theme and account. Add lives in the sidebar on desktop and the bottom bar on phones. */
 export async function AppHeader() {
   const [user, unread] = await Promise.all([optionalSession(), getUnreadCount()]);
   return (
@@ -17,12 +17,6 @@ export async function AppHeader() {
         <Logo />
       </Link>
       <div className="ml-auto flex items-center gap-1">
-        <Button asChild size="sm" className="hidden lg:inline-flex">
-          <Link href="/add">
-            <Plus aria-hidden="true" />
-            Add expense
-          </Link>
-        </Button>
         {user && (
           <Button
             asChild

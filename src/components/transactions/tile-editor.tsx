@@ -256,7 +256,7 @@ export function TileEditor({ tiles, tree }: { tiles: EditableTile[]; tree: Picke
       <CategoryBadge icon={tile.icon} color={tile.color} size="sm" />
       <div className="min-w-36 flex-1">
         <p className="truncate font-medium">{tile.label}</p>
-        <p className="truncate text-xs money text-muted-foreground">
+        <p className="truncate text-xs text-muted-foreground money">
           {tile.amountLabel ?? "No usual amount"} · {tile.categoryLabel ?? "Asks for a category"}
         </p>
       </div>

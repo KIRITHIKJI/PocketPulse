@@ -43,7 +43,7 @@ function summaryRows(report: ParentReport, money: (paise: number) => string) {
     [`Income · ${count(report.incomeCount, "entry", "entries")}`, money(report.incomePaise)],
     [
       `Expenses · ${count(report.expenseCount, "purchase", "purchases")}`,
-      `−${money(report.expensesPaise)}`,
+      report.expensesPaise > 0 ? `−${money(report.expensesPaise)}` : money(0),
     ],
     [`Refunds · ${count(report.refundCount, "entry", "entries")}`, money(report.refundsPaise)],
     ["Net movement", money(report.netMovementPaise), true],

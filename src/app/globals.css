@@ -430,10 +430,10 @@
   }
 }
 
-/* Every money figure: aligned digits that don't jitter while animating, and a zero that reads as one. */
+/* Every money figure: aligned digits that don't jitter while animating, and a zero that reads as one.
+   No nowrap: it's used on sentences that hold figures too, and a figure has no space to break at. */
 @utility money {
   font-variant-numeric: tabular-nums slashed-zero;
-  white-space: nowrap;
 }
 
 @layer base {

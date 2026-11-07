@@ -7,7 +7,7 @@ import { CategoryPicker, type PickerNode } from "@/components/categories/categor
 import { ActionForm, FormMessage, SubmitButton } from "@/components/forms/form-parts";
 import { InlineAction } from "@/components/forms/inline-action";
 import { StatePanel } from "@/components/states/state-panel";
-import { Card } from "@/components/ui/card";
+import { Surface } from "@/components/ui/surface";
 import { assignCategory } from "@/lib/actions/categories";
 import { IDLE } from "@/lib/forms";
 
@@ -32,24 +32,26 @@ function QueueRow({ item, tree }: { item: QueueItem; tree: PickerNode[] }) {
   const rememberText = item.description ?? "";
   return (
     <li>
-      <Card className="gap-3">
+      <Surface className="h-full">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="truncate font-medium">{title}</p>
-            <p className="text-xs text-muted-foreground">
+            <p className="truncate type-body font-medium">{title}</p>
+            <p className="type-caption text-muted-foreground">
               {item.dateLabel}
               {item.merchant && item.description ? ` · ${item.merchant}` : ""}
             </p>
           </div>
-          <p className="tabular shrink-0 font-semibold">{item.amountLabel}</p>
+          <p className="shrink-0 type-body font-semibold money">{item.amountLabel}</p>
         </div>
 
         {item.suggestion && (
-          <div className="flex flex-wrap items-center gap-2 rounded-xl bg-primary-soft/60 p-2.5">
+          <Surface variant="inset" className="flex-row flex-wrap items-center gap-2">
             <Sparkles className="size-4 shrink-0 text-primary" aria-hidden="true" />
-            <p className="min-w-0 flex-1 text-sm">
+            <p className="min-w-0 flex-1 type-body">
               Suggested: <span className="font-medium">{item.suggestion.label}</span>
-              <span className="block text-xs text-muted-foreground">{item.suggestion.reason}</span>
+              <span className="block type-caption text-muted-foreground">
+                {item.suggestion.reason}
+              </span>
             </p>
             <InlineAction
               action={assignCategory}
@@ -65,7 +67,7 @@ function QueueRow({ item, tree }: { item: QueueItem; tree: PickerNode[] }) {
               <CircleCheck aria-hidden="true" />
               Use this
             </InlineAction>
-          </div>
+          </Surface>
         )}
 
         <ActionForm action={formAction} className="flex flex-col gap-3">
@@ -81,7 +83,7 @@ function QueueRow({ item, tree }: { item: QueueItem; tree: PickerNode[] }) {
           />
           <div className="flex flex-wrap items-center justify-between gap-3">
             {rememberText.trim() ? (
-              <label className="flex items-center gap-2 text-sm">
+              <label className="flex min-h-10 items-center gap-2 type-body pointer-coarse:min-h-11">
                 <input type="checkbox" name="remember" className="size-4 accent-[var(--primary)]" />
                 Remember for “{rememberText}”
               </label>
@@ -93,7 +95,7 @@ function QueueRow({ item, tree }: { item: QueueItem; tree: PickerNode[] }) {
             </SubmitButton>
           </div>
         </ActionForm>
-      </Card>
+      </Surface>
     </li>
   );
 }
@@ -102,20 +104,23 @@ function QueueRow({ item, tree }: { item: QueueItem; tree: PickerNode[] }) {
 export function UncategorizedQueue({ items, tree }: { items: QueueItem[]; tree: PickerNode[] }) {
   if (items.length === 0) {
     return (
-      <StatePanel
-        icon={CircleCheck}
-        title="Nothing waiting"
-        description="Every expense has a category. Entries saved without one land here so you can sort them later."
-      />
+      <Surface>
+        <StatePanel
+          size="section"
+          icon={CircleCheck}
+          title="Nothing waiting"
+          description="Nothing to sort. Every expense has a category."
+        />
+      </Surface>
     );
   }
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-sm text-muted-foreground">
+      <p className="type-body text-muted-foreground">
         {items.length} {items.length === 1 ? "expense needs" : "expenses need"} a category. They
         already count in your balance and totals as “Uncategorized”.
       </p>
-      <ul className="grid gap-3 md:grid-cols-2">
+      <ul className="grid gap-3 md:grid-cols-2 lg:gap-4">
         {items.map((item) => (
           <QueueRow key={`${item.id}-${item.version}`} item={item} tree={tree} />
         ))}

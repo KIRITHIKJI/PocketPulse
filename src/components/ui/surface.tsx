@@ -66,12 +66,15 @@ function SurfaceSkeleton() {
 function SurfaceHeader({
   className,
   title,
+  titleId,
   meta,
   action,
   children,
   ...props
 }: Omit<React.ComponentProps<"div">, "title"> & {
   title?: React.ReactNode;
+  /** For `aria-labelledby` on the surrounding region. */
+  titleId?: string;
   meta?: React.ReactNode;
   /** One trailing action (a link or ghost button). */
   action?: React.ReactNode;
@@ -83,7 +86,11 @@ function SurfaceHeader({
       {...props}
     >
       <div className="flex min-w-0 flex-col gap-0.5">
-        {title ? <h2 className="type-heading">{title}</h2> : null}
+        {title ? (
+          <h2 id={titleId} className="type-heading">
+            {title}
+          </h2>
+        ) : null}
         {meta ? <p className="type-caption text-text-secondary">{meta}</p> : null}
         {children}
       </div>

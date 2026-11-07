@@ -37,7 +37,7 @@ export async function SafeToSpendCard() {
               <span className="type-body">
                 About{" "}
                 <span
-                  className="font-semibold money text-money-estimate"
+                  className="font-semibold text-money-estimate money"
                   data-testid="home-safe-daily"
                   data-paise={daily}
                 >

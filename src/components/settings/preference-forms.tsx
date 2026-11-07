@@ -86,7 +86,14 @@ export function RemindersForm({ prefs, ...step }: { prefs: ReminderPreferences }
   );
 }
 
-export function PrivacyFields({ includeNotesInReports }: { includeNotesInReports: boolean }) {
+export function PrivacyFields({
+  includeNotesInReports,
+  summary = true,
+}: {
+  includeNotesInReports: boolean;
+  /** The three-line privacy summary; off where the full statements are already on screen. */
+  summary?: boolean;
+}) {
   return (
     <div className="flex flex-col gap-3">
       <SwitchRow
@@ -96,29 +103,32 @@ export function PrivacyFields({ includeNotesInReports }: { includeNotesInReports
         description="You still review every report before exporting it, and can change this per report."
         defaultChecked={includeNotesInReports}
       />
-      <ul className="flex flex-col gap-2 rounded-xl bg-muted/60 p-3 text-sm text-muted-foreground">
-        {[
-          "Your entries are private to your account. Nothing is shared with parents or anyone else unless you export it yourself.",
-          "Expense details are never sent to an AI service. Suggestions and text parsing run inside PocketPulse.",
-          "Balances are what you enter. PocketPulse isn’t connected to any bank and doesn’t verify them.",
-        ].map((line) => (
-          <li key={line} className="flex gap-2">
-            <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-            {line}
-          </li>
-        ))}
-      </ul>
+      {summary && (
+        <ul className="flex flex-col gap-2 rounded-xl bg-surface-inset p-3 type-body text-muted-foreground">
+          {[
+            "Your entries are private to your account. Nothing is shared with parents or anyone else unless you export it yourself.",
+            "Expense details are never sent to an AI service. Suggestions and text parsing run inside PocketPulse.",
+            "Balances are what you enter. PocketPulse isn’t connected to any bank and doesn’t verify them.",
+          ].map((line) => (
+            <li key={line} className="flex gap-2">
+              <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+              {line}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
 
 export function PrivacyForm({
   includeNotesInReports,
+  summary,
   ...step
-}: { includeNotesInReports: boolean } & StepProps) {
+}: { includeNotesInReports: boolean; summary?: boolean } & StepProps) {
   return (
     <SettingsForm action={savePrivacy} {...step}>
-      {() => <PrivacyFields includeNotesInReports={includeNotesInReports} />}
+      {() => <PrivacyFields includeNotesInReports={includeNotesInReports} summary={summary} />}
     </SettingsForm>
   );
 }

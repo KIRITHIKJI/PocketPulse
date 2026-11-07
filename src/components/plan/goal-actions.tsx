@@ -15,12 +15,21 @@ import {
 import { ConfirmAction, InlineAction } from "@/components/forms/inline-action";
 import { FormMessage } from "@/components/forms/form-parts";
 import { Button } from "@/components/ui/button";
+import { Surface } from "@/components/ui/surface";
 import { type GoalStatus, moneyFormatter } from "@/domain";
 import { setGoalStatus } from "@/lib/actions/goals";
 import type { EntryKit } from "@/lib/data/entry-kit";
 import { IDLE, type FormState } from "@/lib/forms";
 
-const CONFETTI = ["#8b5cf6", "#a3e635", "#f472b6", "#38bdf8", "#facc15", "#c4b5fd"];
+/** Theme tokens only, so the burst matches both themes. */
+const CONFETTI = [
+  "var(--color-primary)",
+  "var(--color-feedback-success)",
+  "var(--color-money-earmark)",
+  "var(--color-feedback-info)",
+  "var(--color-feedback-warning)",
+  "var(--color-rank)",
+];
 
 /** A short burst around a message that stays. It covers nothing and blocks nothing. */
 function GoalCelebration({
@@ -29,14 +38,14 @@ function GoalCelebration({
   onDismiss,
 }: {
   title: string;
-  savedLabel: string;
+  savedLabel: React.ReactNode;
   onDismiss: () => void;
 }) {
   return (
-    <div
+    <Surface
       role="status"
       data-testid="goal-celebration"
-      className="relative flex items-center gap-3 overflow-hidden rounded-2xl border border-positive/40 bg-positive-soft p-4"
+      className="flex-row items-center gap-3 overflow-hidden border-feedback-success/40 bg-feedback-success/10"
     >
       {Array.from({ length: 14 }, (_, i) => {
         const angle = (i / 14) * 2 * Math.PI;
@@ -48,17 +57,17 @@ function GoalCelebration({
         } as React.CSSProperties;
         return <span key={i} aria-hidden="true" className="pp-celebrate-piece" style={style} />;
       })}
-      <span className="pp-celebrate-pop flex size-11 shrink-0 items-center justify-center rounded-full bg-positive text-background">
+      <span className="pp-celebrate-pop flex size-11 shrink-0 items-center justify-center rounded-full bg-feedback-success text-background">
         <PartyPopper className="size-5" aria-hidden="true" />
       </span>
       <div className="min-w-0 flex-1">
-        <p className="font-semibold">You did it: {title} is complete</p>
-        <p className="text-sm text-muted-foreground">{savedLabel}</p>
+        <p className="type-heading">You did it: {title} is complete</p>
+        <p className="type-body text-muted-foreground">{savedLabel}</p>
       </div>
       <Button variant="ghost" size="icon-sm" aria-label="Dismiss" onClick={onDismiss}>
         <X aria-hidden="true" />
       </Button>
-    </div>
+    </Surface>
   );
 }
 
@@ -105,9 +114,14 @@ export function GoalStatusActions({
         <GoalCelebration
           title={title}
           savedLabel={
-            savedPaise > 0
-              ? `${money(savedPaise)} is still set aside. Release it, or record the purchase, when you use it.`
-              : "Every step of it stays in this goal’s history."
+            savedPaise > 0 ? (
+              <>
+                <span className="text-money-earmark money">{money(savedPaise)}</span> is still set
+                aside. Release it, or record the purchase, when you use it.
+              </>
+            ) : (
+              "Every step of it stays in this goal’s history."
+            )
           }
           onDismiss={() => setCelebrating(false)}
         />

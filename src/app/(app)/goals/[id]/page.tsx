@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, ArrowDownLeft, ArrowUpRight, PartyPopper } from "lucide-react";
+import { ArrowLeft, ArrowDownLeft, ArrowUpRight, PartyPopper, PiggyBank } from "lucide-react";
 
 import { CategoryBadge } from "@/components/categories/category-icon";
+import { Notice } from "@/components/feedback/notice";
 import { PageHeader } from "@/components/layout/page-header";
 import { GoalStatusActions } from "@/components/plan/goal-actions";
 import { GoalPurchaseDialog } from "@/components/plan/goal-purchase-dialog";
@@ -11,9 +12,10 @@ import { GoalMoveDialog } from "@/components/plan/goal-move-dialog";
 import { GoalFormDialog } from "@/components/plan/goal-form";
 import { GoalReleaseNotes } from "@/components/plan/goal-release-notes";
 import { FigureRow, PlanNote, ProgressRing } from "@/components/plan/parts";
+import { StatePanel } from "@/components/states/state-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Surface, SurfaceHeader } from "@/components/ui/surface";
 import {
   type ContributionCadence,
   formatBasisPoints,
@@ -27,6 +29,7 @@ import { getGoal, getGoalLedgerVersions, getGoals, getSpendingLedger } from "@/l
 import { mergeLedger } from "@/lib/data/slices";
 import { formatDateTime, formatLocalDate } from "@/lib/format";
 import { goalReleaseNotes } from "@/lib/plan-view";
+import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Savings goal" };
 
@@ -91,18 +94,15 @@ export default async function GoalDetailPage({ params }: { params: Promise<{ id:
         currency={profile.currency}
       />
 
-      <div className="grid gap-4 lg:grid-cols-5">
-        <Card className="min-w-0 gap-4 lg:col-span-3">
+      <div className="grid gap-4 lg:grid-cols-5 lg:gap-6">
+        <Surface variant="hero" className="min-w-0 lg:col-span-3">
           <div className="flex items-center gap-4">
-            <ProgressRing bp={done ? 10_000 : progress.progressBp} size={104}>
+            <ProgressRing bp={done ? 10_000 : progress.progressBp} size={104} tone="earmark">
               <CategoryBadge icon={goal.icon ?? "piggy-bank"} color={null} />
             </ProgressRing>
-            <div className="min-w-0">
+            <div className="flex min-w-0 flex-col gap-1">
               <div className="flex flex-wrap items-center gap-2">
-                <p
-                  className="tabular text-3xl font-semibold tracking-tight"
-                  data-testid="goal-saved"
-                >
+                <p className="type-display text-money-earmark money" data-testid="goal-saved">
                   {money(progress.savedPaise)}
                 </p>
                 {goal.status !== "active" && (
@@ -111,19 +111,18 @@ export default async function GoalDetailPage({ params }: { params: Promise<{ id:
                   </Badge>
                 )}
               </div>
-              <p className="text-sm text-muted-foreground">
-                set aside of {money(goal.targetPaise)} · {formatBasisPoints(progress.progressBp, 0)}
+              <p className="type-body text-text-secondary">
+                set aside, still yours · of <span className="money">{money(goal.targetPaise)}</span>{" "}
+                · <span className="money">{formatBasisPoints(progress.progressBp, 0)}</span>
               </p>
             </div>
           </div>
           {progress.completed && goal.status === "active" && (
-            <p
-              className="flex items-center gap-2 rounded-lg bg-positive-soft p-3 text-sm"
-              data-testid="goal-reached"
-            >
-              <PartyPopper className="size-4 shrink-0 text-positive" aria-hidden="true" />
-              You’ve reached your target. Mark it complete when you’re ready.
-            </p>
+            <div data-testid="goal-reached">
+              <Notice tone="success" icon={PartyPopper}>
+                You’ve reached your target. Mark it complete when you’re ready.
+              </Notice>
+            </div>
           )}
           <dl className="divide-y">
             <FigureRow
@@ -140,7 +139,12 @@ export default async function GoalDetailPage({ params }: { params: Promise<{ id:
               <FigureRow
                 label="At your pace so far"
                 value={formatLocalDate(forecast.reachedOn)}
-                explanation={`About ${money(forecast.dailyPacePaise)} a day since your first allocation. An estimate, not a promise.`}
+                explanation={
+                  <>
+                    About <span className="money">{money(forecast.dailyPacePaise)}</span> a day
+                    since your first allocation. An estimate, not a promise.
+                  </>
+                }
               />
             )}
           </dl>
@@ -177,57 +181,75 @@ export default async function GoalDetailPage({ params }: { params: Promise<{ id:
             )}
           </div>
           {goal.status === "paused" && (
-            <PlanNote>Resume this goal to set more aside. Its money stays set aside.</PlanNote>
+            <Notice tone="info">
+              Resume this goal to set more aside. Its money stays set aside.
+            </Notice>
           )}
           <PlanNote>
             Setting money aside lowers what’s safe to spend, not your tracked balance. Bought what
             you saved for? “I bought it” records the real expense and releases the money in one
             step, so it’s subtracted once.
           </PlanNote>
-        </Card>
+        </Surface>
 
-        <Card className="min-w-0 gap-2 lg:col-span-2">
-          <h2 className="font-semibold">History</h2>
+        <Surface className="min-w-0 lg:col-span-2">
+          <SurfaceHeader
+            title="History"
+            meta="Earmarks only. These are never income or spending."
+          />
           {moves.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Nothing set aside yet. Every allocation and release will show here.
-            </p>
+            <StatePanel
+              size="section"
+              icon={PiggyBank}
+              title="Nothing set aside yet"
+              description="Every allocation and release will show here."
+            />
           ) : (
-            <ul className="-mx-2 flex flex-col" data-testid="goal-history">
-              {moves.map((tx) => (
-                <li key={tx.id}>
-                  <Link
-                    href={`/transactions/${tx.id}`}
-                    className="flex min-h-12 items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-accent/50"
-                  >
-                    {tx.type === "allocation" ? (
-                      <ArrowDownLeft className="size-4 text-positive" aria-hidden="true" />
-                    ) : (
-                      <ArrowUpRight className="size-4 text-muted-foreground" aria-hidden="true" />
-                    )}
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium">
-                        {tx.note === PURCHASE_RELEASE_NOTE
-                          ? tx.note
-                          : `${tx.type === "allocation" ? "Set aside" : "Released"}${tx.note ? ` · ${tx.note}` : ""}`}
+            <ul className="-mx-2 flex flex-col divide-y" data-testid="goal-history">
+              {moves.map((tx) => {
+                const allocation = tx.type === "allocation";
+                return (
+                  <li key={tx.id}>
+                    <Link
+                      href={`/transactions/${tx.id}`}
+                      className="flex min-h-14 items-center gap-3 rounded-md px-2 py-2 transition-colors duration-(--duration-quick) outline-none hover:bg-surface-2 focus-visible:ring-[3px] focus-visible:ring-ring/50 lg:min-h-12"
+                    >
+                      {allocation ? (
+                        <ArrowDownLeft
+                          className="size-4 shrink-0 text-money-earmark"
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <ArrowUpRight
+                          className="size-4 shrink-0 text-muted-foreground"
+                          aria-hidden="true"
+                        />
+                      )}
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate type-body font-medium">
+                          {tx.note === PURCHASE_RELEASE_NOTE
+                            ? tx.note
+                            : `${allocation ? "Set aside" : "Released"}${tx.note ? ` · ${tx.note}` : ""}`}
+                        </span>
+                        <span className="block type-caption text-muted-foreground">
+                          {formatDateTime(tx.occurredAt, profile.timeZone)}
+                        </span>
                       </span>
-                      <span className="block text-xs text-muted-foreground">
-                        {formatDateTime(tx.occurredAt, profile.timeZone)}
+                      <span
+                        className={cn(
+                          "shrink-0 type-body font-medium money",
+                          allocation ? "text-money-earmark" : "text-text-secondary",
+                        )}
+                      >
+                        {money(tx.amountPaise)}
                       </span>
-                    </span>
-                    <span className="tabular text-sm font-medium">
-                      {tx.type === "allocation" ? "+" : "−"}
-                      {money(tx.amountPaise)}
-                    </span>
-                  </Link>
-                </li>
-              ))}
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           )}
-          <p className="text-xs text-muted-foreground">
-            Earmarks only. These are never income or spending.
-          </p>
-        </Card>
+        </Surface>
       </div>
     </>
   );

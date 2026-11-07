@@ -272,7 +272,7 @@ Empty state = what a brand-new user (no entries, no budgets, no goals) sees.
 
 ### Goals (`/goals`)
 
-- **Desktop:** a 3-column grid of goal surfaces: name, ring or Progress, saved of target, "set aside, still yours" in the earmark colour. Paused and completed goals in a collapsed group below.
+- **Desktop:** a 3-column grid of goal surfaces: name, ring or Progress, saved of target, "set aside, still yours" in the earmark colour. Paused, completed and archived goals as compact rows below (Design 4: not collapsed, so every goal stays one tap away; rows keep them from crowding the active ones).
 - **Mobile:** a single column of goal rows with Progress.
 - **Empty:** "Save toward something specific. Money you set aside stays in your balance." with Add goal.
 
@@ -356,7 +356,7 @@ Empty state = what a brand-new user (no entries, no budgets, no goals) sees.
 | Progress | Player status · Missions · Achievements · Rewards |
 | You | Parent report · Reminders · Settings |
 
-Items are 40 px tall (44 px on touch laptops). The 2 × 2 Record grid and tighter group spacing make the whole list fit 900 px without scrolling.
+Items are 40 px tall (44 px on touch laptops). The 2 × 2 Record grid and tighter group spacing shorten the list, but with progress features on it doesn't fit 900 px: the groups scroll under a fixed logo, chip and Add button (Design 4, measured).
 
 ### Mobile
 

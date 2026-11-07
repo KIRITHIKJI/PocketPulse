@@ -5,6 +5,7 @@ import type { PickerNode } from "@/components/categories/category-picker";
 import { Field, MoneyField, SelectField } from "@/components/forms/form-parts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Surface } from "@/components/ui/surface";
 import type { Account, TransactionType } from "@/domain";
 import { TYPE_LABELS } from "@/lib/entry-view";
 import { paiseToInput } from "@/lib/format";
@@ -57,7 +58,7 @@ export function HistoryFilterForm({
   const hasErrors = Object.keys(errors).length > 0;
 
   return (
-    <form method="get" action="/transactions" role="search" className="flex flex-col gap-3">
+    <form method="get" action="/transactions" role="search" className="flex flex-col">
       {/* Narrowing set by a link from Insights survives changing the other filters. */}
       {filters.noSubcategory && <input type="hidden" name="nosub" value="1" />}
       {filters.underPaise !== null && (
@@ -69,31 +70,53 @@ export function HistoryFilterForm({
           <input type="hidden" name="key" value={filters.group.key} />
         </>
       )}
-      <div className="flex gap-2">
-        <div className="relative min-w-0 flex-1">
-          <Search
-            className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
-            aria-hidden="true"
-          />
-          <Input
-            type="search"
-            name="q"
-            defaultValue={filters.q}
-            placeholder="Search description, merchant, note, tag, category"
-            aria-label="Search transactions"
-            className="pl-9"
-            enterKeyHint="search"
-          />
+      <Surface className="gap-3">
+        <div className="flex gap-2">
+          <div className="relative min-w-0 flex-1">
+            <Search
+              className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+              aria-hidden="true"
+            />
+            <Input
+              type="search"
+              name="q"
+              defaultValue={filters.q}
+              placeholder="Search description, merchant, note, tag, category"
+              aria-label="Search transactions"
+              className="pl-9"
+              enterKeyHint="search"
+            />
+          </div>
+          <Button type="submit">Search</Button>
         </div>
-        <Button type="submit">Search</Button>
-      </div>
 
-      <details className="group rounded-2xl border bg-card" open={activeCount > 0 || hasErrors}>
-        <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-4 text-sm font-medium [&::-webkit-details-marker]:hidden">
+        {/* Phones: a Filters toggle with the active count. It is a checkbox with no name (so it
+            isn't submitted) and works before JavaScript loads. Desktop: the filters always show. */}
+        <input
+          id="history-filters-toggle"
+          type="checkbox"
+          className="peer sr-only lg:hidden"
+          defaultChecked={hasErrors}
+          aria-controls="history-filters-panel"
+        />
+        <label
+          htmlFor="history-filters-toggle"
+          className="inline-flex min-h-10 w-fit cursor-pointer items-center gap-2 rounded-lg border px-3 type-body font-medium transition-colors duration-(--duration-quick) select-none peer-focus-visible:ring-[3px] peer-focus-visible:ring-ring/50 hover:bg-accent lg:hidden pointer-coarse:min-h-11"
+        >
           <SlidersHorizontal className="size-4" aria-hidden="true" />
-          Filters{activeCount > 0 ? ` (${activeCount})` : ""}
-        </summary>
-        <div className="grid gap-4 border-t p-4 sm:grid-cols-2 lg:grid-cols-4">
+          Filters
+          {activeCount > 0 ? (
+            <span className="rounded-full bg-primary-soft px-2 type-caption text-primary">
+              {activeCount}
+              <span className="sr-only"> active</span>
+            </span>
+          ) : null}
+        </label>
+
+        <div
+          id="history-filters-panel"
+          className="hidden gap-3 border-t pt-3 peer-checked:grid sm:grid-cols-2 lg:grid lg:grid-cols-4 xl:grid-cols-7"
+        >
           <SelectField id="filter-type" name="type" label="Type" defaultValue={filters.type ?? ""}>
             <option value="">All types</option>
             <option value={SPENDING_FILTER}>Spending (expenses and refunds)</option>
@@ -128,22 +151,20 @@ export function HistoryFilterForm({
               </option>
             ))}
           </SelectField>
-          <div className="grid grid-cols-2 gap-3">
-            <MoneyField
-              id="filter-min"
-              name="min"
-              label="Min amount"
-              defaultValue={paiseToInput(filters.minPaise)}
-              error={errors.min}
-            />
-            <MoneyField
-              id="filter-max"
-              name="max"
-              label="Max amount"
-              defaultValue={paiseToInput(filters.maxPaise)}
-              error={errors.max}
-            />
-          </div>
+          <MoneyField
+            id="filter-min"
+            name="min"
+            label="Min amount"
+            defaultValue={paiseToInput(filters.minPaise)}
+            error={errors.min}
+          />
+          <MoneyField
+            id="filter-max"
+            name="max"
+            label="Max amount"
+            defaultValue={paiseToInput(filters.maxPaise)}
+            error={errors.max}
+          />
           <Field
             id="filter-from"
             name="from"
@@ -160,8 +181,10 @@ export function HistoryFilterForm({
             defaultValue={filters.to ?? ""}
             error={errors.to}
           />
-          <div className="flex items-end gap-2 sm:col-span-2">
-            <Button type="submit">Apply filters</Button>
+          <div className="flex flex-wrap items-center gap-2 sm:col-span-2 lg:col-span-4 xl:col-span-7">
+            <Button type="submit" variant="outline">
+              Apply filters
+            </Button>
             {(activeCount > 0 || filters.q) && (
               <Button variant="ghost" asChild>
                 <Link href="/transactions">Clear all</Link>
@@ -169,7 +192,7 @@ export function HistoryFilterForm({
             )}
           </div>
         </div>
-      </details>
+      </Surface>
     </form>
   );
 }

@@ -8,7 +8,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { StatePanel } from "@/components/states/state-panel";
 import { TransactionForm } from "@/components/transactions/transaction-form";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Surface } from "@/components/ui/surface";
 import { indexById, occurredAtMs, toLocalDate, toLocalTime } from "@/domain";
 import { loadEntryKit } from "@/lib/data/entry-kit";
 import { getLedgerRecord, getSpendingLedger } from "@/lib/data/queries";
@@ -74,7 +74,7 @@ export default async function EditTransactionPage({ params }: { params: Promise<
         title="Edit entry"
         description="Balances, history and category totals update as soon as you save."
       />
-      <Card>
+      <Surface className="w-full max-w-3xl">
         <TransactionForm
           kit={kit}
           mode="edit"
@@ -103,7 +103,7 @@ export default async function EditTransactionPage({ params }: { params: Promise<
             tags: record.tags.join(", "),
           }}
         />
-      </Card>
+      </Surface>
     </>
   );
 }

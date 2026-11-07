@@ -82,7 +82,7 @@ export function Progress({
           <span id={labelId} className="min-w-0 text-text-secondary">
             {label}
           </span>
-          <span className="flex items-center gap-1 font-medium money text-foreground">
+          <span className="flex items-center gap-1 font-medium text-foreground money">
             {complete ? (
               <Check className="size-3.5 text-feedback-success" aria-hidden="true" />
             ) : null}

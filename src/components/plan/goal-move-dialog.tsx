@@ -107,8 +107,17 @@ function MoveForm({
       />
       {setAside && flexiblePaise !== null && (
         <PlanNote>
-          Your tracked balance doesn’t change. Flexible money goes from {money(flexiblePaise)}
-          {parsed.ok ? ` to ${money(flexiblePaise - parsed.paise)}` : " down by this amount"}.
+          Your tracked balance doesn’t change. Flexible money goes from{" "}
+          <span className="money">{money(flexiblePaise)}</span>
+          {parsed.ok ? (
+            <>
+              {" "}
+              to <span className="money">{money(flexiblePaise - parsed.paise)}</span>
+            </>
+          ) : (
+            " down by this amount"
+          )}
+          .
         </PlanNote>
       )}
       {!setAside && (

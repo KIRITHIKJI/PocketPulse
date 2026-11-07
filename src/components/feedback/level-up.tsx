@@ -33,7 +33,7 @@ export function LevelUpMoment({ levelUp, onDismiss }: { levelUp: LevelUp; onDism
         >
           <div className="pp-level-rise relative flex flex-col items-center gap-stack overflow-hidden rounded-3xl border border-primary/30 bg-(--surface-hero-bg) p-6 text-center shadow-(--surface-overlay-shadow) before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-(image:--gradient-status-edge)">
             <p className="type-caption tracking-wide text-muted-foreground uppercase">Level up</p>
-            <DialogPrimitive.Title className="type-display money text-progress-xp">
+            <DialogPrimitive.Title className="type-display text-progress-xp money">
               Level {levelUp.to}
             </DialogPrimitive.Title>
             <DialogPrimitive.Description className="type-body text-muted-foreground">
