@@ -8,6 +8,8 @@ import {
   MOBILE_TABS,
   SECTION_TABS,
   YOU_ITEMS,
+  visibleGroups,
+  visibleItems,
   findActiveItem,
 } from "@/lib/navigation";
 
@@ -74,12 +76,28 @@ describe("navigation structure", () => {
       "/budgets",
     ]);
     expect(YOU_ITEMS.map((item) => item.href)).toEqual([
+      "/rewards/status",
+      "/rewards/missions",
+      "/rewards/achievements",
       "/rewards",
       "/reports",
       "/reminders",
       "/settings",
     ]);
     expect(findActiveItem("/reports/export", YOU_ITEMS)?.label).toBe("Parent report");
+    expect(findActiveItem("/rewards/status", YOU_ITEMS)?.label).toBe("Player status");
+    expect(findActiveItem("/rewards", YOU_ITEMS)?.label).toBe("Rewards");
+  });
+
+  it("with progress features off, no progression screen is in navigation", () => {
+    const hrefs = (show: boolean) =>
+      [...visibleItems(YOU_ITEMS, show), ...visibleGroups(show).flatMap((g) => g.items)].map(
+        (item) => item.href,
+      );
+    expect(hrefs(false).some((href) => href.startsWith("/rewards"))).toBe(false);
+    expect(hrefs(false)).toEqual(expect.arrayContaining(["/reports", "/settings", "/home"]));
+    expect(visibleGroups(false).map((g) => g.label)).not.toContain("Progress");
+    expect(hrefs(true)).toEqual(expect.arrayContaining(["/rewards/status", "/rewards"]));
   });
 
   it("has no duplicate navigation destinations", () => {

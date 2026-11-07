@@ -7,9 +7,9 @@ import { Plus } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
 import { SidebarNavLink } from "@/components/layout/nav-link";
 import { Button } from "@/components/ui/button";
-import { ALL_NAV_ITEMS, NAV_GROUPS, findActiveItem } from "@/lib/navigation";
+import { ALL_NAV_ITEMS, findActiveItem, visibleGroups } from "@/lib/navigation";
 
-export function AppSidebar() {
+export function AppSidebar({ showProgress = true }: { showProgress?: boolean }) {
   const pathname = usePathname();
   const active = findActiveItem(pathname, ALL_NAV_ITEMS);
 
@@ -28,7 +28,7 @@ export function AppSidebar() {
         </Link>
       </Button>
       <nav className="-mx-1 flex flex-1 flex-col gap-4 overflow-y-auto px-1 pb-2">
-        {NAV_GROUPS.map((group) => (
+        {visibleGroups(showProgress).map((group) => (
           <div key={group.label} className="flex flex-col gap-0.5">
             <p className="px-3 pb-1 text-[0.7rem] font-semibold tracking-wider text-muted-foreground/80 uppercase">
               {group.label}

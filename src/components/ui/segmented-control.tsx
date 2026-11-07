@@ -40,7 +40,7 @@ export function SegmentedControl<T extends string>({
         <RadioGroup.Item
           key={optionValue}
           value={optionValue}
-          className="inline-flex min-h-10 items-center gap-2 rounded-lg px-3 text-sm font-medium text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 data-[state=checked]:bg-card data-[state=checked]:text-foreground data-[state=checked]:shadow-sm"
+          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 data-[state=checked]:bg-card data-[state=checked]:text-foreground data-[state=checked]:shadow-sm pointer-coarse:min-h-11"
         >
           {Icon ? <Icon className="size-4" aria-hidden="true" /> : null}
           {label}

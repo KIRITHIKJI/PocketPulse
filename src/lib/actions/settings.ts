@@ -12,6 +12,7 @@ import {
   appearanceSchema,
   incomeSchema,
   privacySchema,
+  progressSchema,
   profileNameSchema,
   regionSchema,
   remindersSchema,
@@ -135,6 +136,18 @@ export async function saveReminders(_prev: FormState, formData: FormData): Promi
     .from("notification_preferences")
     .update(patch)
     .eq("owner_id", userId);
+  if (error) return { status: "error", message: dbErrorMessage(error) };
+  return finish(formData);
+}
+
+/** The off switch for XP, levels and missions on Home and in navigation. Rewards still sync. */
+export async function saveProgressFeatures(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = progressSchema.safeParse({ showProgress: flag(formData, "showProgress") });
+  if (!parsed.success) return invalid(parsed.error);
+  const { error } = await updateProfile({ show_progress: parsed.data.showProgress });
   if (error) return { status: "error", message: dbErrorMessage(error) };
   return finish(formData);
 }

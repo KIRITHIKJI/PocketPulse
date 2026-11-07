@@ -10,9 +10,10 @@ import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/
 import {
   ALL_NAV_ITEMS,
   MOBILE_TABS,
-  NAV_GROUPS,
   YOU_ITEMS,
   findActiveItem,
+  visibleGroups,
+  visibleItems,
 } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 
@@ -37,7 +38,7 @@ function TabMark({ icon: Icon, active }: { icon: LucideIcon; active: boolean }) 
  * floats over the page. You opens a sheet with progress, Reports, Reminders, Settings and every
  * other section.
  */
-export function BottomNav() {
+export function BottomNav({ showProgress = true }: { showProgress?: boolean }) {
   const pathname = usePathname();
   const [youOpen, setYouOpen] = React.useState(false);
   const active = findActiveItem(pathname, MOBILE_TABS);
@@ -93,7 +94,12 @@ export function BottomNav() {
           </button>
         </li>
       </ul>
-      <YouSheet open={youOpen} onOpenChange={setYouOpen} pathname={pathname} />
+      <YouSheet
+        open={youOpen}
+        onOpenChange={setYouOpen}
+        pathname={pathname}
+        showProgress={showProgress}
+      />
     </nav>
   );
 }
@@ -102,10 +108,12 @@ function YouSheet({
   open,
   onOpenChange,
   pathname,
+  showProgress,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   pathname: string;
+  showProgress: boolean;
 }) {
   const active = findActiveItem(pathname, ALL_NAV_ITEMS);
   const youActive = findActiveItem(pathname, YOU_ITEMS);
@@ -120,7 +128,7 @@ function YouSheet({
           </SheetDescription>
         </div>
         <nav aria-label="You" className="flex flex-col gap-0.5">
-          {YOU_ITEMS.map((item) => (
+          {visibleItems(YOU_ITEMS, showProgress).map((item) => (
             <SidebarNavLink
               key={item.href}
               item={item}
@@ -133,7 +141,7 @@ function YouSheet({
           aria-label="All sections"
           className="grid grid-cols-1 gap-4 border-t pt-4 sm:grid-cols-2"
         >
-          {NAV_GROUPS.map((group) => (
+          {visibleGroups(showProgress).map((group) => (
             <div key={group.label} className="flex flex-col gap-0.5">
               <p className="px-3 pb-1 type-caption font-semibold text-muted-foreground">
                 {group.label}

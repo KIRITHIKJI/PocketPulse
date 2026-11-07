@@ -61,34 +61,69 @@ async function deleteEntries(page: Page) {
   }
 }
 
-test("rewards follow the entries: deleting one takes back what it earned, re-adding never earns twice", async ({
+/** Everything that counts as a pop-up: never more than one at a time. */
+const popUps = async (page: Page) =>
+  (await page.getByTestId("toast").count()) + (await page.getByTestId("level-up").count());
+
+/** Unlocked achievements, which stay unlocked (with their XP) whatever happens to entries. */
+async function unlockedXp(page: Page) {
+  await page.goto("/rewards/achievements?show=unlocked");
+  await expect(
+    main(page).getByRole("heading", { name: "Achievements", exact: true }),
+  ).toBeVisible();
+  const badges = main(page).locator('[data-testid="achievement"][data-state="unlocked"]');
+  let sum = 0;
+  for (const text of await badges.allTextContents())
+    sum += Number(/\+(\d+) XP/.exec(text)?.[1] ?? 0);
+  return sum;
+}
+
+test("daily XP follows the entries; achievements stay; re-adding never earns twice", async ({
   page,
 }) => {
   await deleteEntries(page);
   await page.goto("/rewards");
   await expect(main(page).getByTestId("reward-xp")).toBeVisible();
   const without = await xpOf(page);
+  const achievementsBefore = await unlockedXp(page);
 
-  await logEntry(page, `${WORD} 50`);
+  // Saving: one confirmation at a time, whatever the save earned.
+  await page.goto("/add/text");
+  await expect(async () => {
+    await page.getByRole("textbox", { name: "What did you spend?" }).fill(`${WORD} 50`);
+    await page.getByRole("button", { name: "Review entries" }).click();
+    await expect(page.getByRole("heading", { name: /^Check/ })).toBeVisible({ timeout: 1_000 });
+  }).toPass();
+  await page.getByRole("button", { name: /^Save 1 entry/ }).click();
+  await expect(toast(page)).toContainText("Saved");
+  for (let i = 0; i < 15; i += 1) {
+    expect(await popUps(page)).toBeLessThanOrEqual(1);
+    await page.waitForTimeout(200);
+  }
+
   await page.goto("/rewards");
-  await expect(main(page).getByRole("heading", { name: "Quests" })).toBeVisible();
-  await expect(main(page).getByTestId("streak-daily")).not.toHaveText("0");
-  await expect(main(page).getByTestId("achievement")).toHaveCount(7);
+  await expect(main(page).getByRole("heading", { name: "Today and this week" })).toBeVisible();
   const xp = await xpOf(page);
-  expect(xp).toBeGreaterThan(0);
+  expect(xp).toBeGreaterThanOrEqual(without);
+  await page.goto("/rewards/status");
+  await expect(main(page).getByTestId("streak-daily")).not.toHaveText(/^0/);
+  await page.goto("/rewards/achievements");
+  await expect(main(page).getByTestId("achievement")).toHaveCount(7);
 
   // Same data, same XP, however many times it's worked out.
+  await page.goto("/rewards");
   await page.reload();
   await expect(main(page).getByTestId("reward-xp")).toBeVisible();
   expect(await xpOf(page)).toBe(xp);
 
-  // Deleting the entry puts XP back where it was without it; re-adding earns it once more, not
-  // twice; deleting again goes back again.
+  // Deleting the entry puts the daily XP back where it was; an achievement it unlocked stays.
+  // Re-adding earns the day once more, not twice.
+  const kept = (await unlockedXp(page)) - achievementsBefore;
   for (let round = 0; round < 2; round += 1) {
     await deleteEntries(page);
     await page.goto("/rewards");
     await expect(main(page).getByTestId("reward-xp")).toBeVisible();
-    expect(await xpOf(page)).toBe(without);
+    expect(await xpOf(page)).toBe(without + kept);
     if (round === 0) {
       await logEntry(page, `${WORD} 50`);
       await page.goto("/rewards");
@@ -99,26 +134,48 @@ test("rewards follow the entries: deleting one takes back what it earned, re-add
   await expect(main(page)).not.toContainText(/broke|lost your|don.t lose/i);
 });
 
-test("a quest can be skipped and brought back, and a review only counts once", async ({ page }) => {
-  await page.goto("/rewards");
-  const quest = main(page).getByTestId("quest-card").filter({ hasText: "Log today" });
-  await quest.getByRole("button", { name: "Skip the Log today quest" }).click();
-  await expect(quest).toHaveCount(0);
-  const back = main(page).getByRole("button", { name: "Bring back Log today" });
-  await back.click();
-  await expect(quest).toBeVisible();
+test("a mission can be skipped and brought back, and a review only counts once", async ({
+  page,
+}) => {
+  await page.goto("/rewards/missions");
+  const daily = main(page).getByTestId("missions-daily");
+  const mission = daily.locator('[data-testid="mission"][data-code="log_today"]');
+  await expect(mission).toBeVisible();
+  await mission.getByRole("button", { name: "Skip the Log today mission" }).click();
+  await expect(mission).toHaveCount(0);
+  await daily.getByRole("button", { name: "Bring back the Log today mission" }).click();
+  await expect(mission).toBeVisible();
 
+  // On a phone the groups are one at a time; on a laptop all three columns show.
+  await expect(main(page).getByTestId("missions-once")).toBeAttached();
+
+  await page.goto("/rewards");
   const review = main(page).getByRole("button", { name: "I’ve reviewed this week" });
   if ((await review.count()) > 0) {
     await review.click();
     await expect(
-      main(page).getByTestId("quest-card").filter({ hasText: "Weekly review" }),
-    ).toContainText("Done");
+      main(page).locator('[data-testid="mission"][data-code="weekly_review"]'),
+    ).toHaveAttribute("data-state", "done");
   }
   const xp = await xpOf(page);
   await page.reload();
   await expect(main(page).getByTestId("reward-xp")).toBeVisible();
   expect(await xpOf(page)).toBe(xp);
+});
+
+test("Home links its progress to Player status and shows Safe to Spend as an estimate", async ({
+  page,
+}) => {
+  await page.goto("/home");
+  await expect(main(page).getByTestId("player-chip")).toHaveAttribute("href", "/rewards/status");
+  const card = main(page).getByTestId("safe-to-spend-card");
+  await expect(card).toContainText("Safe to Spend · estimate");
+  await expect(card).toHaveAttribute("href", "/safe-to-spend");
+  await main(page).getByTestId("player-chip").click();
+  await expect(page).toHaveURL(/\/rewards\/status$/);
+  await expect(
+    main(page).getByRole("heading", { name: "Player status", exact: true }),
+  ).toBeVisible();
 });
 
 test("a reminder appears once, only when on, and can be dismissed", async ({ page }) => {

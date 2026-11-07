@@ -10,6 +10,7 @@ const LABELS: Record<keyof typeof SECTION_TABS, string> = {
   record: "Ways to record",
   insights: "Insights sections",
   plan: "Planning tools",
+  progress: "Progress sections",
 };
 
 /**

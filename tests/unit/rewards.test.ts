@@ -3,8 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   OPT_OUT_PERIOD,
   XP,
-  type AchievementDefinition,
-  type QuestDefinition,
   type ReminderSettings,
   type Transaction,
   budgetSchema,
@@ -19,7 +17,6 @@ import {
   totalXp,
 } from "@/domain";
 import {
-  type RewardData,
   type RewardState,
   type RewardStore,
   planRewardSync,
@@ -40,113 +37,7 @@ import {
   transfer,
 } from "./domain/fixtures";
 
-const IST = { timeZone: "Asia/Kolkata", weekStartsOn: 1 } as const;
-const NOW = istMs("2026-11-11", "18:00"); // a Wednesday
-const TODAY = "2026-11-11";
-
-const ACHIEVEMENTS: AchievementDefinition[] = [
-  ["first_10_transactions", 50],
-  ["streak_7_day", 70],
-  ["no_mystery_money", 60],
-  ["first_savings_goal", 40],
-  ["monthly_budget_achieved", 100],
-  ["spending_detective", 40],
-  ["weekly_review_complete", 30],
-].map(([code, xp]) => ({
-  code: code as string,
-  xp: xp as number,
-  title: String(code),
-  description: "",
-  icon: null,
-}));
-const QUESTS: QuestDefinition[] = [
-  ["log_today", "daily", 5],
-  ["categorise_week", "weekly", 20],
-  ["weekly_review", "weekly", 15],
-  ["set_a_goal", "once", 20],
-].map(([code, cadence, xp]) => ({
-  code: code as string,
-  cadence: cadence as QuestDefinition["cadence"],
-  xp: xp as number,
-  target: 1,
-  title: String(code),
-  description: "",
-}));
-
-/** An entry logged at that moment, whatever date it's for. */
-const logged = (when: string, o: Parameters<typeof expense>[1] = {}, amount = 2_000) => {
-  const tx = expense(amount, { occurredAt: when, ...o });
-  return { ...tx, createdAt: when, updatedAt: when };
-};
-const day = (n: number, time = "12:00") => ist(`2026-11-${String(n).padStart(2, "0")}`, time);
-
-function data(ledger: Transaction[], extra: Partial<RewardData> = {}): RewardData {
-  return {
-    ledger,
-    goals: [],
-    budgets: [],
-    achievements: ACHIEVEMENTS,
-    quests: QUESTS,
-    now: NOW,
-    settings: IST,
-    ...extra,
-  };
-}
-
-/** The database's one rule that matters here: one row per key. */
-function memoryStore(): RewardStore & { state: RewardState } {
-  let state: RewardState = { events: [], achievements: [], quests: [] };
-  return {
-    get state() {
-      return state;
-    },
-    async read() {
-      return structuredClone(state);
-    },
-    async addEvents(events) {
-      for (const e of events) {
-        if (state.events.some((s) => s.sourceKey === e.sourceKey)) continue;
-        state.events.push({ ...e, createdAt: ist("2026-11-11"), revokedAt: null });
-      }
-    },
-    async revokeEvents(keys) {
-      for (const e of state.events) {
-        if (keys.includes(e.sourceKey) && e.revokedAt === null) e.revokedAt = ist("2026-11-11");
-      }
-    },
-    async restoreEvents(keys) {
-      for (const e of state.events) if (keys.includes(e.sourceKey)) e.revokedAt = null;
-    },
-    async addAchievements(codes) {
-      for (const code of codes) {
-        if (!state.achievements.some((a) => a.code === code)) {
-          state.achievements.push({ code, unlockedAt: ist("2026-11-11") });
-        }
-      }
-    },
-    async removeAchievements(codes) {
-      state = { ...state, achievements: state.achievements.filter((a) => !codes.includes(a.code)) };
-    },
-    async saveQuests(rows) {
-      for (const q of rows) {
-        const found = state.quests.find(
-          (s) => s.questCode === q.code && s.periodKey === q.periodKey,
-        );
-        const completedAt = q.complete ? ist("2026-11-11") : null;
-        if (found) found.completedAt = q.complete ? (found.completedAt ?? completedAt) : null;
-        else {
-          state.quests.push({
-            questCode: q.code,
-            periodKey: q.periodKey,
-            completedAt,
-            optedOutAt: null,
-          });
-        }
-      }
-    },
-    async saveStreaks() {},
-  };
-}
+import { IST, TODAY, data, day, logged, memoryStore } from "./reward-fixtures";
 
 describe("streaks across IST midnight", () => {
   const streak = (days: string[], today = TODAY) => calculateStreaks(days, today, IST);
@@ -203,6 +94,7 @@ describe("what earns XP", () => {
     const keys = calculateRewards({
       ...data(entries),
       reviewedWeeks: [],
+      reviewedDays: [],
       insightsExplored: 0,
       optedOutQuests: [],
     }).events.filter((e) => e.kind === "logged_day");
@@ -232,6 +124,7 @@ describe("what earns XP", () => {
         { ...income(100), createdAt: day(4) },
       ]),
       reviewedWeeks: [],
+      reviewedDays: [],
       insightsExplored: 0,
       optedOutQuests: [],
     });
@@ -249,6 +142,7 @@ describe("what earns XP", () => {
       calculateRewards({
         ...data(rows),
         reviewedWeeks: [],
+        reviewedDays: [],
         insightsExplored: 0,
         optedOutQuests: [],
       }).achievementCodes;
@@ -275,6 +169,7 @@ describe("what earns XP", () => {
       calculateRewards({
         ...data(rows, { budgets: [b] }),
         reviewedWeeks: [],
+        reviewedDays: [],
         insightsExplored: 0,
         optedOutQuests: [],
       }).achievementCodes;
@@ -325,16 +220,39 @@ describe("undo takes back exactly what the entry earned", () => {
     expect(totalXp(after.state.events)).toBe(totalXp(both.state.events));
   });
 
-  it("the tenth entry's achievement goes with it, and comes back with a new tenth", async () => {
+  it("an achievement stays once earned: undoing the tenth entry keeps it and its XP", async () => {
     const store = memoryStore();
     const nine = Array.from({ length: 9 }, () => logged(day(11)));
     const tenth = await syncRewardsWith(store, data([...nine, tea]));
     expect(tenth.newAchievements).toContain("first_10_transactions");
+    const xp = totalXp(tenth.state.events);
+
+    // Nine entries are left. The day still has entries, so nothing at all is taken back.
     const undone = await syncRewardsWith(store, data(nine));
-    expect(undone.state.achievements.map((a) => a.code)).not.toContain("first_10_transactions");
-    expect(totalXp(undone.state.events)).toBe(totalXp(tenth.state.events) - 50);
+    expect(undone.state.achievements.map((a) => a.code)).toContain("first_10_transactions");
+    expect(totalXp(undone.state.events)).toBe(xp);
+    expect(
+      undone.state.events.find((e) => e.sourceKey === "achievement:first_10_transactions")
+        ?.revokedAt,
+    ).toBeNull();
+
+    // A new tenth entry can't unlock it a second time or add its XP again.
     const redone = await syncRewardsWith(store, data([...nine, logged(day(11))]));
-    expect(totalXp(redone.state.events)).toBe(totalXp(tenth.state.events));
+    expect(redone.newAchievements).toEqual([]);
+    expect(totalXp(redone.state.events)).toBe(xp);
+    expect(store.state.events.filter((e) => e.kind === "achievement")).toHaveLength(1);
+  });
+
+  it("undoing the only entry of the day takes the day's XP and mission back, never the achievement", async () => {
+    const store = memoryStore();
+    const earlier = Array.from({ length: 9 }, () => logged(day(10)));
+    await syncRewardsWith(store, data([...earlier, tea]));
+    const undone = await syncRewardsWith(store, data(earlier));
+    const live = undone.state.events.filter((e) => !e.revokedAt).map((e) => e.sourceKey);
+    expect(live).not.toContain(`logged_day:${TODAY}`);
+    expect(live).not.toContain(`quest:log_today:${TODAY}`);
+    expect(live).toContain("achievement:first_10_transactions");
+    expect(undone.state.achievements.map((a) => a.code)).toContain("first_10_transactions");
   });
 
   it("never touches awards that aren't about entries, or last period's missions", async () => {
@@ -416,13 +334,18 @@ describe("idempotency", () => {
     expect(store.state.events).toHaveLength(first.state.events.length);
   });
 
-  it("deleting entries revokes what they earned: XP, achievements and the streak's days", async () => {
+  it("deleting entries revokes their days and the streak, but achievements stay", async () => {
     const store = memoryStore();
-    await syncRewardsWith(store, data(entries));
+    const first = await syncRewardsWith(store, data(entries));
+    const achievementXp = first.state.events
+      .filter((e) => e.kind === "achievement")
+      .reduce((sum, e) => sum + e.xp, 0);
     const { streaks, state } = await syncRewardsWith(store, data(entries.slice(0, 2)));
-    // Two entries on two days are left: two logged days, nothing else.
-    expect(totalXp(state.events)).toBe(2 * XP.loggedDay);
-    expect(state.achievements.map((a) => a.code)).not.toContain("first_10_transactions");
+    // Two entries on two days are left: two logged days, plus the achievements already earned.
+    expect(totalXp(state.events)).toBe(2 * XP.loggedDay + achievementXp);
+    expect(state.achievements.map((a) => a.code)).toEqual(
+      expect.arrayContaining(["first_10_transactions", "streak_7_day"]),
+    );
     expect(streaks.longestDaily).toBe(2);
   });
 
@@ -464,6 +387,7 @@ describe("idempotency", () => {
     store.state.quests.push({
       questCode: "log_today",
       periodKey: "opt-out",
+      progress: 0,
       completedAt: null,
       optedOutAt: ist("2026-11-01"),
     });
@@ -678,6 +602,7 @@ describe("sync without reading back", () => {
       store.state.quests.push({
         questCode: "set_a_goal",
         periodKey: OPT_OUT_PERIOD,
+        progress: 0,
         completedAt: null,
         optedOutAt: ist("2026-11-02"),
       });

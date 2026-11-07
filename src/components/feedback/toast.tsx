@@ -12,7 +12,18 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import { LevelUpMoment, type LevelUp } from "@/components/feedback/level-up";
 import { Button } from "@/components/ui/button";
+import {
+  type QueueState,
+  type RewardTier,
+  EMPTY_QUEUE,
+  amendAction,
+  cancelSource,
+  dismiss as dismissItem,
+  enqueueReward,
+  showAction,
+} from "@/lib/feedback-queue";
 import { cn } from "@/lib/utils";
 
 /**
@@ -22,8 +33,7 @@ import { cn } from "@/lib/utils";
  */
 export type ToastTone = "success" | "error" | "info" | "progress" | "milestone";
 
-type Toast = {
-  id: number;
+type ActionToast = {
   tone: ToastTone;
   message: string;
   /** A short first line for milestones ("Achievement unlocked"). */
@@ -36,8 +46,20 @@ type Toast = {
   quiet: boolean;
 };
 
+/** A reward waiting its turn: a toast, or (for a new level) the one full moment. */
+export type RewardNotice =
+  | { tone: "progress" | "milestone"; title?: string; message: string; durationMs?: number }
+  | { tone: "level"; levelUp: LevelUp };
+
 type ToastContextValue = {
-  show: (toast: Omit<Toast, "id" | "quiet">) => void;
+  /** An action's confirmation: shows now. `sourceId` (the save's op id) lets rewards join it. */
+  show: (toast: Omit<ActionToast, "quiet"> & { sourceId?: string | null }) => void;
+  /** A reward: waits until nothing else is showing, in ladder order. */
+  reward: (tier: RewardTier, notice: RewardNotice, sourceId?: string | null) => void;
+  /** The quiet XP line: joins the save's confirmation if it's still up, else queues on its own. */
+  note: (sourceId: string, text: string) => void;
+  /** An Undo of `sourceId`: drops what it earned that hasn't shown yet. */
+  cancel: (sourceId: string) => void;
   dismiss: () => void;
   /** The entry recorded most recently in this session, for a brief highlight in lists. */
   highlightId: string | null;
@@ -48,6 +70,7 @@ const ToastContext = React.createContext<ToastContextValue | null>(null);
 
 const VISIBLE_MS = 8_000;
 const MILESTONE_VISIBLE_MS = 10_000;
+const PROGRESS_VISIBLE_MS = 4_000;
 /** From the third routine toast within this window, routine toasts go quiet. */
 const ROUTINE_WINDOW_MS = 2 * 60_000;
 const ROUTINE_QUIET_AFTER = 2;
@@ -57,23 +80,27 @@ const TONES: Record<ToastTone, { icon: LucideIcon; iconClass: string; edge?: str
   error: { icon: CircleAlert, iconClass: "text-feedback-error", edge: "border-feedback-error/40" },
   info: { icon: Info, iconClass: "text-feedback-info" },
   progress: { icon: Sparkles, iconClass: "text-progress-xp", edge: "border-progress-xp/35" },
-  milestone: { icon: Award, iconClass: "text-progress-xp", edge: "border-progress-xp/60" },
+  milestone: { icon: Award, iconClass: "text-rank", edge: "border-progress-xp/60" },
 };
 
+type State = QueueState<ActionToast, RewardNotice>;
+
 /**
- * One toast at a time, announced politely to screen readers, above the mobile bottom bar. It
- * lives in the app layout, so an Undo offered on one screen survives navigating to another.
+ * One pop-up at a time (`lib/feedback-queue.ts`), announced politely to screen readers, above
+ * the mobile bottom bar. It lives in the app layout, so an Undo offered on one screen survives
+ * navigating to another.
  */
 export function ToastProvider({ children }: { children: React.ReactNode }) {
-  const [toast, setToast] = React.useState<Toast | null>(null);
+  const [state, setState] = React.useState<State>(EMPTY_QUEUE);
   const [running, setRunning] = React.useState(false);
   const [highlightId, setHighlightId] = React.useState<string | null>(null);
   const [paused, setPaused] = React.useState(false);
   const nextId = React.useRef(0);
   const routineTimes = React.useRef<number[]>([]);
+  const id = () => (nextId.current += 1);
 
-  const dismiss = React.useCallback(() => setToast(null), []);
-  const show = React.useCallback((next: Omit<Toast, "id" | "quiet">) => {
+  const dismiss = React.useCallback(() => setState((s) => dismissItem(s)), []);
+  const show = React.useCallback<ToastContextValue["show"]>(({ sourceId = null, ...next }) => {
     let quiet = false;
     if (next.routine) {
       const now = Date.now();
@@ -81,38 +108,95 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       quiet = recent.length >= ROUTINE_QUIET_AFTER;
       routineTimes.current = [...recent, now];
     }
-    nextId.current += 1;
     setRunning(false);
-    setToast({ ...next, id: nextId.current, quiet });
+    setState((s) =>
+      showAction(s, {
+        kind: "action",
+        id: id(),
+        sourceId,
+        note: null,
+        payload: { ...next, quiet },
+      }),
+    );
   }, []);
-
-  React.useEffect(() => {
-    if (!toast || paused || running) return;
-    const visible =
-      toast.durationMs ?? (toast.tone === "milestone" ? MILESTONE_VISIBLE_MS : VISIBLE_MS);
-    const timer = window.setTimeout(() => setToast(null), visible);
-    return () => window.clearTimeout(timer);
-  }, [toast, paused, running]);
-
-  const value = React.useMemo(
-    () => ({ show, dismiss, highlightId, setHighlightId }),
-    [show, dismiss, highlightId],
+  const reward = React.useCallback<ToastContextValue["reward"]>(
+    (tier, notice, sourceId = null) =>
+      setState((s) =>
+        enqueueReward(s, { kind: "reward", id: id(), sourceId, tier, payload: notice }),
+      ),
+    [],
+  );
+  const note = React.useCallback<ToastContextValue["note"]>(
+    (sourceId, text) =>
+      setState(
+        (s) =>
+          amendAction(s, sourceId, text) ??
+          enqueueReward(s, {
+            kind: "reward",
+            id: id(),
+            sourceId,
+            tier: "progress",
+            payload: { tone: "progress", message: text },
+          }),
+      ),
+    [],
+  );
+  const cancel = React.useCallback(
+    (sourceId: string) => setState((s) => cancelSource(s, sourceId)),
+    [],
   );
 
+  const current = state.current;
+  React.useEffect(() => {
+    if (!current || paused || running) return;
+    const payload = current.payload;
+    if (current.kind === "reward" && payload.tone === "level") return; // Dismissed by the person.
+    const visible =
+      ("durationMs" in payload ? payload.durationMs : undefined) ??
+      (payload.tone === "milestone"
+        ? MILESTONE_VISIBLE_MS
+        : payload.tone === "progress"
+          ? PROGRESS_VISIBLE_MS
+          : VISIBLE_MS);
+    const timer = window.setTimeout(() => setState((s) => dismissItem(s, current.id)), visible);
+    return () => window.clearTimeout(timer);
+  }, [current, paused, running]);
+
+  const value = React.useMemo(
+    () => ({ show, reward, note, cancel, dismiss, highlightId, setHighlightId }),
+    [show, reward, note, cancel, dismiss, highlightId],
+  );
+
+  const level =
+    current?.kind === "reward" && current.payload.tone === "level" ? current.payload.levelUp : null;
+  const toast =
+    current && !level
+      ? {
+          ...(current.payload as Exclude<RewardNotice, { tone: "level" }> & Partial<ActionToast>),
+          note: current.kind === "action" ? current.note : null,
+        }
+      : null;
   const tone = toast ? TONES[toast.tone] : null;
   const Icon = tone?.icon;
 
   return (
     <ToastContext.Provider value={value}>
       {children}
+      {level && current && (
+        <LevelUpMoment
+          key={current.id}
+          levelUp={level}
+          onDismiss={() => setState((s) => dismissItem(s, current.id))}
+        />
+      )}
       <div
         role="status"
         aria-live="polite"
         className="pointer-events-none fixed inset-x-0 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-50 flex justify-center px-4 lg:right-6 lg:bottom-6 lg:left-auto lg:justify-end"
       >
-        {toast && tone && Icon && (
+        {toast && tone && Icon && current && (
           <div
-            key={toast.id}
+            key={current.id}
             data-testid="toast"
             data-tone={toast.tone}
             data-quiet={toast.quiet || undefined}
@@ -128,10 +212,22 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               tone.edge,
             )}
           >
-            <Icon className={cn("size-4 shrink-0", tone.iconClass)} aria-hidden="true" />
+            <Icon
+              className={cn(
+                "size-4 shrink-0",
+                tone.iconClass,
+                toast.tone === "milestone" && "pp-milestone-ring rounded-full",
+              )}
+              aria-hidden="true"
+            />
             <div className="min-w-0 flex-1">
               {toast.title ? <p className="font-medium">{toast.title}</p> : null}
               <p className={cn(toast.title && "text-muted-foreground")}>{toast.message}</p>
+              {toast.note ? (
+                <p className="type-caption text-progress-xp" data-testid="toast-xp">
+                  {toast.note}
+                </p>
+              ) : null}
             </div>
             {toast.action && (
               <Button

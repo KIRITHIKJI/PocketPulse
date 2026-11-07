@@ -7,6 +7,8 @@ import {
   Gauge,
   House,
   LifeBuoy,
+  ListChecks,
+  Medal,
   MessageSquareText,
   Mic,
   PiggyBank,
@@ -17,6 +19,7 @@ import {
   Tags,
   Target,
   Trophy,
+  UserRound,
   Wallet,
   Zap,
   type LucideIcon,
@@ -28,9 +31,18 @@ export type NavItem = {
   icon: LucideIcon;
   /** Extra path prefixes that should also mark this item active (e.g. a tab that covers several screens). */
   also?: readonly string[];
+  /** A progression screen: hidden from navigation when progress features are off (Settings). */
+  progress?: true;
 };
 
 type NavGroup = { label: string; items: readonly NavItem[] };
+
+const PROGRESS_ITEMS: readonly NavItem[] = [
+  { href: "/rewards/status", label: "Player status", icon: UserRound, progress: true },
+  { href: "/rewards/missions", label: "Missions", icon: ListChecks, progress: true },
+  { href: "/rewards/achievements", label: "Achievements", icon: Medal, progress: true },
+  { href: "/rewards", label: "Rewards", icon: Trophy, progress: true },
+];
 
 /** Full app navigation used by the desktop sidebar and the mobile "More" sheet. */
 export const NAV_GROUPS: readonly NavGroup[] = [
@@ -76,10 +88,10 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     label: "Share",
     items: [{ href: "/reports", label: "Parent report", icon: FileText }],
   },
+  { label: "Progress", items: PROGRESS_ITEMS },
   {
     label: "You",
     items: [
-      { href: "/rewards", label: "Rewards", icon: Trophy },
       { href: "/reminders", label: "Reminders", icon: Bell },
       { href: "/settings", label: "Settings", icon: Settings },
     ],
@@ -109,7 +121,7 @@ export const MOBILE_TABS: readonly NavItem[] = [
 
 /** The "You" tab's sheet: progress first, then the secondary screens. Reports is two taps away. */
 export const YOU_ITEMS: readonly NavItem[] = [
-  { href: "/rewards", label: "Player status", icon: Trophy },
+  ...PROGRESS_ITEMS,
   { href: "/reports", label: "Parent report", icon: FileText },
   { href: "/reminders", label: "Reminders", icon: Bell },
   { href: "/settings", label: "Settings", icon: Settings },
@@ -120,6 +132,7 @@ export const SECTION_TABS = {
   record: NAV_GROUPS[1]!.items,
   insights: NAV_GROUPS[3]!.items,
   plan: NAV_GROUPS[4]!.items,
+  progress: PROGRESS_ITEMS,
 } as const;
 
 function matchLength(pathname: string, prefix: string): number {
@@ -152,3 +165,15 @@ export function findActiveItem<T extends NavItem>(
 }
 
 export const ALL_NAV_ITEMS: readonly NavItem[] = NAV_GROUPS.flatMap((group) => group.items);
+
+/** Navigation without progression screens, for when progress features are off. */
+export function visibleItems<T extends NavItem>(items: readonly T[], showProgress: boolean): T[] {
+  return showProgress ? [...items] : items.filter((item) => !item.progress);
+}
+
+export function visibleGroups(showProgress: boolean): NavGroup[] {
+  return NAV_GROUPS.map((group) => ({
+    ...group,
+    items: visibleItems(group.items, showProgress),
+  })).filter((group) => group.items.length > 0);
+}

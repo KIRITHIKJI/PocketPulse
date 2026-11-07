@@ -28,6 +28,8 @@ export interface Profile {
   safeToSpendReservePaise: number;
   includeNotesInReports: boolean;
   onboardingCompletedAt: string | null;
+  /** Show XP, levels and missions on Home and in navigation (Settings → Progress). */
+  showProgress: boolean;
 }
 
 function toProfile(row: Row): Profile {
@@ -46,6 +48,8 @@ function toProfile(row: Row): Profile {
     safeToSpendReservePaise: Number(row.safe_to_spend_reserve_paise ?? 0),
     includeNotesInReports: Boolean(row.include_notes_in_reports),
     onboardingCompletedAt: (row.onboarding_completed_at as string | null) ?? null,
+    // Absent before migration 20261106000200: progress features stay on, as they were.
+    showProgress: row.show_progress !== false,
   };
 }
 

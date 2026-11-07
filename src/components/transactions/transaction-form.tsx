@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { ActionForm, FormMessage, SubmitButton } from "@/components/forms/form-parts";
 import { useToast } from "@/components/feedback/toast";
+import { useRewardFeedback } from "@/components/feedback/reward-feedback";
 import { useLedger, withSaveTimeout } from "@/components/transactions/use-ledger";
 import { type EntryFormState, saveEntryForm } from "@/lib/actions/transactions";
 import type { EntryKit } from "@/lib/data/entry-kit";
@@ -38,6 +39,7 @@ export function TransactionForm({
   const router = useRouter();
   const { show, setHighlightId } = useToast();
   const { undo, queue } = useLedger();
+  const { afterSave } = useRewardFeedback();
   const [ids, setIds] = React.useState({ id: initial.id, opId: initialOpId });
   const [formKey, setFormKey] = React.useState(0);
 
@@ -68,6 +70,7 @@ export function TransactionForm({
       }
       if (next.status !== "success" || !next.result?.ok) return next;
       const { status, undo: reverse } = next.result;
+      const sourceId = String(formData.get("opId"));
       if (status === "queued") {
         if (mode === "create") {
           setIds({ id: newId(), opId: newId() });
@@ -78,7 +81,8 @@ export function TransactionForm({
         }
         return next;
       }
-      const action = reverse ? { label: "Undo", run: () => undo(reverse) } : undefined;
+      const action = reverse ? { label: "Undo", run: () => undo(reverse, sourceId) } : undefined;
+      if (status === "applied") afterSave(sourceId);
       if (mode === "create") {
         setHighlightId(String(formData.get("id")));
         show({
@@ -88,6 +92,7 @@ export function TransactionForm({
               ? "Already saved — no duplicate was added."
               : "Saved. Add another?",
           action,
+          sourceId,
         });
         // Fresh ids for the next entry; the saved one can only be replayed, never duplicated.
         setIds({ id: newId(), opId: newId() });
@@ -97,6 +102,7 @@ export function TransactionForm({
           tone: "success",
           message: status === "duplicate" ? "Nothing changed." : "Changes saved.",
           action,
+          sourceId,
         });
         router.push(`/transactions/${initial.id}`);
       }

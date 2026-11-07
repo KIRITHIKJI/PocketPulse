@@ -3,7 +3,7 @@
 Durable project state. Update before a context reset or at the end of each work session.
 Source of truth for requirements: `PROJECT_SPEC.md`.
 
-_Last updated: 2026-11-06 — Design 2 of 4 (Home, Quick Add, mobile bar, rewards that follow Undo; see "Design 2"). Before that, Design 1 (audit, `doc/DESIGN_PLAN.md`, foundation). Before that, Code tidy (no behaviour change). Before that, Speed fixes 2. Migrations 0100–1000, 20261105000100 (ledger keyset index) and 20261106000100 (`wallet_balances`) are applied on the hosted project (you ran `db push`; `migration list` confirmed). The app is not deployed yet, so nothing has been tried on a real phone._
+_Last updated: 2026-11-07 — Design 3 of 4 (Player status, Missions, Achievements, Rewards hub, the feedback ladder, permanent achievements, Safe to Spend on Home; see "Design 3"). Migration `20261106000200_missions` is applied on the hosted project (you ran `db push` on 2026-11-07). Before that, Design 2 of 4 (Home, Quick Add, mobile bar, rewards that follow Undo; see "Design 2"). Before that, Design 1 (audit, `doc/DESIGN_PLAN.md`, foundation). Before that, Code tidy (no behaviour change). Before that, Speed fixes 2. Migrations 0100–1000, 20261105000100 (ledger keyset index) and 20261106000100 (`wallet_balances`) are applied on the hosted project (you ran `db push`; `migration list` confirmed). The app is not deployed yet, so nothing has been tried on a real phone._
 
 ## Build stages
 
@@ -511,7 +511,64 @@ Home and Quick Add on the Design 1 components, the mobile bottom bar, rewards th
 - **Mutation checks:** turning revocation off fails 1 DB and 5 unit tests; giving every tap fresh ids fails 2 unit tests.
 - **E2E (hosted project):** ledger-desktop `offline`, `rewards`, `transactions` ✅ 21 passed, including Journey A, the new one-tap test (set Tea's usual amount → double tap → one entry → Undo → figures back → tile restored) and the rewritten rewards test. The first run had 2 failures: `offline` "the answer gets lost…" hit `ECONNRESET` in the test's own pass-through request and left a Tea ₹10.99 entry behind, which made `rewards` see +20 XP (deleting its unassigned entry completed "clear the queue"). I soft-deleted the leftover through `set_transaction_deleted`; both passed on the rerun. ledger-mobile (Pixel 7) `transactions` ✅ 4 passed, 1 skipped (the long form journey runs on desktop only, by design), including Journey A and the one-tap test. `shell` navigation on mobile ✅ (You sheet → Money leaks, docked Add). Not run this phase: the rest of the desktop/mobile suites.
 
-**Next (Design 3, only when you send its prompt):** Player Status page (`/rewards/status`) and the chip's link to it, Missions, Achievements, Rewards hub, XP feedback toasts after saves, level-up moment, the "Show progress features" switch.
+**Next (Design 3):** done; see "Design 3".
+
+## Design 3 (2026-11-07)
+
+Player status, Missions, Achievements, the Rewards hub, and the feedback chain after a save. Plan: `doc/DESIGN_PLAN.md` §3–5 (updated where this phase changed it). Skills applied: interaction-design (trigger, rules, feedback, loops; feedback that diminishes with repetition; one peak moment; Undo over confirmation) and ux-strategy (every mission maps to the job; the ethics check is unchanged).
+
+- **Migration `20261106000200_missions` (applied by your `db push`, 2026-11-07; live read as the test account shows all 8 missions and `show_progress = true`):**
+  - 4 missions added to the read-only catalog: `review_today` (daily, "Look at today", 5 XP), `set_aside_week` (weekly, "Move money to a goal", any amount, 10 XP), `steady_logging` (long-term, log on 20 different days, 40 XP), `saving_habit` (long-term, set money aside in 4 different weeks, 30 XP). `on conflict do nothing`. The 4 old missions and all 7 achievement codes and rules are untouched.
+  - `profiles.show_progress boolean not null default true`, for the "Show progress features" switch.
+  - "Looked at today" needs **no** table: it's a zero-XP `daily_review:<date>` row in `xp_events`, written only by the server, like explored insights.
+  - **Until it's pushed** the app still works: the new missions don't show, `show_progress` reads as on, and only saving the Settings switch fails (with its error message).
+- **Reward rule change (your instruction): achievements stay unlocked once earned, with their XP.** `planRewardSync` no longer revokes `achievement` events or deletes `user_achievements`; `removeAchievements` is gone from the store. Daily XP (`logged_day`, `saved_week`, …) and the current period's mission progress still follow the entries: revoked on delete or Undo, restored on the same row when earned again.
+- **Undo syncs after its delete, before it answers.** In `run` (`src/lib/actions/transactions.ts`), for `delete` and `undo_batch`, `syncRewards()` is awaited after the delete and before `revalidatePath`, and the answer carries the new `PlayerStatus`. The re-rendered page never shows revoked XP. A failed sync still reports the delete as done.
+- **Saves never wait for rewards.** The `after()` sync on saves is gone. The browser calls `syncRewardFeedback()` right after the save is answered; that call *is* the sync, and it returns what changed (`rewardFeedback` in `src/lib/rewards/feedback.ts`: a diff of the stored state before and after, worked out on the server). Feedback calls run one after another per tab, so two quick saves can't both report one award. If the call never happens (tab closed, offline), the next sync catches up, silently. Offline replay (`/api/sync`) keeps its `after()` sync. The Uncategorized queue (`assignCategory`) now syncs too; it never did, so "Clear the uncategorised queue" couldn't complete from there.
+- **A sync can't leave a stale award** (closes Design 2's known gap). `settleRewardSync` reads the rows written since it started (`getLedgerStampsSince`, on the existing `transactions_owner_updated` index). If the ledger moved, it runs again from an uncached read, at most 3 passes. Proven with an Undo landing mid-sync, in memory and on PostgreSQL.
+- **The feedback ladder** (`src/lib/feedback-queue.ts`, `components/feedback/{toast,reward-feedback,level-up}.tsx`):
+  - One pop-up at a time, always. Rewards queue in ladder order (progress, mission, achievement, level). A new confirmation takes the screen and puts a reward that was showing back in line, in its place.
+  - A routine save shows its confirmation with a quiet XP line inside it ("+10 XP · Logged today"; a long mission's step is added: "Steady habit 7 of 20"). From the third XP line within 30 minutes it drops to "+10 XP". A second entry the same day earns nothing, so it shows nothing extra.
+  - Mission complete and achievement get milestone toasts (silver ring, one 280 ms pass). Several at once are merged into one toast per tier.
+  - Level-up is the only peak: the page dims, the status panel rises (280 ms), with the new level, rank and XP bar. It's a real dialog: focus moves in, and Continue, Escape or a tap outside closes it. It never shows alongside anything else.
+  - Undo cancels whatever its save earned that hasn't shown yet, and ignores a late answer for it.
+  - Reduced motion: every animation is CSS that the existing rules collapse.
+  - The old confetti `AchievementCelebration` is removed (hard-coded colours, its own rules). The rewards pages greet, through the same queue, an achievement this device hasn't seen, if it was unlocked in the last 7 days.
+- **Screens.** `/rewards/status`, `/rewards/missions` and `/rewards/achievements` are new; `/rewards` is redesigned. All four use one loader (`src/lib/rewards/view.ts`): a preview of the sync that writes nothing while loading, with `SaveEarnedRewards` saving afterwards.
+  - **Player status:** level, rank and XP to the next level; current and longest streak; lifetime XP; milestones (levels reached, dated by the award that crossed them, and achievements). Empty: Level 1, "Your first logged day earns 10 XP", Quick add.
+  - **Missions:** Daily, Weekly and Long-term, three columns on desktop, a segmented control on phones. Each row has a status mark, title, rule, XP, reset period, progress for multi-step missions, where to do it, and Skip / Bring back. Empty: "All skipped. That's fine." per group, or a page empty state if no missions exist.
+  - **Achievements:** unlocked, then in progress, then locked, with filter links (`?show=`). Progress comes from each achievement's own rule (`achievementProgress` in the domain). Header: "0 of 7. Each one shows how to earn it." Empty state if none exist. One column on phones: two were too narrow at 375 px.
+  - **Rewards hub:** status panel with "See status"; the 7-day logged strip (the North Star, neutral colours, no red); up to 4 of today's and this week's missions; the 3 newest achievements (or "None yet" with the closest one's rule); XP history, collapsed behind "Show history" on phones.
+  - "Look at today" is recorded when `/insights?period=today` opens (once a day per device).
+  - **Navigation:** a Progress group (Player status · Missions · Achievements · Rewards) in the sidebar and the You sheet, plus section tabs on the four screens.
+- **Home:** the player chip opens `/rewards/status` and follows the status a save brings back, with no reload. **Safe to Spend** shows the figure ("About ₹X a day until {date}", estimate colour, "Safe to Spend · estimate", "Not a limit to use up"), or asks for the income date. It streams in its own `Suspense` after the money, like the chip, and falls back to the old link if its reads fail.
+- **Settings → Progress → "Show progress features":** off hides the chip, the Progress navigation and every reward pop-up. Rewards still sync, and nothing is lost.
+- Segmented-control options are now 44 px on touch.
+
+**Home timing.** Production builds side by side on this machine: the previous commit `2f1ba11` on :3201 and this code on :3202. Alternating signed-in loads of `/home`; medians, in ms from request start.
+
+| Loads | Build | First byte | Balance in stream | Safe to Spend in stream | Stream end |
+| --- | --- | --- | --- | --- | --- |
+| 12 each | before | 211 | 265 | 269 (link only) | 464 |
+| 12 each | after | 195 | 260 | 377 (figure) | 499 |
+| 20 each | before | 176 | 245 | 248 (link only) | 462 |
+| 20 each | after | 169 | 217 | 333 (figure) | 443 |
+
+The money arrives no later. The figure arrives after it, and before the player chip. Stream end is within noise (+35 ms, then −19 ms).
+
+**Checks (Design 3)**
+
+| Check | Result |
+| --- | --- |
+| lint / typecheck / format | ✅ |
+| `npm test` | ✅ 34 files / **899** tests (was 854). One earlier run crashed before any test ran (34 files, "no tests") while a worktree was being removed and a second run was starting; the clean rerun is the result |
+| `npm run test:db` (local PostgreSQL 18, all migrations including 20261106000200) | ✅ 14 files, 129 passed + 13 placeholders. New: `tests/db/progression.test.ts` (catalog, `show_progress` RLS, client can't write `daily_review`, Undo mid-sync settles, achievement stays) |
+| New unit tests | `progression.test.ts` (missions, achievement progress, feedback diff, no duplicate XP on retry/edit/delete/undo, settle), `feedback-queue.test.tsx` (never two pop-ups, ladder order, quieter XP, Undo cancels, off switch), `undo-sync-order.test.ts` (delete → sync → answer). `rewards.test.ts` rewritten for permanent achievements |
+| Mutation check | 8 deliberate breaks, all caught: achievements revocable again, settle never reruns, Undo not waiting for its sync, a pushed-back reward lost, rewards shown over each other, XP line never quietening, late feedback shown after Undo, feedback repeating old XP |
+| Screenshots (dark, 375 and 1440 px, Playwright, hosted data) | Home, Rewards, Player status, Missions, Achievements, Settings: no horizontal overflow, no console errors. The ladder (XP line, mission toast, level-up) on a temporary preview page in dev, deleted afterwards: 1 pop-up visible at every step. Fixed after looking: the week strip labelled yesterday "Ye" |
+| `npm run build` | ✅ |
+| After your push | `e2e/rewards.spec.ts` on ledger-desktop, live with the 8 missions: **6 passed** |
+| E2E (hosted project, fresh build; migration NOT pushed, so the hosted catalog has the 4 old missions) | Run 1, `rewards` + `shell` on desktop, mobile, ledger-desktop, ledger-mobile (the ledger projects ran all their specs): **117 passed, 1 failed**. The failure was `motion.spec.ts` "an achievement bursts", which tested the removed confetti. It now checks that the milestone ring, the level-up rise and the dim animate (≤ 280 ms) with motion allowed and don't move under OS or in-app reduced motion. Run 2, ledger-desktop + ledger-mobile (rewards, motion, Journey A–G specs): **76 passed, 0 failed**. The spec's new tests: XP daily follows entries while achievements stay, at most 1 pop-up sampled 15 times after a save, the mission skip/bring back, Home chip → `/rewards/status`, Safe to Spend labelled an estimate |
 
 ## Checks run (Phase 10, 2026-11-01)
 
@@ -769,6 +826,8 @@ Note: because of the `(app)` loading boundary, Next.js streams `notFound()` page
 - Git: `main` tracks `origin` (https://github.com/KIRITHIKJI/PocketPulse.git). Work is committed and pushed at the end of every phase; Phase 1 = `93ff182`, Phase 2 = `08288e7`.
 
 ## Next concrete tasks
+
+**Next (Design 4, only when you send its prompt):** every remaining screen per `doc/DESIGN_PLAN.md` §4, and the desktop sidebar regrouping (§5). Try Settings → Progress → off on your own account once.
 
 All 10 build phases are done. What's left is yours, because it needs accounts or a phone:
 

@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { z } from "zod";
 
 import { categoryTree, normalizeText } from "@/domain";
@@ -9,6 +10,7 @@ import { rowToCategory } from "@/lib/data/mappers";
 import { requireSession } from "@/lib/data/session";
 import { type FormState, flag, invalid, text } from "@/lib/forms";
 import { executeLedgerCommand } from "@/lib/ledger/execute";
+import { syncRewards } from "@/lib/rewards/sync";
 import {
   assignCategorySchema,
   categoryFormSchema,
@@ -224,6 +226,8 @@ export async function assignCategory(_prev: FormState, formData: FormData): Prom
     patch: { categoryId: parsed.data.categoryId, subcategoryId: parsed.data.subcategoryId },
   });
   if (!outcome.ok) return fail(outcome.message);
+  // Sorting the queue moves the "clear the uncategorised queue" mission; after the answer.
+  after(() => syncRewards().catch(() => undefined));
 
   const remember = text(formData, "rememberText").trim();
   if (flag(formData, "remember") && normalizeText(remember) !== "") {
