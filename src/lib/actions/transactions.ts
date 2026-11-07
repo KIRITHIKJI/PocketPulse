@@ -1,15 +1,16 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { after } from "next/server";
 import { z } from "zod";
 
+import { totalXp } from "@/domain";
 import { getProfile } from "@/lib/data/queries";
 import { requestNow, requireSession } from "@/lib/data/session";
 import { type FormState, invalid } from "@/lib/forms";
 import { type LedgerCommand, ledgerCommandSchema } from "@/lib/ledger/commands";
 import { executeLedgerCommand } from "@/lib/ledger/execute";
 import { commandEntryId } from "@/lib/offline/ops";
+import { type PlayerStatus, playerStatus } from "@/lib/rewards/feedback";
 import { syncRewards } from "@/lib/rewards/sync";
 import { commandFromForm, entryFormSchema, entryFormValues } from "@/lib/validation/transactions";
 
@@ -21,6 +22,8 @@ export type CommandResult =
       status: "applied" | "duplicate" | "queued";
       id: string | null;
       undo: LedgerCommand | null;
+      /** After a delete or an undone batch: the progress once what it earned was taken back. */
+      rewards?: PlayerStatus;
     }
   | { ok: false; status: "conflict" | "not_found" | "rejected" | "invalid"; message: string };
 
@@ -29,14 +32,39 @@ function refreshViews() {
   revalidatePath("/", "layout");
 }
 
+/** Commands that can only take rewards away: their sync runs before the answer goes back. */
+const REMOVES = new Set<LedgerCommand["kind"]>(["delete", "undo_batch"]);
+
+/**
+ * A delete (Undo of a save, or a delete from History) syncs rewards after the delete finishes and
+ * before it answers, so the screen it re-renders never shows XP that was just taken back.
+ * Anything else answers at once: the client then asks for its feedback (`syncRewardFeedback`),
+ * which is also the sync, so rewards never slow down recording an expense.
+ */
+async function rewardsAfterRemoval(command: LedgerCommand): Promise<PlayerStatus | undefined> {
+  if (!REMOVES.has(command.kind)) return undefined;
+  try {
+    const { state, streaks } = await syncRewards();
+    return playerStatus(totalXp(state.events), streaks.currentDaily, Date.now());
+  } catch {
+    // The next sync (any save, or opening Rewards) catches up; the delete itself is done.
+    return undefined;
+  }
+}
+
 async function run(command: LedgerCommand): Promise<CommandResult> {
   const { supabase } = await requireSession();
   const outcome = await executeLedgerCommand(supabase, command);
   if (!outcome.ok) return { ok: false, status: outcome.status, message: outcome.message };
+  const rewards = await rewardsAfterRemoval(command);
   refreshViews();
-  // After the response, so rewards never slow down recording an expense.
-  after(() => syncRewards().catch(() => undefined));
-  return { ok: true, status: outcome.status, id: commandEntryId(command), undo: outcome.undo };
+  return {
+    ok: true,
+    status: outcome.status,
+    id: commandEntryId(command),
+    undo: outcome.undo,
+    ...(rewards ? { rewards } : {}),
+  };
 }
 
 /**

@@ -65,9 +65,20 @@ describe("BottomNav", () => {
     );
     expect(within(you).getByRole("link", { name: "Player status" })).toHaveAttribute(
       "href",
-      "/rewards",
+      "/rewards/status",
     );
     expect(screen.getByRole("navigation", { name: "All sections" })).toBeInTheDocument();
+  });
+
+  it("with progress features off, the You sheet has no progression links", async () => {
+    pathname.current = "/home";
+    const user = userEvent.setup();
+    render(<BottomNav showProgress={false} />);
+    await user.click(screen.getByRole("button", { name: "You" }));
+    expect(
+      screen.queryByRole("link", { name: /Player status|Missions|Achievements|Rewards/ }),
+    ).toBeNull();
+    expect(screen.getAllByRole("link", { name: "Parent report" }).length).toBeGreaterThan(0);
   });
 });
 

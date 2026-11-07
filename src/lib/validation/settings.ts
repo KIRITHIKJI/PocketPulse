@@ -104,3 +104,5 @@ export const reminderScheduleSchema = z.object({
 export const privacySchema = z.object({
   includeNotesInReports: z.boolean(),
 });
+
+export const progressSchema = z.object({ showProgress: z.boolean() });

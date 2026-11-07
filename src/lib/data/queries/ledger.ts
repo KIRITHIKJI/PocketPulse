@@ -90,6 +90,29 @@ export const getLedger = cache(async (): Promise<Transaction[]> =>
   (await getLedgerRows()).map(rowToTransaction),
 );
 
+/** `getLedger` read again, past the request cache: for a reward sync that must see a newer ledger. */
+export async function readLedgerNow(): Promise<Transaction[]> {
+  return (await readLedgerRows((query) => query)).map(rowToTransaction);
+}
+
+/** Rows written since `since` (an ISO instant), deleted ones included, with when and whether. */
+export async function getLedgerStampsSince(
+  since: string,
+): Promise<{ id: string; updatedAt: string; deletedAt: string | null }[]> {
+  const { supabase } = await requireSession();
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("id, updated_at, deleted_at")
+    .gte("updated_at", since)
+    .limit(1_000);
+  if (error) throw new DataLoadError("your entries", error.code);
+  return (data ?? []).map((row) => ({
+    id: row.id as string,
+    updatedAt: row.updated_at as string,
+    deletedAt: (row.deleted_at as string | null) ?? null,
+  }));
+}
+
 /**
  * `rows` plus the older purchases their refunds point at, which a refund's category and size
  * come from. The extra read only happens when such a purchase isn't among the rows already.

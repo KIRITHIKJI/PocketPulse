@@ -3,14 +3,10 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { ArrowRight, Info, Receipt } from "lucide-react";
 
-import {
-  BudgetSnapshot,
-  GoalSnapshot,
-  PlanFirstSteps,
-  SafeToSpendLink,
-} from "@/components/home/plan-snapshots";
+import { BudgetSnapshot, GoalSnapshot, PlanFirstSteps } from "@/components/home/plan-snapshots";
 import { OfflineFiguresNote } from "@/components/home/offline-figures-note";
 import { PlayerChip, PlayerChipSkeleton } from "@/components/home/player-chip";
+import { SafeToSpendCard, SafeToSpendCardSkeleton } from "@/components/home/safe-to-spend-card";
 import { WaitingEntries } from "@/components/offline/waiting-entries";
 import { StatePanel } from "@/components/states/state-panel";
 import { AnimatedMoney } from "@/components/transactions/animated-money";
@@ -319,11 +315,13 @@ export default async function HomePage() {
         </div>
 
         <div className="contents lg:col-span-4 lg:flex lg:min-w-0 lg:flex-col lg:gap-6">
-          <div className="order-3">
-            <Suspense fallback={<PlayerChipSkeleton />}>
-              <PlayerChip />
-            </Suspense>
-          </div>
+          {profile.showProgress && (
+            <div className="order-3">
+              <Suspense fallback={<PlayerChipSkeleton />}>
+                <PlayerChip />
+              </Suspense>
+            </div>
+          )}
           {budgets.length === 0 && goals.length === 0 ? (
             <div className="order-4">
               <PlanFirstSteps />
@@ -342,7 +340,10 @@ export default async function HomePage() {
             </div>
           )}
           <div className="order-5">
-            <SafeToSpendLink />
+            {/* Streams after the money, like the player status: its reads never hold up Home. */}
+            <Suspense fallback={<SafeToSpendCardSkeleton />}>
+              <SafeToSpendCard />
+            </Suspense>
           </div>
         </div>
       </div>

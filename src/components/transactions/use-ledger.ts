@@ -2,6 +2,7 @@
 
 import * as React from "react";
 
+import { useRewardFeedback } from "@/components/feedback/reward-feedback";
 import { useToast } from "@/components/feedback/toast";
 import { useOffline } from "@/components/offline/offline-provider";
 import { type CommandResult, runLedgerCommand } from "@/lib/actions/transactions";
@@ -23,6 +24,9 @@ const UNDONE: Record<LedgerCommand["kind"], string> = {
   pay_commitment: "Undone.",
   confirm_recurring: "Undone.",
 };
+
+/** Commands whose server answer already includes the rewards taken back (see `actions/transactions`). */
+const REMOVES = new Set<LedgerCommand["kind"]>(["delete", "undo_batch"]);
 
 const UNREACHABLE = "Couldn’t reach PocketPulse. Check your connection and try again.";
 const QUEUED = "Saved on this device. It’ll sync when you’re back online.";
@@ -50,11 +54,24 @@ export function withSaveTimeout<T>(work: Promise<T>): Promise<T> {
  */
 export function useLedger() {
   const { show, setHighlightId } = useToast();
+  const { afterSave, afterRemoval } = useRewardFeedback();
   const { enqueue, mustFollowQueue } = useOffline();
   const inFlight = React.useRef(new Set<string>());
 
+  /** What a saved command earned (or, for a removal, what it took back). Never blocks the save. */
+  const followRewards = React.useCallback(
+    (command: LedgerCommand, result: CommandResult) => {
+      if (!result.ok || result.status !== "applied") return;
+      if (REMOVES.has(command.kind)) afterRemoval(command.opId, result.rewards);
+      else afterSave(command.opId);
+    },
+    [afterSave, afterRemoval],
+  );
+
   const undo = React.useCallback(
-    async function undo(command: LedgerCommand): Promise<void> {
+    /** `sourceId`: the save being undone, so anything it earned and hasn't shown yet never shows. */
+    async function undo(command: LedgerCommand, sourceId?: string): Promise<void> {
+      if (sourceId) afterRemoval(sourceId, undefined);
       if (!navigator.onLine) {
         await enqueue(command);
         show({
@@ -69,16 +86,19 @@ export function useLedger() {
       } catch {
         result = { ok: false, status: "rejected", message: UNREACHABLE };
       }
-      if (result.ok) show({ tone: "success", message: UNDONE[command.kind] });
+      if (result.ok) {
+        show({ tone: "success", message: UNDONE[command.kind], sourceId: command.opId });
+        followRewards(command, result);
+      }
       // Undo is idempotent, so a failed one stays on offer: retrying can't undo twice.
       else
         show({
           tone: "error",
           message: result.message,
-          action: { label: "Undo", run: () => undo(command) },
+          action: { label: "Undo", run: () => undo(command, sourceId) },
         });
     },
-    [show, enqueue],
+    [show, enqueue, afterRemoval, followRewards],
   );
 
   /** Undo of something still in the queue: it never needs to reach the server at all. */
@@ -155,16 +175,18 @@ export function useLedger() {
             result.status === "duplicate" && command.kind !== "update"
               ? "Already saved — no duplicate was added."
               : options.success,
-          action: reverse ? { label: "Undo", run: () => undo(reverse) } : undefined,
+          action: reverse ? { label: "Undo", run: () => undo(reverse, command.opId) } : undefined,
           routine: options.routine,
           durationMs: options.undoMs,
+          sourceId: command.opId,
         });
+        followRewards(command, result);
         return result;
       } finally {
         inFlight.current.delete(command.opId);
       }
     },
-    [show, setHighlightId, undo, queue, mustFollowQueue],
+    [show, setHighlightId, undo, queue, mustFollowQueue, followRewards],
   );
 
   return { run, undo, queue, cancelQueued };

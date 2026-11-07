@@ -28,6 +28,7 @@ export function pgRewardStore(db: TestDb, userId: string): RewardStore {
         quests: quests.rows.map((r) => ({
           questCode: r.quest_code,
           periodKey: r.period_key,
+          progress: r.progress,
           completedAt: r.completed_at,
           optedOutAt: r.opted_out_at,
         })),
@@ -63,12 +64,6 @@ export function pgRewardStore(db: TestDb, userId: string): RewardStore {
           [userId, code],
         );
       }
-    },
-    async removeAchievements(codes) {
-      await q(
-        "delete from public.user_achievements where owner_id = $1 and achievement_code = any($2)",
-        [userId, codes],
-      );
     },
     async saveQuests(rows) {
       for (const r of rows) {

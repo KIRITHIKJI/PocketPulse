@@ -579,6 +579,49 @@ html[data-motion="reduce"] .pp-celebrate-piece {
   animation: pp-new-entry 1.6s ease-out;
 }
 
+/*
+ * The progression ladder's two bigger moments. A milestone toast's icon gets one silver ring that
+ * fades out; a new level's panel rises into place while the page behind it dims. Both are one
+ * 280 ms pass, never repeat, and collapse to nothing under reduced motion (rules above).
+ */
+@keyframes pp-milestone-ring {
+  from {
+    box-shadow: 0 0 0 0 var(--rank);
+  }
+  to {
+    box-shadow: 0 0 0 7px transparent;
+  }
+}
+
+.pp-milestone-ring {
+  animation: pp-milestone-ring var(--duration-emphasis) var(--ease-out) both;
+}
+
+@keyframes pp-level-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.pp-level-rise {
+  animation: pp-level-rise var(--duration-emphasis) var(--ease-out) both;
+}
+
+@keyframes pp-dim-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.pp-dim-in {
+  animation: pp-dim-in var(--duration-standard) ease-out both;
+}
+
 /* Progress without a known value: a calm sweep. Reduced motion stops it (rules above), leaving a static fill. */
 @keyframes pp-progress-sweep {
   from {

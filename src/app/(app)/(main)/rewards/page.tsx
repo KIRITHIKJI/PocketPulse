@@ -1,230 +1,219 @@
 import type { Metadata } from "next";
-import { CalendarCheck, CircleCheck, Flame, Lock, Trophy } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, History, Medal } from "lucide-react";
 
-import { InlineAction } from "@/components/forms/inline-action";
-import { PageHeader } from "@/components/layout/page-header";
-import { Meter, PlanNote } from "@/components/plan/parts";
-import { AchievementCelebration } from "@/components/rewards/achievement-celebration";
-import { SaveEarnedRewards } from "@/components/rewards/save-earned-rewards";
+import { GreetAchievements } from "@/components/rewards/greet-achievements";
+import { ProgressHeader, ProgressUnavailable } from "@/components/rewards/progress-page";
+import {
+  AchievementBadge,
+  MissionRow,
+  StatusPanel,
+  WeekStrip,
+} from "@/components/rewards/progress-parts";
 import { StatePanel } from "@/components/states/state-panel";
-import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
-import { DETECTIVE_INSIGHTS, levelFor, totalXp } from "@/domain";
-import { changeQuest, completeWeeklyReview } from "@/lib/actions/rewards";
-import { factsFrom } from "@/lib/rewards/engine";
-import { previewRewards, rewardCatalog } from "@/lib/rewards/sync";
+import { Button } from "@/components/ui/button";
+import { Surface, SurfaceHeader } from "@/components/ui/surface";
+import { parseInstant } from "@/domain";
+import { requestNow } from "@/lib/data/session";
+import { type HistoryRow, type ProgressView, dayOf, loadProgress } from "@/lib/rewards/view";
 
 export const metadata: Metadata = { title: "Rewards" };
 
-const CADENCE = { daily: "Today", weekly: "This week", once: "Once" } as const;
+const ACTIVE_MISSIONS = 4;
 
-async function loadRewards() {
-  try {
-    return await previewRewards();
-  } catch {
-    return null;
+function HistoryList({ rows, view }: { rows: HistoryRow[]; view: ProgressView }) {
+  if (rows.length === 0) {
+    return (
+      <StatePanel
+        size="section"
+        icon={History}
+        title="No XP yet"
+        description="Each award shows here: what earned it, and when."
+      />
+    );
   }
+  return (
+    <ul className="flex flex-col divide-y" data-testid="xp-history">
+      {rows.map((row) => (
+        <li key={row.key} className="flex items-center gap-3 py-2">
+          <span className="min-w-0 flex-1 type-body">{row.label}</span>
+          <span className="shrink-0 type-caption text-muted-foreground">{dayOf(row.at, view)}</span>
+          <span className="w-14 shrink-0 text-right type-caption money text-progress-xp">
+            +{row.xp} XP
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
+/**
+ * Rewards, the progression hub (doc/DESIGN_PLAN.md §4): the player overview, this week's logged
+ * days, active missions, the newest achievements, then the XP history.
+ */
 export default async function RewardsPage() {
-  const [catalog, outcome] = await Promise.all([rewardCatalog(), loadRewards()]);
+  const view = await loadProgress();
   const header = (
-    <PageHeader
+    <ProgressHeader
       title="Rewards"
-      description="XP, levels, streaks and achievements for logging consistently and reviewing your money, never for spending less."
+      description="XP and missions for logging and reviewing your money, never for spending less."
+      view={view}
     />
   );
-  if (!outcome) {
+  if (!view) {
     return (
       <>
         {header}
-        <StatePanel
-          variant="error"
-          title="Rewards aren’t available right now"
-          description="Your entries are safe. Rewards will catch up on their own the next time this works."
-        />
+        <ProgressUnavailable />
       </>
     );
   }
 
-  const { state, result, streaks } = outcome;
-  const xp = totalXp(state.events);
-  const level = levelFor(xp);
-  const unlocked = new Set(state.achievements.map((a) => a.code));
-  const facts = factsFrom(state);
-  const fresh = catalog.achievements
-    .filter((a) => unlocked.has(a.code))
-    .map((a) => ({ code: a.code, title: a.title }));
-  const progressByCode = new Map(result.quests.map((q) => [q.code, q]));
-  const hiddenQuests = catalog.quests.filter((q) => facts.optedOutQuests.includes(q.code));
-  const shownQuests = catalog.quests.filter((q) => !facts.optedOutQuests.includes(q.code));
-  const reviewed = progressByCode.get("weekly_review")?.complete ?? false;
+  // Today's and this week's missions first, open before done; at most four.
+  const active = view.missions
+    .filter((m) => !m.skipped && m.cadence !== "once")
+    .sort((a, b) => Number(a.complete) - Number(b.complete))
+    .slice(0, ACTIVE_MISSIONS);
+  const unlocked = view.achievements
+    .filter((a) => a.unlockedAt)
+    .sort((a, b) => parseInstant(b.unlockedAt!) - parseInstant(a.unlockedAt!));
+  const newest = unlocked.slice(0, 3);
+  // The closest one to unlock, so "none yet" still says what to do next.
+  const closest = view.achievements
+    .filter((a) => a.state !== "unlocked")
+    .sort((a, b) => b.progress / b.target - a.progress / a.target)[0];
 
   return (
     <>
       {header}
-      <AchievementCelebration unlocked={fresh} />
-      {outcome.changed && <SaveEarnedRewards />}
+      <GreetAchievements
+        now={requestNow()}
+        unlocked={unlocked.map((a) => ({
+          code: a.code,
+          title: a.title,
+          unlockedAt: a.unlockedAt!,
+        }))}
+      />
 
-      {xp === 0 && (
-        <StatePanel
-          icon={Trophy}
-          title="Your first achievement is one entry away"
-          description="Achievements like First 10 Transactions and 7-Day Logging Streak unlock from your own activity."
-        />
-      )}
-
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card className="gap-2">
-          <h2 className="text-sm text-muted-foreground">Level</h2>
-          <p className="tabular text-4xl font-semibold tracking-tight" data-testid="reward-level">
-            {level.level}
-          </p>
-          <Meter bp={level.progressBp} tone="positive" />
-          <p className="tabular text-xs text-muted-foreground" data-testid="reward-xp">
-            {xp} XP · next level at {level.nextLevelXp}
-          </p>
-        </Card>
-        <Card className="gap-2">
-          <h2 className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Flame className="size-4" aria-hidden="true" />
-            Daily streak
-          </h2>
-          <p className="tabular text-4xl font-semibold tracking-tight" data-testid="streak-daily">
-            {streaks.currentDaily}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {streaks.currentDaily === 1 ? "day" : "days"} logging · longest {streaks.longestDaily}
-          </p>
-        </Card>
-        <Card className="gap-2">
-          <h2 className="flex items-center gap-2 text-sm text-muted-foreground">
-            <CalendarCheck className="size-4" aria-hidden="true" />
-            Weekly streak
-          </h2>
-          <p className="tabular text-4xl font-semibold tracking-tight" data-testid="streak-weekly">
-            {streaks.currentWeekly}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {streaks.currentWeekly === 1 ? "week" : "weeks"} logging · longest{" "}
-            {streaks.longestWeekly}
-          </p>
-        </Card>
+      <div className="grid gap-4 lg:grid-cols-12 lg:items-start lg:gap-6">
+        <div className="lg:col-span-7">
+          <StatusPanel
+            status={view.status}
+            action={
+              <Button variant="ghost" size="sm" asChild>
+                <Link href="/rewards/status">
+                  See status
+                  <ArrowRight aria-hidden="true" />
+                </Link>
+              </Button>
+            }
+          />
+        </div>
+        <Surface className="lg:col-span-5">
+          <SurfaceHeader
+            title="This week"
+            meta={
+              view.status.streakDays > 0
+                ? `${view.status.streakDays}-day logging streak`
+                : "Any day you log starts a streak"
+            }
+          />
+          <WeekStrip week={view.week} today={view.today} />
+        </Surface>
       </div>
 
-      <section aria-labelledby="quests-heading" className="flex flex-col gap-3">
-        <h2 id="quests-heading" className="font-semibold">
-          Quests
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          All optional. Skipping one costs nothing, and you can bring it back.
-        </p>
-        <ul className="grid gap-3 md:grid-cols-2">
-          {shownQuests.map((quest) => {
-            const done = progressByCode.get(quest.code)?.complete ?? false;
-            return (
-              <li key={quest.code} className="min-w-0">
-                <Card className="h-full gap-2" data-testid="quest-card">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <h3 className="font-semibold">{quest.title}</h3>
-                      <p className="text-sm text-muted-foreground">{quest.description}</p>
-                    </div>
-                    {done ? (
-                      <Badge variant="positive">
-                        <CircleCheck aria-hidden="true" />
-                        Done
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline">{quest.xp} XP</Badge>
-                    )}
-                  </div>
-                  <div className="mt-auto flex flex-wrap items-center gap-1 border-t pt-2 text-xs text-muted-foreground">
-                    <span className="mr-auto">{CADENCE[quest.cadence]}</span>
-                    {quest.code === "weekly_review" && !reviewed && (
-                      <InlineAction
-                        action={completeWeeklyReview}
-                        fields={{}}
-                        pendingLabel="Saving…"
-                        variant="outline"
-                      >
-                        I’ve reviewed this week
-                      </InlineAction>
-                    )}
-                    <InlineAction
-                      action={changeQuest}
-                      fields={{ code: quest.code, optOut: "true" }}
-                      pendingLabel="Saving…"
-                      aria-label={`Skip the ${quest.title} quest`}
-                    >
-                      Skip
-                    </InlineAction>
-                  </div>
-                </Card>
-              </li>
-            );
-          })}
-        </ul>
-        {hiddenQuests.length > 0 && (
-          <ul className="flex flex-wrap gap-2">
-            {hiddenQuests.map((quest) => (
-              <li key={quest.code}>
-                <InlineAction
-                  action={changeQuest}
-                  fields={{ code: quest.code, optOut: "false" }}
-                  pendingLabel="Saving…"
-                  variant="outline"
-                >
-                  Bring back {quest.title}
-                </InlineAction>
+      <Surface>
+        <SurfaceHeader
+          title="Today and this week"
+          meta="Optional. Skipping costs nothing."
+          action={
+            <Button variant="ghost" size="sm" asChild>
+              <Link href="/rewards/missions">
+                All missions
+                <ArrowRight aria-hidden="true" />
+              </Link>
+            </Button>
+          }
+        />
+        {active.length === 0 ? (
+          <StatePanel
+            size="section"
+            title="No missions on right now"
+            description="You skipped them all, and that’s fine. Bring any back from All missions."
+          />
+        ) : (
+          <ul className="-my-3 grid divide-y md:grid-cols-2 md:gap-x-6 md:divide-y-0">
+            {active.map((m) => (
+              <MissionRow key={m.code} mission={m} />
+            ))}
+          </ul>
+        )}
+      </Surface>
+
+      <section aria-labelledby="newest-achievements" className="flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2 id="newest-achievements" className="type-heading">
+            Achievements · <span className="money">{unlocked.length}</span> of{" "}
+            {view.achievements.length}
+          </h2>
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/rewards/achievements">
+              All achievements
+              <ArrowRight aria-hidden="true" />
+            </Link>
+          </Button>
+        </div>
+        {newest.length === 0 ? (
+          <Surface>
+            <StatePanel
+              size="section"
+              icon={Medal}
+              title="None yet"
+              description={
+                closest
+                  ? `Closest: ${closest.title}. ${closest.description}`
+                  : "Achievements unlock from your own logging."
+              }
+            />
+          </Surface>
+        ) : (
+          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 lg:gap-4">
+            {newest.map((a) => (
+              <li key={a.code} className="min-w-0">
+                <AchievementBadge achievement={a} dateLabel={dayOf(a.unlockedAt!, view)} />
               </li>
             ))}
           </ul>
         )}
       </section>
 
-      <section aria-labelledby="achievements-heading" className="flex flex-col gap-3">
-        <h2 id="achievements-heading" className="font-semibold">
-          Achievements · {unlocked.size} of {catalog.achievements.length}
-        </h2>
-        <ul className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          {catalog.achievements.map((achievement) => {
-            const earned = unlocked.has(achievement.code);
-            return (
-              <li key={achievement.code} className="min-w-0">
-                <Card
-                  className="h-full flex-row items-start gap-3"
-                  data-testid="achievement"
-                  data-earned={earned}
-                >
-                  <span
-                    aria-hidden="true"
-                    className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${earned ? "bg-positive-soft text-positive" : "bg-muted text-muted-foreground"}`}
-                  >
-                    {earned ? <Trophy className="size-5" /> : <Lock className="size-5" />}
-                  </span>
-                  <div className="min-w-0">
-                    <h3 className="font-semibold">{achievement.title}</h3>
-                    <p className="text-sm text-muted-foreground">{achievement.description}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {earned ? "Unlocked" : `${achievement.xp} XP`}
-                      {achievement.code === "spending_detective" && !earned
-                        ? ` · ${facts.insightsExplored} of ${DETECTIVE_INSIGHTS} so far`
-                        : ""}
-                    </p>
-                  </div>
-                </Card>
-              </li>
-            );
-          })}
-        </ul>
-      </section>
+      <Surface>
+        <div className="hidden flex-col gap-stack lg:flex">
+          <SurfaceHeader title="XP history" meta="The 20 newest awards." />
+          <HistoryList rows={view.history} view={view} />
+        </div>
+        <details className="group lg:hidden">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 type-heading">
+            XP history
+            <span className="type-body font-normal text-primary group-open:hidden">
+              Show history
+            </span>
+            <span className="hidden type-body font-normal text-primary group-open:inline">
+              Hide
+            </span>
+          </summary>
+          <div className="pt-2">
+            <HistoryList rows={view.history} view={view} />
+          </div>
+        </details>
+      </Surface>
 
-      <PlanNote>
-        XP comes from logging, categorising, reviewing and saving. Spending never costs you XP, and
-        editing or deleting an entry doesn’t change what you’ve earned. A streak is only a count:
-        taking a break is fine, and your longest streak stays.
-      </PlanNote>
+      <p className="type-caption text-muted-foreground">
+        XP comes from logging, categorising, reviewing and setting money aside, never from spending
+        less. Undoing or deleting an entry takes back that day’s XP and mission progress.
+        Achievements are different: each is unique, so once unlocked it stays, with its XP. A streak
+        is only a count, and your longest stays.
+      </p>
     </>
   );
 }

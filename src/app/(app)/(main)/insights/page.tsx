@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { CalendarSearch, ChartPie, Droplets, Zap } from "lucide-react";
 
+import { TodayReviewed } from "@/components/rewards/today-reviewed";
 import { PageHeader } from "@/components/layout/page-header";
 import { SectionTabs } from "@/components/layout/section-tabs";
 import {
@@ -85,6 +86,7 @@ export default async function InsightsPage({
         customTo={selection.customTo}
         error={selection.error}
       />
+      {selection.kind === "today" && <TodayReviewed today={today} />}
     </>
   );
 

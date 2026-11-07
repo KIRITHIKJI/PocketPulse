@@ -9,8 +9,10 @@ import {
   type RewardInput,
   type RewardResult,
   type Streaks,
+  type Transaction,
   calculateRewards,
   calculateStreaks,
+  parseInstant,
   toLocalDate,
 } from "@/domain";
 
@@ -25,6 +27,7 @@ export interface StoredEvent {
 export interface StoredQuest {
   questCode: string;
   periodKey: string;
+  progress: number;
   completedAt: string | null;
   optedOutAt: string | null;
 }
@@ -43,7 +46,6 @@ export interface RewardStore {
   /** Clears the revocation on awards that are earned again. The row is the same; no new XP. */
   restoreEvents(sourceKeys: string[]): Promise<void>;
   addAchievements(codes: string[]): Promise<void>;
-  removeAchievements(codes: string[]): Promise<void>;
   saveQuests(
     rows: { code: string; periodKey: string; progress: number; complete: boolean }[],
   ): Promise<void>;
@@ -55,12 +57,16 @@ const keysAfter = (state: RewardState, prefix: string) =>
     .filter((e) => e.sourceKey.startsWith(prefix))
     .map((e) => e.sourceKey.slice(prefix.length));
 
-export type RewardData = Omit<RewardInput, "reviewedWeeks" | "insightsExplored" | "optedOutQuests">;
+export type RewardData = Omit<
+  RewardInput,
+  "reviewedWeeks" | "reviewedDays" | "insightsExplored" | "optedOutQuests"
+>;
 
 /** Facts already stored, which the ledger alone can't show. */
 export function factsFrom(state: RewardState) {
   return {
     reviewedWeeks: keysAfter(state, "weekly_review:") as LocalDate[],
+    reviewedDays: keysAfter(state, "daily_review:") as LocalDate[],
     insightsExplored: keysAfter(state, "insight:").length,
     optedOutQuests: state.quests
       .filter((q) => q.periodKey === OPT_OUT_PERIOD && q.optedOutAt !== null)
@@ -81,7 +87,6 @@ export interface RewardPlan extends SyncOutcome {
   revokedKeys: string[];
   /** Revoked awards earned again: the same rows come back, so XP can't be earned twice. */
   restoredKeys: string[];
-  removedAchievements: string[];
   /** Quest rows to save: progress on open quests, completions, and completions undone. */
   quests: RewardResult["quests"];
   /** True when saving would add XP, an achievement or a completed quest. */
@@ -98,10 +103,12 @@ const LEDGER_KINDS = new Set(["logged_day", "clean_week", "saved_week", "budget_
  * it's saved, without saving anything. The state comes from `before` plus the changes, so nothing
  * has to be read back afterwards. Keys decide everything, so the totals match a fresh read.
  *
- * Awards that come from entries follow the entries that exist now. Undoing (or deleting) the entry
- * behind an award revokes it; earning it again clears the revocation on the same row. An award
- * that isn't about entries (a weekly review, an explored insight) is never touched, and quest
+ * Daily awards and mission progress follow the entries that exist now. Undoing (or deleting) the
+ * entry behind one revokes it; earning it again clears the revocation on the same row. Mission
  * awards are reconciled only for the current period, the only one worked out again.
+ * Achievements are the exception: each is unique and can't be farmed, so once earned it stays
+ * unlocked, with its XP, whatever happens to the entries later.
+ * An award that isn't about entries (a weekly review, an explored insight) is never touched.
  */
 export function planRewardSync(before: RewardState, data: RewardData): RewardPlan {
   const result = calculateRewards({ ...data, ...factsFrom(before) });
@@ -112,9 +119,7 @@ export function planRewardSync(before: RewardState, data: RewardData): RewardPla
     result.quests.map((q) => `quest:${questKey(q.code, q.periodKey)}`),
   );
   const reconciled = (e: StoredEvent) =>
-    LEDGER_KINDS.has(e.kind) ||
-    e.kind === "achievement" ||
-    (e.kind === "quest" && currentQuestKeys.has(e.sourceKey));
+    LEDGER_KINDS.has(e.kind) || (e.kind === "quest" && currentQuestKeys.has(e.sourceKey));
 
   const known = new Set(before.events.map((e) => e.sourceKey));
   const newEvents = result.events.filter((e) => !known.has(e.sourceKey));
@@ -125,13 +130,8 @@ export function planRewardSync(before: RewardState, data: RewardData): RewardPla
     .filter((e) => e.revokedAt !== null && earnedKeys.has(e.sourceKey))
     .map((e) => e.sourceKey);
 
-  const catalog = new Set(data.achievements.map((a) => a.code));
-  const earnedCodes = new Set(result.achievementCodes);
   const unlocked = new Set(before.achievements.map((a) => a.code));
   const newAchievements = result.achievementCodes.filter((code) => !unlocked.has(code));
-  const removedAchievements = before.achievements
-    .filter((a) => catalog.has(a.code) && !earnedCodes.has(a.code))
-    .map((a) => a.code);
 
   const stored = new Map(before.quests.map((q) => [questKey(q.questCode, q.periodKey), q]));
   // Everything open, plus anything whose completion changed. A quest that stays done isn't saved.
@@ -148,7 +148,6 @@ export function planRewardSync(before: RewardState, data: RewardData): RewardPla
 
   const revoked = new Set(revokedKeys);
   const restored = new Set(restoredKeys);
-  const removed = new Set(removedAchievements);
   const state: RewardState = {
     events: [
       ...before.events.map((e) =>
@@ -161,19 +160,26 @@ export function planRewardSync(before: RewardState, data: RewardData): RewardPla
       ...newEvents.map((e) => ({ ...e, createdAt: at, revokedAt: null })),
     ],
     achievements: [
-      ...before.achievements.filter((a) => !removed.has(a.code)),
+      ...before.achievements,
       ...newAchievements.map((code) => ({ code, unlockedAt: at })),
     ],
     quests: [
       ...before.quests.map((q) => {
         const update = saved.get(questKey(q.questCode, q.periodKey));
-        return update ? { ...q, completedAt: update.complete ? (q.completedAt ?? at) : null } : q;
+        return update
+          ? {
+              ...q,
+              progress: update.progress,
+              completedAt: update.complete ? (q.completedAt ?? at) : null,
+            }
+          : q;
       }),
       ...quests
         .filter((q) => !stored.has(questKey(q.code, q.periodKey)))
         .map((q) => ({
           questCode: q.code,
           periodKey: q.periodKey,
+          progress: q.progress,
           completedAt: q.complete ? at : null,
           optedOutAt: null,
         })),
@@ -193,13 +199,11 @@ export function planRewardSync(before: RewardState, data: RewardData): RewardPla
     newEvents,
     revokedKeys,
     restoredKeys,
-    removedAchievements,
     quests,
     earnedSomething,
     changed:
       earnedSomething ||
       revokedKeys.length > 0 ||
-      removedAchievements.length > 0 ||
       quests.some((q) => !q.complete && wasComplete(q)),
   };
 }
@@ -211,9 +215,6 @@ export async function saveRewardPlan(store: RewardStore, plan: RewardPlan): Prom
     plan.revokedKeys.length > 0 ? store.revokeEvents(plan.revokedKeys) : undefined,
     plan.restoredKeys.length > 0 ? store.restoreEvents(plan.restoredKeys) : undefined,
     plan.newAchievements.length > 0 ? store.addAchievements(plan.newAchievements) : undefined,
-    plan.removedAchievements.length > 0
-      ? store.removeAchievements(plan.removedAchievements)
-      : undefined,
     plan.quests.length > 0 ? store.saveQuests(plan.quests) : undefined,
     store.saveStreaks(plan.streaks),
   ]);
@@ -224,4 +225,53 @@ export async function saveRewardPlan(store: RewardStore, plan: RewardPlan): Prom
 /** Brings the stored rewards in line with the data. Running it again changes nothing. */
 export async function syncRewardsWith(store: RewardStore, data: RewardData): Promise<SyncOutcome> {
   return saveRewardPlan(store, planRewardSync(await store.read(), data));
+}
+
+/** A ledger row as it is now, for checking whether the ledger moved during a sync. */
+export interface LedgerStamp {
+  id: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+/**
+ * True when rows changed since `snapshot` was read: a row that's new, edited, or deleted since.
+ * `stamps` are the rows touched around the read (deleted ones included). A row deleted before the
+ * read isn't in the snapshot, so it's no change; at worst this says "changed" once too often,
+ * which costs one more pass and never a wrong award.
+ */
+export function ledgerChanged(snapshot: readonly Transaction[], stamps: readonly LedgerStamp[]) {
+  const byId = new Map(snapshot.map((tx) => [tx.id, tx]));
+  return stamps.some((row) => {
+    const seen = byId.get(row.id);
+    if (row.deletedAt !== null) return seen !== undefined;
+    return !seen || parseInstant(seen.updatedAt) !== parseInstant(row.updatedAt);
+  });
+}
+
+/** How far a settle may go: the ledger rarely moves twice in one sync, so 3 passes is plenty. */
+const MAX_PASSES = 3;
+
+/**
+ * A sync that can't leave a stale award behind. If the ledger moved while it ran (an Undo landing
+ * during the save's own sync), what it saved may be out of date, so it runs again from a fresh
+ * read until a pass finds nothing new. Returns the state from before the first pass too, so the
+ * caller can say what changed overall.
+ */
+export async function settleRewardSync(
+  store: RewardStore,
+  load: (pass: number) => Promise<RewardData>,
+  changesSince: (startedAt: string) => Promise<LedgerStamp[]>,
+): Promise<{ before: RewardState; outcome: SyncOutcome; passes: number }> {
+  let first: RewardState | null = null;
+  for (let pass = 1; ; pass += 1) {
+    // A second early, so a row written just before the read can't be missed by clock skew.
+    const startedAt = new Date(Date.now() - 1_000).toISOString();
+    const [before, data] = await Promise.all([store.read(), load(pass)]);
+    first ??= before;
+    const outcome = await saveRewardPlan(store, planRewardSync(before, data));
+    if (pass >= MAX_PASSES || !ledgerChanged(data.ledger, await changesSince(startedAt))) {
+      return { before: first, outcome, passes: pass };
+    }
+  }
 }

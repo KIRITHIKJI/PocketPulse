@@ -45,6 +45,13 @@ const MIN_EXPENSES_BUDGET_MONTH = 5;
 
 export const OPT_OUT_PERIOD = "opt-out";
 
+/** Missions by how often they reset. The catalog's 'once' cadence is the long-term group. */
+export const MISSION_GROUPS = [
+  { cadence: "daily", label: "Daily", resets: "Resets at midnight" },
+  { cadence: "weekly", label: "Weekly", resets: "Resets at the start of your week" },
+  { cadence: "once", label: "Long-term", resets: "Doesn’t reset" },
+] as const;
+
 export interface RewardEvent {
   kind: string;
   xp: number;
@@ -76,10 +83,19 @@ export interface QuestProgress {
   complete: boolean;
 }
 
+/** How far along an achievement is, worked out from the same rule that unlocks it. */
+export interface AchievementProgress {
+  code: string;
+  progress: number;
+  target: number;
+}
+
 /** What already happened outside the ledger, from stored events. */
 interface RewardFacts {
   /** Week starts the user marked as reviewed. */
   reviewedWeeks: readonly LocalDate[];
+  /** Days the user opened that day's spending breakdown. */
+  reviewedDays: readonly LocalDate[];
   /** Distinct insights whose entries were opened. */
   insightsExplored: number;
   optedOutQuests: readonly string[];
@@ -100,6 +116,7 @@ export interface RewardResult {
   events: RewardEvent[];
   achievementCodes: string[];
   quests: QuestProgress[];
+  achievementProgress: AchievementProgress[];
   loggedDays: LocalDate[];
 }
 
@@ -262,11 +279,10 @@ export function calculateRewards(input: RewardInput): RewardResult {
   for (const [week] of cleanWeeks) add("clean_week", XP.cleanWeek, `clean_week:${week}`);
 
   const allocations = ledger.filter((tx) => tx.type === "allocation" && isActive(tx));
-  for (const week of new Set(
+  const savedWeeks = new Set(
     allocations.map((tx) => startOfWeek(toLocalDate(occurredAtMs(tx), tz), settings.weekStartsOn)),
-  )) {
-    add("saved_week", XP.savedWeek, `saved_week:${week}`);
-  }
+  );
+  for (const week of savedWeeks) add("saved_week", XP.savedWeek, `saved_week:${week}`);
 
   const months = budgetMonths(input, today);
   for (const month of months)
@@ -278,23 +294,30 @@ export function calculateRewards(input: RewardInput): RewardResult {
 
   const entryCount = ledger.filter(isLoggedEntry).length;
   const longest = calculateStreaks(days, today, settings).longestDaily;
-  const earned: Record<string, boolean> = {
-    first_10_transactions: entryCount >= FIRST_ENTRIES,
-    streak_7_day: longest >= STREAK_DAYS,
-    no_mystery_money: cleanWeeks.length > 0,
-    first_savings_goal: allocations.length > 0,
-    monthly_budget_achieved: months.length > 0,
-    spending_detective: input.insightsExplored >= DETECTIVE_INSIGHTS,
-    weekly_review_complete: input.reviewedWeeks.length > 0,
+  const progress: Record<string, [number, number]> = {
+    first_10_transactions: [entryCount, FIRST_ENTRIES],
+    streak_7_day: [longest, STREAK_DAYS],
+    no_mystery_money: [cleanWeeks.length, 1],
+    first_savings_goal: [allocations.length, 1],
+    monthly_budget_achieved: [months.length, 1],
+    spending_detective: [input.insightsExplored, DETECTIVE_INSIGHTS],
+    weekly_review_complete: [input.reviewedWeeks.length, 1],
   };
-  const achievementCodes = input.achievements.filter((a) => earned[a.code]).map((a) => a.code);
+  const achievementProgress: AchievementProgress[] = [];
+  const achievementCodes: string[] = [];
   for (const a of input.achievements) {
-    if (earned[a.code]) add("achievement", a.xp, `achievement:${a.code}`);
+    const [count, target] = progress[a.code] ?? [0, 1];
+    achievementProgress.push({ code: a.code, progress: Math.min(count, target), target });
+    if (!progress[a.code] || count < target) continue;
+    achievementCodes.push(a.code);
+    add("achievement", a.xp, `achievement:${a.code}`);
   }
 
+  // Missions. Each is a step of the job (log, look, sort, set aside); none asks for an amount.
   const week = weeks.get(thisWeek);
   const facts: Record<string, { periodKey: string; progress: number }> = {
     log_today: { periodKey: today, progress: days.includes(today) ? 1 : 0 },
+    review_today: { periodKey: today, progress: input.reviewedDays.includes(today) ? 1 : 0 },
     categorise_week: {
       periodKey: thisWeek,
       progress: week && week.total > 0 && week.unassigned === 0 ? 1 : 0,
@@ -303,18 +326,27 @@ export function calculateRewards(input: RewardInput): RewardResult {
       periodKey: thisWeek,
       progress: input.reviewedWeeks.includes(thisWeek) ? 1 : 0,
     },
+    set_aside_week: { periodKey: thisWeek, progress: savedWeeks.has(thisWeek) ? 1 : 0 },
     set_a_goal: { periodKey: "once", progress: goals.length > 0 ? 1 : 0 },
+    steady_logging: { periodKey: "once", progress: days.length },
+    saving_habit: { periodKey: "once", progress: savedWeeks.size },
   };
   const quests: QuestProgress[] = [];
   for (const quest of input.quests) {
     const fact = facts[quest.code];
     if (!fact || input.optedOutQuests.includes(quest.code)) continue;
     const complete = fact.progress >= quest.target;
-    quests.push({ code: quest.code, target: quest.target, complete, ...fact });
+    quests.push({
+      code: quest.code,
+      target: quest.target,
+      complete,
+      periodKey: fact.periodKey,
+      progress: Math.min(fact.progress, quest.target),
+    });
     if (complete) add("quest", quest.xp, `quest:${quest.code}:${fact.periodKey}`);
   }
 
-  return { events, achievementCodes, quests, loggedDays: days };
+  return { events, achievementCodes, quests, achievementProgress, loggedDays: days };
 }
 
 /** Sums non-revoked XP from stored events. */

@@ -169,14 +169,23 @@ async function celebrate(page: Page) {
   return { started, pieces };
 }
 
-/** A new device hasn't seen any achievement yet, so the rewards screen greets them. */
-async function achievementBurst(page: Page) {
+/**
+ * How long the milestone ring and the level-up rise run on this page, in seconds. Elements with
+ * the real classes are added to the real page, so this reads the app's own CSS and motion setting.
+ */
+async function milestoneMotion(page: Page) {
   await page.goto("/rewards");
-  const message = main(page).getByTestId("achievement-celebration");
-  await expect(message).toContainText("achievement");
-  return message
-    .locator(".pp-celebrate-piece")
-    .evaluateAll((all) => all.filter((p) => getComputedStyle(p).display !== "none").length);
+  await expect(main(page).getByTestId("reward-xp")).toBeVisible();
+  return page.evaluate(() =>
+    ["pp-milestone-ring", "pp-level-rise", "pp-dim-in"].map((name) => {
+      const el = document.createElement("span");
+      el.className = name;
+      document.body.append(el);
+      const seconds = parseFloat(getComputedStyle(el).animationDuration);
+      el.remove();
+      return seconds;
+    }),
+  );
 }
 
 const seconds = (durations: string[]) => durations.map((d) => parseFloat(d));
@@ -200,8 +209,11 @@ test.describe("with motion allowed", () => {
     expectAnimated(await chartHeights(page));
   });
 
-  test("the control: an achievement bursts", async ({ page }) => {
-    expect(await achievementBurst(page)).toBe(14);
+  test("the control: milestones and the level-up do animate, briefly", async ({ page }) => {
+    for (const seconds of await milestoneMotion(page)) {
+      expect(seconds).toBeGreaterThan(0.1);
+      expect(seconds).toBeLessThanOrEqual(0.28);
+    }
   });
 
   test("the control: the celebration does animate", async ({ page }) => {
@@ -224,8 +236,8 @@ test.describe("with motion allowed", () => {
       for (const duration of seconds(started)) expect(duration).toBeLessThan(0.001);
     });
 
-    test("an achievement shows its message with no burst", async ({ page }) => {
-      expect(await achievementBurst(page)).toBe(0);
+    test("milestones and the level-up don't move", async ({ page }) => {
+      for (const seconds of await milestoneMotion(page)) expect(seconds).toBeLessThan(0.001);
     });
   });
 });
@@ -243,8 +255,8 @@ test.describe("with the OS set to reduce motion", () => {
     for (const duration of seconds(started)) expect(duration).toBeLessThan(0.001);
   });
 
-  test("an achievement shows its message with no burst", async ({ page }) => {
-    expect(await achievementBurst(page)).toBe(0);
+  test("milestones and the level-up don't move", async ({ page }) => {
+    for (const seconds of await milestoneMotion(page)) expect(seconds).toBeLessThan(0.001);
   });
 
   test.describe("and the in-app setting at Full", () => {

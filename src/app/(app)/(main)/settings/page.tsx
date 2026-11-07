@@ -10,7 +10,7 @@ import {
   RegionForm,
   SpendingForm,
 } from "@/components/settings/settings-forms";
-import { PrivacyForm, RemindersForm } from "@/components/settings/preference-forms";
+import { PrivacyForm, ProgressForm, RemindersForm } from "@/components/settings/preference-forms";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getProfile, getReminderPreferences, hasAnyTransactions } from "@/lib/data/queries";
 import { requestToday, requireSession } from "@/lib/data/session";
@@ -138,6 +138,13 @@ export default async function SettingsPage() {
             description="Optional and quiet by default."
           >
             <RemindersForm prefs={reminders} />
+          </Section>
+          <Section
+            id="settings-progress"
+            title="Progress"
+            description="Rewards for logging and reviewing. Optional."
+          >
+            <ProgressForm showProgress={profile.showProgress} />
           </Section>
           <Section id="settings-privacy" title="Privacy">
             <PrivacyForm includeNotesInReports={profile.includeNotesInReports} />

@@ -5,7 +5,7 @@ import { Info } from "lucide-react";
 
 import { CheckRemindersAgain } from "@/components/reminders/reminder-sync";
 import { SwitchRow } from "@/components/ui/switch";
-import { savePrivacy, saveReminders } from "@/lib/actions/settings";
+import { savePrivacy, saveProgressFeatures, saveReminders } from "@/lib/actions/settings";
 import {
   REMINDERS_OPEN_NOTE,
   type ReminderKey,
@@ -119,6 +119,23 @@ export function PrivacyForm({
   return (
     <SettingsForm action={savePrivacy} {...step}>
       {() => <PrivacyFields includeNotesInReports={includeNotesInReports} />}
+    </SettingsForm>
+  );
+}
+
+/** Progress features on or off. Off hides XP, levels and missions; nothing else changes. */
+export function ProgressForm({ showProgress }: { showProgress: boolean }) {
+  return (
+    <SettingsForm action={saveProgressFeatures}>
+      {() => (
+        <SwitchRow
+          id="settings-show-progress"
+          name="showProgress"
+          label="Show progress features"
+          description="XP, levels, missions and achievements on Home, in navigation and after you save. Turning this off changes nothing else, and your progress is kept."
+          defaultChecked={showProgress}
+        />
+      )}
     </SettingsForm>
   );
 }

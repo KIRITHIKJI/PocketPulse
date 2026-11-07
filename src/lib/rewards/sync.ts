@@ -12,7 +12,14 @@ import {
   startOfWeek,
 } from "@/domain";
 import { DataLoadError } from "@/lib/data/errors";
-import { getBudgets, getGoals, getLedger, getProfile } from "@/lib/data/queries";
+import {
+  getBudgets,
+  getGoals,
+  getLedger,
+  getLedgerStampsSince,
+  getProfile,
+  readLedgerNow,
+} from "@/lib/data/queries";
 import { type Session, requestNow, requestToday, requireSession } from "@/lib/data/session";
 import {
   type RewardData,
@@ -21,8 +28,9 @@ import {
   type RewardStore,
   type SyncOutcome,
   planRewardSync,
-  saveRewardPlan,
+  settleRewardSync,
 } from "@/lib/rewards/engine";
+import { type RewardFeedback, rewardFeedback } from "@/lib/rewards/feedback";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 /** The user's stored rewards, read with their own client (RLS: their rows only). */
@@ -30,7 +38,9 @@ async function readRewardState({ supabase }: Session): Promise<RewardState> {
   const [events, unlocked, quests] = await Promise.all([
     supabase.from("xp_events").select("source_key, kind, xp, created_at, revoked_at"),
     supabase.from("user_achievements").select("achievement_code, unlocked_at"),
-    supabase.from("user_quests").select("quest_code, period_key, completed_at, opted_out_at"),
+    supabase
+      .from("user_quests")
+      .select("quest_code, period_key, progress, completed_at, opted_out_at"),
   ]);
   const error = events.error ?? unlocked.error ?? quests.error;
   if (error) throw new DataLoadError("your rewards", error.code);
@@ -49,6 +59,7 @@ async function readRewardState({ supabase }: Session): Promise<RewardState> {
     quests: (quests.data ?? []).map((q) => ({
       questCode: q.quest_code as string,
       periodKey: q.period_key as string,
+      progress: Number(q.progress ?? 0),
       completedAt: (q.completed_at as string | null) ?? null,
       optedOutAt: (q.opted_out_at as string | null) ?? null,
     })),
@@ -92,14 +103,6 @@ function supabaseStore(session: Session): RewardStore {
         .update({ revoked_at: null })
         .eq("owner_id", userId)
         .in("source_key", keys);
-      if (error) throw new DataLoadError("your rewards", error.code);
-    },
-    async removeAchievements(codes) {
-      const { error } = await admin
-        .from("user_achievements")
-        .delete()
-        .eq("owner_id", userId)
-        .in("achievement_code", codes);
       if (error) throw new DataLoadError("your rewards", error.code);
     },
     async addAchievements(codes) {
@@ -152,10 +155,11 @@ export const rewardCatalog = cache(async () => {
   };
 });
 
-async function rewardData(): Promise<RewardData> {
+/** Pass 1 shares the request's ledger read; a later pass reads again, because the ledger moved. */
+async function rewardData(pass = 1): Promise<RewardData> {
   const [profile, ledger, goals, budgets, catalog] = await Promise.all([
     getProfile(),
-    getLedger(),
+    pass === 1 ? getLedger() : readLedgerNow(),
     getGoals(),
     getBudgets(),
     rewardCatalog(),
@@ -170,12 +174,30 @@ async function rewardData(): Promise<RewardData> {
   };
 }
 
-/** Brings the signed-in user's rewards up to date. Safe to call as often as you like. */
+async function settle(session: Session) {
+  return settleRewardSync(supabaseStore(session), rewardData, getLedgerStampsSince);
+}
+
+/**
+ * Brings the signed-in user's rewards up to date. Safe to call as often as you like, and safe
+ * against an Undo landing mid-sync: if the ledger moved, it runs again (`settleRewardSync`).
+ */
 export async function syncRewards(): Promise<SyncOutcome> {
+  return (await settle(await requireSession())).outcome;
+}
+
+/** A sync that also says what it changed, for the feedback chain after a save. */
+export async function syncRewardsWithFeedback(): Promise<RewardFeedback> {
   const session = await requireSession();
-  // The stored rewards and the ledger are read together, then the new rows are saved together.
-  const [before, data] = await Promise.all([readRewardState(session), rewardData()]);
-  return saveRewardPlan(supabaseStore(session), planRewardSync(before, data));
+  const [{ before, outcome }, catalog] = await Promise.all([settle(session), rewardCatalog()]);
+  return rewardFeedback(
+    before,
+    outcome.state,
+    outcome.result,
+    catalog,
+    outcome.streaks.currentDaily,
+    Date.now(),
+  );
 }
 
 /**
@@ -194,6 +216,12 @@ export async function previewRewards(): Promise<RewardPlan> {
 async function recordEvent(kind: string, xp: number, sourceKey: string) {
   const session = await requireSession();
   await supabaseStore(session).addEvents([{ kind, xp, sourceKey }]);
+}
+
+/** "Looked at today": a zero-XP fact that the Look at today mission reads. Once per day. */
+export async function recordTodayReviewed() {
+  const profile = await getProfile();
+  await recordEvent("daily_review", 0, `daily_review:${requestToday(profile.timeZone)}`);
 }
 
 export async function recordWeeklyReview() {

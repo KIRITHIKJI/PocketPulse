@@ -4,24 +4,54 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { type FormState, text } from "@/lib/forms";
+import type { RewardFeedback } from "@/lib/rewards/feedback";
 import {
   recordInsightExplored,
+  recordTodayReviewed,
   recordWeeklyReview,
   setQuestOptOut,
   syncRewards,
+  syncRewardsWithFeedback,
 } from "@/lib/rewards/sync";
 
 const FAILED = "Couldn’t save that. Try again in a moment.";
 
-export async function completeWeeklyReview(_prev: FormState): Promise<FormState> {
+/**
+ * Called by the client right after a save is answered. This is the save's reward sync (the save
+ * itself never waits for it), and it says what changed. The server works everything out from the
+ * user's own data, so the browser only ever displays what it's told.
+ */
+export async function syncRewardFeedback(): Promise<RewardFeedback | null> {
+  try {
+    return await syncRewardsWithFeedback();
+  } catch {
+    // Rewards are never worth an error after a save; the next sync catches up.
+    return null;
+  }
+}
+
+/** Opening today's breakdown. Once a day; a repeat records nothing new. */
+export async function noteTodayReviewed(): Promise<RewardFeedback | null> {
+  try {
+    await recordTodayReviewed();
+    return await syncRewardsWithFeedback();
+  } catch {
+    return null;
+  }
+}
+
+/** "I've reviewed this week", from a mission row. */
+export async function markWeekReviewed(): Promise<
+  { ok: true; feedback: RewardFeedback } | { ok: false; message: string }
+> {
   try {
     await recordWeeklyReview();
-    await syncRewards();
+    const feedback = await syncRewardsWithFeedback();
+    revalidatePath("/rewards", "layout");
+    return { ok: true, feedback };
   } catch {
-    return { status: "error", message: FAILED };
+    return { ok: false, message: FAILED };
   }
-  revalidatePath("/rewards");
-  return { status: "success", message: "Weekly review done.", savedAt: Date.now() };
 }
 
 export async function changeQuest(_prev: FormState, formData: FormData): Promise<FormState> {
@@ -35,7 +65,7 @@ export async function changeQuest(_prev: FormState, formData: FormData): Promise
   } catch {
     return { status: "error", message: FAILED };
   }
-  revalidatePath("/rewards");
+  revalidatePath("/rewards", "layout");
   return { status: "success", message: "Saved.", savedAt: Date.now() };
 }
 
@@ -52,8 +82,9 @@ export async function noteInsightExplored(scope: unknown): Promise<void> {
 }
 
 /**
- * Called by the rewards page once it's on screen, only when it showed something newly earned. The
- * server works it out again from the user's own data, so the browser can't choose what's saved.
+ * Called by the rewards pages once they're on screen, only when they showed something that
+ * changed. The server works it out again from the user's own data, so the browser can't choose
+ * what's saved.
  */
 export async function saveEarnedRewards(): Promise<void> {
   try {

@@ -71,7 +71,7 @@ Every screen is ranked by how much it serves this job. Logging and "where did it
 
 | Element | What it rewards | How it serves the job | Guard rail |
 | --- | --- | --- | --- |
-| XP | Logging, categorising, reviewing, setting aside on purpose | Makes the boring habit feel noticed | Never for spending less or saving more. Server-awarded only. Follows the entries that exist: undoing or deleting the entry behind an award revokes it, and earning it again restores the same row (Design 2) |
+| XP | Logging, categorising, reviewing, setting aside on purpose | Makes the boring habit feel noticed | Never for spending less or saving more. Server-awarded only. Daily XP and mission progress follow the entries that exist: undoing or deleting the entry behind an award revokes it, and earning it again restores the same row (Design 2). Achievements are unique and can't be farmed, so they stay unlocked with their XP (Design 3) |
 | Level and rank | Total XP over time | A long-term sense of consistency | Rank names are plain words, no letter grades, no fantasy titles |
 | Streak (days, weeks) | Days and weeks with something logged | Shows the habit, the North Star in disguise | Only a count. No "lost", "broken" or "at risk" wording, no reminders about it |
 | Missions | Daily: log today, look at today. Weekly: clear Uncategorized, weekly review, move money to a goal | Each mission is a step of the job: record, then understand | Optional, skippable, no penalty. Never "buy" or "save X" |
@@ -188,7 +188,7 @@ The persistent, in-page message (a budget alert, offline, a data note).
 
 The transient confirmation after an action. One at a time, above the bottom bar on phones, bottom right on desktop. `role="status"`, 8 s, pauses on hover or focus, survives navigation.
 
-- **Tones (5), the feedback ladder from the brief:** `success` (entry saved: small) · `error` · `info` · `progress` (XP earned, mission progress: violet edge, still small) · `milestone` (mission completed, achievement, level up: violet edge and title line, 10 s). Level-up's full-screen moment is a separate component in Design 3.
+- **Tones (5), the feedback ladder from the brief:** `success` (entry saved: small) · `error` · `info` · `progress` (XP earned, mission progress: violet edge, still small) · `milestone` (mission completed, achievement, level up: violet edge and title line, 10 s). Level-up's moment is `feedback/level-up.tsx` (Design 3). All of them go through one queue, `lib/feedback-queue.ts`: one visible at a time, rewards in ladder order, Undo cancels what its save earned.
 - **Quieter when routine:** a toast marked `routine` (saving a tile, repeating an entry) drops its slide-in and shrinks to the compact layout after the third routine toast within two minutes. Undo is always kept.
 - **States:** default · hover/focus (paused) · action running (spinner in the action button, buttons disabled) · error (destructive edge).
 
@@ -214,7 +214,7 @@ Empty state = what a brand-new user (no entries, no budgets, no goals) sees.
 ### Home (`/home`)
 
 - **Hierarchy:** 1 balance · 2 log · 3 today and this month · 4 progress · 5 plan · 6 recent.
-- **Desktop:** two columns, 8 : 4. Left: a `hero` surface with the tracked balance (`display`), and under it two `stat` figures, Spent today and Spent this month, side by side; then Quick Add, a full-width tile grid of 6 per row (no horizontal scroll), with Type it and Say it as small buttons in its header. Then Recent (5 rows). Right rail: PlayerChip (level, rank, XP bar, streak), the monthly budget with Progress, the top goals with Progress, and a Safe to Spend link labelled as an estimate. (Design 2: Home links to Safe to Spend instead of computing it, because its reads would make Home slower; the featured mission arrives with Missions in Design 3.)
+- **Desktop:** two columns, 8 : 4. Left: a `hero` surface with the tracked balance (`display`), and under it two `stat` figures, Spent today and Spent this month, side by side; then Quick Add, a full-width tile grid of 6 per row (no horizontal scroll), with Type it and Say it as small buttons in its header. Then Recent (5 rows). Right rail: PlayerChip (level, rank, XP bar, streak), the monthly budget with Progress, the top goals with Progress, and a Safe to Spend link labelled as an estimate. (Design 3: Safe to Spend shows its daily figure, labelled an estimate, streamed in its own Suspense after the money like the PlayerChip, so the money never waits for it. Measured in PROGRESS.md, Design 3.)
 - **Mobile:** a compact hero (balance, then today and month on one line, about 160 px tall) → Quick Add tiles, 3 per row, the first two rows visible without scrolling → the PlayerChip → budget and goals → the Safe to Spend link → Recent. The Add button is docked in the bottom bar, so nothing floats over the tiles.
 - **Empty:** the hero says "₹0 · Add your starting balance" with that action. Tiles show "Set amount". The right rail (or lower cards) shows one section StatePanel: "Set a monthly budget" and "Add a goal" as two actions in one card, not two empty cards. The PlayerChip shows Level 1 and "Log your first expense to start".
 
@@ -241,7 +241,7 @@ Empty state = what a brand-new user (no entries, no budgets, no goals) sees.
 ### Achievements (`/rewards/achievements`, new in Design 3)
 
 - **Desktop:** a 3-column grid of AchievementBadges, unlocked first, then in progress, then locked; a filter for each group.
-- **Mobile:** a 2-column grid, same order.
+- **Mobile:** one column, same order (two columns were too narrow at 375 px for the rule text).
 - **Empty:** all locked, each with its rule and progress; the header says "0 of 7. Each one shows how to earn it."
 
 ### Rewards (`/rewards`, the progression hub)
