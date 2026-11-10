@@ -293,7 +293,9 @@ test.describe("deleting an account", () => {
       await secretField.fill("not-the-password");
       await submit.click();
       await expect(main(page).getByRole("alert")).toContainText("Nothing was deleted");
-      expect((await admin.auth.admin.getUserById(id)).data.user?.id).toBe(id);
+      const stillThere = await admin.auth.admin.getUserById(id);
+      expect(stillThere.error).toBeNull();
+      expect(stillThere.data.user?.id).toBe(id);
 
       await secretField.fill(password);
       await submit.click();

@@ -433,8 +433,9 @@ test("signing out clears saved screens, and a queue waits for its own account", 
   const amount = uniqueAmount();
   await context.setOffline(true);
   await addTile(page, amount);
-  await context.setOffline(false);
+  // Block uploads before reconnecting, or the entry can sync before sign-out is tapped.
   await page.route("**/api/sync", (route) => route.abort());
+  await context.setOffline(false);
   await expect(page.getByTestId("account-menu")).toBeVisible();
 
   await page.getByTestId("account-menu").click();
