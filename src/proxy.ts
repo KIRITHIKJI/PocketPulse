@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 
 import { HOME_PATH, routeAccess } from "@/lib/auth/routes";
+import { diagnose } from "@/lib/diagnostics";
 import { readPublicSupabaseEnv } from "@/lib/env";
 import { retryingFetch } from "@/lib/supabase/retrying-fetch";
 
@@ -39,8 +40,16 @@ export async function proxy(request: NextRequest) {
   });
 
   // Verifies the JWT (and refreshes an expired session) before deciding anything.
-  const { data } = await supabase.auth.getClaims();
+  const { data, error } = await supabase.auth.getClaims();
   const signedIn = Boolean(data?.claims?.sub);
+  if (!signedIn && request.cookies.getAll().some((c) => c.name.includes("-auth-token"))) {
+    diagnose("proxy: session cookie not accepted", {
+      path: pathname,
+      status: (error as { status?: number } | null)?.status ?? null,
+      code: (error as { code?: string } | null)?.code ?? null,
+      name: error?.name ?? null,
+    });
+  }
 
   const redirectTo = (target: URL) => {
     const redirect = NextResponse.redirect(target);

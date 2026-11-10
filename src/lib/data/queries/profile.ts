@@ -5,6 +5,7 @@ import { cache } from "react";
 import { type CurrencyCode, type ReminderSettings, type Weekday } from "@/domain";
 import { ensureDefaults } from "@/lib/auth/defaults";
 import { DataLoadError } from "@/lib/data/errors";
+import { diagnose } from "@/lib/diagnostics";
 import { optionalSession, requireSession } from "@/lib/data/session";
 import type { MotionPreference } from "@/lib/motion-preference";
 import type {
@@ -65,7 +66,14 @@ export const getProfile = cache(async (): Promise<Profile> => {
     await ensureDefaults(supabase);
     ({ data, error } = await read());
   }
-  if (error || !data) throw new DataLoadError("your profile", error?.code);
+  if (error || !data) {
+    diagnose("profile: read failed", {
+      code: error?.code ?? null,
+      message: error && !error.code ? error.message.slice(0, 80) : null,
+      empty: !error && !data,
+    });
+    throw new DataLoadError("your profile", error?.code);
+  }
   return toProfile(data);
 });
 

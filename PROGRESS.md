@@ -3,7 +3,7 @@
 Durable project state. Update before a context reset or at the end of each work session.
 Source of truth for requirements: `PROJECT_SPEC.md`.
 
-_Last updated: 2026-11-10 — Design 4 final check, **partial**: sidebar fits 768 px, reward and offline fixes, but no complete e2e run has passed yet (see "Design 4 final check"). Before that, 2026-11-07 — Design 4 of 4, the last design phase (every remaining screen, sidebar groups, full QA; see "Design 4"). No migration. Before that, Design 3 of 4 (Player status, Missions, Achievements, Rewards hub, the feedback ladder, permanent achievements, Safe to Spend on Home; see "Design 3"). Migration `20261106000200_missions` is applied on the hosted project (you ran `db push` on 2026-11-07). Before that, Design 2 of 4 (Home, Quick Add, mobile bar, rewards that follow Undo; see "Design 2"). Before that, Design 1 (audit, `doc/DESIGN_PLAN.md`, foundation). Before that, Code tidy (no behaviour change). Before that, Speed fixes 2. Migrations 0100–1000, 20261105000100 (ledger keyset index) and 20261106000100 (`wallet_balances`) are applied on the hosted project (you ran `db push`; `migration list` confirmed). The app is not deployed yet, so nothing has been tried on a real phone._
+_Last updated: 2026-11-10 — Design 4 final check: sidebar fits 768 px, reward, offline and speed fixes; the complete e2e suite passed in one run (398 passed, 9 skipped, 0 failed; see "Design 4 final check"). Before that, 2026-11-07 — Design 4 of 4, the last design phase (every remaining screen, sidebar groups, full QA; see "Design 4"). No migration. Before that, Design 3 of 4 (Player status, Missions, Achievements, Rewards hub, the feedback ladder, permanent achievements, Safe to Spend on Home; see "Design 3"). Migration `20261106000200_missions` is applied on the hosted project (you ran `db push` on 2026-11-07). Before that, Design 2 of 4 (Home, Quick Add, mobile bar, rewards that follow Undo; see "Design 2"). Before that, Design 1 (audit, `doc/DESIGN_PLAN.md`, foundation). Before that, Code tidy (no behaviour change). Before that, Speed fixes 2. Migrations 0100–1000, 20261105000100 (ledger keyset index) and 20261106000100 (`wallet_balances`) are applied on the hosted project (you ran `db push`; `migration list` confirmed). The app is not deployed yet, so nothing has been tried on a real phone._
 
 ## Build stages
 
@@ -570,9 +570,9 @@ The money arrives no later. The figure arrives after it, and before the player c
 | After your push | `e2e/rewards.spec.ts` on ledger-desktop, live with the 8 missions: **6 passed** |
 | E2E (hosted project, fresh build; migration NOT pushed, so the hosted catalog has the 4 old missions) | Run 1, `rewards` + `shell` on desktop, mobile, ledger-desktop, ledger-mobile (the ledger projects ran all their specs): **117 passed, 1 failed**. The failure was `motion.spec.ts` "an achievement bursts", which tested the removed confetti. It now checks that the milestone ring, the level-up rise and the dim animate (≤ 280 ms) with motion allowed and don't move under OS or in-app reduced motion. Run 2, ledger-desktop + ledger-mobile (rewards, motion, Journey A–G specs): **76 passed, 0 failed**. The spec's new tests: XP daily follows entries while achievements stay, at most 1 pop-up sampled 15 times after a save, the mission skip/bring back, Home chip → `/rewards/status`, Safe to Spend labelled an estimate |
 
-## Design 4 final check (2026-11-10) — partial: no full e2e run has passed yet
+## Design 4 final check (2026-11-10)
 
-A short final check that grew: each full e2e run surfaced a different real bug. All of them below are fixed and verified by targeted runs, unit and DB tests. **No single run of the complete e2e suite (407 tests) has passed yet**; the counts of every run are below. No database change.
+A short final check that grew: each full e2e run surfaced a different real bug. All of them below are fixed. **Run 7 of the complete e2e suite (all 407 tests, desktop and mobile, one run) passed: 398 passed, 9 skipped (the designed one-viewport skips), 0 failed, 0 didn't run, in 14.8 min.** The counts of every run are below. No database change. Commits: `d76865f` (partial, after run 5) and "Design 4 final check".
 
 **What changed**
 
@@ -596,8 +596,12 @@ When a ledger-desktop test fails, ledger-mobile (which depends on it) doesn't ru
 | 3 | + DB error logging | 328 | 2 | 4 | 73 | 11.2 min | offline edit toast lost on reload; rewards XP fell 330 → 310 |
 | 4 | + carried toast, reward rule | 308 | 17 | 4 | 78 | 39.4 min | pages 3–7 s, timeouts and sign-in bounces across specs: the sidebar prefetching all routes |
 | 5 | + intent prefetch | 277 | 8 | 4 | 118 | 13.2 min | every desktop and mobile test passed; in 8 ledger spec files the first test was sent to sign-in or couldn't load the profile |
+| 6 | + test-only session diagnostics | 329 | 2 | 4 | 72 | 11.2 min | 0 session rejections logged; insights "no spending" and the Log today skip both saw 2 leftover Tea entries from offline tests that failed in runs 3 and 4 |
+| 7 | + offline cleanup that survives failures, leftovers removed | **398** | **0** | 9 | **0** | 14.8 min | none |
 
-**Open: run 5's session failures.** The request carried a valid, unexpired session cookie, yet the proxy's `getClaims()` treated it as signed out (307 → `/login`), and the server logged 11 "Couldn't load your profile" errors with no database code. Only the first test of each ledger spec file failed; the rest of each file passed. A probe of pooled connections after 5–60 s idle showed no resets. Next: test-only logging of the status/code of failed session and profile reads, then checking (1) several workers refreshing the one shared saved login at once, (2) Supabase auth rate limits; fix the cause in the test setup, then one complete run.
+**Run 5's session failures: not reproduced, cause not proven.** The request carried a valid, unexpired session cookie, yet the proxy's `getClaims()` treated it as signed out (307 → `/login`), and the server logged 11 "Couldn't load your profile" errors with no database code; only the first test of each ledger spec file failed. Checked: the saved token was valid for the whole run (issued 10:26, expiring 11:26 UTC), so no refresh happened and the shared-refresh-token race (several workers rotating one token) couldn't have occurred; a probe of pooled connections after 5–60 s idle showed no resets. Test-only diagnostics (`lib/diagnostics.ts`, on only when the e2e server sets `PP_E2E_DIAGNOSE=1`; status and error codes only) now log why a session check or profile read fails. Runs 6 and 7 logged **0** such events. The likeliest explanation is a transient Supabase auth or network failure during run 5; if it returns, the log will name it.
+
+**Leftover test data (found by run 6).** The offline spec cleaned up only at the end of each test, so the tests that failed in runs 3 and 4 left two Tea entries (₹74.40, ₹52.84) on the shared account, which later made "no spending" and "log today" wrong for other specs. The spec now records every amount it uses and deletes what's left at those amounts in `afterEach`, which runs whether the test passed or failed. With your approval, the two leftovers were deleted (soft delete, the app's own delete), and Transactions and Insights were checked empty before run 7.
 
 **Checks (2026-11-10, final code)**
 
@@ -607,7 +611,7 @@ When a ledger-desktop test fails, ledger-mobile (which depends on it) doesn't ru
 | `npm test` | ✅ 36 files / **916** tests |
 | `npm run test:db` (throwaway PostgreSQL 18 on 54329, stopped after) | ✅ 14 files, **129** passed + 13 placeholders |
 | `npm run build` | ✅ |
-| Full e2e | ❌ not yet green: see the table above |
+| Full e2e (run 7, all 407 tests, one run) | ✅ **398 passed, 9 skipped, 0 failed, 0 didn't run** (14.8 min). The same lint/typecheck/unit/DB/build checks were run once more after it, on the final code, with the same results |
 
 
 ## Design 4 (2026-11-07)
@@ -914,7 +918,7 @@ Note: because of the `(app)` loading boundary, Next.js streams `notFound()` page
 
 ## Next concrete tasks
 
-**Next:** find why the shared e2e session is intermittently rejected (Design 4 final check, "Open"), fix it in the test setup, and get one complete e2e run green.
+**Watch:** if an e2e run sends a signed-in test to sign-in again, read the `[e2e-diagnose]` lines in the run's output (Design 4 final check).
 
 **The redesign is done (Design 1–4).** Open design items: the Leaks side panel, Categories two-pane view and Recurring segmented control on phones.
 

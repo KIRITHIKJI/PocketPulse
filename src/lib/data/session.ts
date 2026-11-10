@@ -4,6 +4,7 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 
 import { type LocalDate, toLocalDate } from "@/domain";
+import { diagnose } from "@/lib/diagnostics";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export type ServerClient = NonNullable<Awaited<ReturnType<typeof createSupabaseServerClient>>>;
@@ -24,6 +25,13 @@ export const optionalSession = cache(async (): Promise<Session | null> => {
   if (!supabase) return null;
   const { data, error } = await supabase.auth.getClaims();
   const userId = data?.claims.sub;
+  if (error) {
+    diagnose("session: getClaims failed", {
+      status: (error as { status?: number }).status ?? null,
+      code: (error as { code?: string }).code ?? null,
+      name: error.name,
+    });
+  }
   if (error || !userId) return null;
   return { supabase, userId, email: (data.claims.email as string | undefined) ?? null };
 });

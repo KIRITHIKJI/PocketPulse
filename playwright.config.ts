@@ -63,5 +63,7 @@ export default defineConfig({
     url: baseURL,
     reuseExistingServer: !process.env.CI,
     timeout: 300_000,
+    // Test-only logging of why a session or profile read fails (status/code only).
+    env: { PP_E2E_DIAGNOSE: "1" },
   },
 });

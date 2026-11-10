@@ -13,9 +13,17 @@ const main = (page: Page) => page.locator("#main");
 const toast = (page: Page) => page.getByTestId("toast");
 const banner = (page: Page) => page.getByTestId("sync-banner");
 
+/**
+ * Amounts this spec records entries at. A test that fails partway never reaches its own cleanup,
+ * and its entries would then count as spending (and a logged day) for every later spec on the
+ * shared account, so `afterEach` deletes whatever is left at these amounts, pass or fail.
+ */
+const usedAmounts = new Set<string>(["37.11", "61.25", "42.50"]);
+
 function uniqueAmount(): { text: string; paise: number } {
   const paise = 1_000 + (Date.now() % 8_999);
   const text = `${Math.trunc(paise / 100)}.${String(paise % 100).padStart(2, "0")}`;
+  usedAmounts.add(text);
   return { text, paise };
 }
 
@@ -111,6 +119,23 @@ async function removeEntry(page: Page, id: string) {
   const result = await syncCommand(page, { kind: "delete", opId: newId(), id });
   expect(result.ok).toBe(true);
 }
+
+test.afterEach(async ({ browser }) => {
+  const page = await browser.newPage({ storageState: AUTH_FILE });
+  for (const amount of usedAmounts) {
+    await page.goto(`/transactions?type=expense&min=${amount}&max=${amount}`);
+    await expect(main(page).getByTestId("history-summary")).toBeVisible();
+    const hrefs = await main(page)
+      .getByTestId("history-table")
+      .getByRole("link")
+      .evaluateAll((links) => links.map((a) => a.getAttribute("href") ?? ""));
+    const ids = new Set(
+      hrefs.flatMap((href) => /^\/transactions\/([0-9a-f-]{36})$/.exec(href)?.slice(1) ?? []),
+    );
+    for (const id of ids) await removeEntry(page, id);
+  }
+  await page.close();
+});
 
 /** How many live rows the account has at exactly this amount. */
 async function rowsAt(page: Page, amount: string) {
