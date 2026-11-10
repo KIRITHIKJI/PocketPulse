@@ -174,22 +174,31 @@ async function rewardData(pass = 1): Promise<RewardData> {
   };
 }
 
-async function settle(session: Session) {
-  return settleRewardSync(supabaseStore(session), rewardData, getLedgerStampsSince);
+async function settle(session: Session, options: SyncOptions) {
+  return settleRewardSync(supabaseStore(session), rewardData, getLedgerStampsSince, options);
 }
+
+/**
+ * `revoke`: the sync follows a delete, an Undo or an edit, so something behind an award may be
+ * gone and it may be taken back. Logging something new never costs XP.
+ */
+export type SyncOptions = { revoke: boolean };
 
 /**
  * Brings the signed-in user's rewards up to date. Safe to call as often as you like, and safe
  * against an Undo landing mid-sync: if the ledger moved, it runs again (`settleRewardSync`).
  */
-export async function syncRewards(): Promise<SyncOutcome> {
-  return (await settle(await requireSession())).outcome;
+export async function syncRewards(options: SyncOptions): Promise<SyncOutcome> {
+  return (await settle(await requireSession(), options)).outcome;
 }
 
 /** A sync that also says what it changed, for the feedback chain after a save. */
 export async function syncRewardsWithFeedback(): Promise<RewardFeedback> {
   const session = await requireSession();
-  const [{ before, outcome }, catalog] = await Promise.all([settle(session), rewardCatalog()]);
+  const [{ before, outcome }, catalog] = await Promise.all([
+    settle(session, { revoke: false }),
+    rewardCatalog(),
+  ]);
   return rewardFeedback(
     before,
     outcome.state,
@@ -209,7 +218,7 @@ export async function syncRewardsWithFeedback(): Promise<RewardFeedback> {
 export async function previewRewards(): Promise<RewardPlan> {
   const session = await requireSession();
   const [before, data] = await Promise.all([readRewardState(session), rewardData()]);
-  return planRewardSync(before, data);
+  return planRewardSync(before, data, { revoke: false });
 }
 
 /** Records one fact worth XP. Its key makes a repeat do nothing. */

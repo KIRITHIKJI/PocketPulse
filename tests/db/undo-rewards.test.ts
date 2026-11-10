@@ -83,14 +83,18 @@ describe.skipIf(!ADMIN_URL)("Undo of a quick-add save", () => {
     const active = ledger.filter((tx) => !tx.deletedAt);
     await s.q("reset role", []);
     try {
-      return await syncRewardsWith(pgRewardStore(db, A), {
-        ledger: active,
-        goals: [],
-        budgets: [],
-        ...(await rewardCatalog(db)),
-        now: Date.now(),
-        settings,
-      });
+      return await syncRewardsWith(
+        pgRewardStore(db, A),
+        {
+          ledger: active,
+          goals: [],
+          budgets: [],
+          ...(await rewardCatalog(db)),
+          now: Date.now(),
+          settings,
+        },
+        { revoke: true },
+      );
     } finally {
       await s.q("set local role authenticated", []);
     }

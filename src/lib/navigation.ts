@@ -38,8 +38,10 @@ export type NavItem = {
 type NavGroup = {
   label: string;
   items: readonly NavItem[];
-  /** Drawn as a 2 × 2 grid of compact buttons in the sidebar (Record). */
+  /** Drawn as bordered entry buttons in the sidebar (Record), so they read as actions. */
   grid?: true;
+  /** Leads the sidebar without a label (Overview: Home alone needs no heading). */
+  lead?: true;
 };
 
 const PROGRESS_ITEMS: readonly NavItem[] = [
@@ -53,6 +55,7 @@ const PROGRESS_ITEMS: readonly NavItem[] = [
 export const NAV_GROUPS: readonly NavGroup[] = [
   {
     label: "Overview",
+    lead: true,
     items: [{ href: "/home", label: "Home", icon: House }],
   },
   {

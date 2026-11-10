@@ -75,7 +75,7 @@ export async function noteInsightExplored(scope: unknown): Promise<void> {
   if (!parsed.success) return;
   try {
     await recordInsightExplored(parsed.data);
-    await syncRewards();
+    await syncRewards({ revoke: false });
   } catch {
     // Rewards are never worth an error on a page someone is reading.
   }
@@ -88,7 +88,7 @@ export async function noteInsightExplored(scope: unknown): Promise<void> {
  */
 export async function saveEarnedRewards(): Promise<void> {
   try {
-    await syncRewards();
+    await syncRewards({ revoke: false });
   } catch {
     // Saved on the next entry or visit instead; keys make that the same result.
   }

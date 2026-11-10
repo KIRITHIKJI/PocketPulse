@@ -29,6 +29,8 @@ export interface MissionView {
   progress: number;
   complete: boolean;
   skipped: boolean;
+  /** Entries logged uncategorised after the sort mission was done: a hint, not lost progress. */
+  toSort: number;
 }
 
 export type AchievementState = "unlocked" | "in_progress" | "locked";
@@ -102,6 +104,7 @@ function missionsFrom(plan: RewardPlan, quests: readonly QuestDefinition[]): Mis
         progress: current?.progress ?? 0,
         complete: current?.complete ?? false,
         skipped,
+        toSort: current?.complete ? (current.toSort ?? 0) : 0,
       },
     ];
   });

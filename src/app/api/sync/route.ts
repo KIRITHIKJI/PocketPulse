@@ -60,7 +60,9 @@ export async function POST(request: Request) {
       .eq("id", remember.presetId);
   }
   revalidatePath("/", "layout");
-  after(() => syncRewards().catch(() => undefined));
+  // A replayed delete, Undo or edit may take awards back; a new entry never does.
+  const revoke = ["delete", "undo_batch", "update"].includes(command.kind);
+  after(() => syncRewards({ revoke }).catch(() => undefined));
   return json({
     ok: true,
     status: outcome.status,

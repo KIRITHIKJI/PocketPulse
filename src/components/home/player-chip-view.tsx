@@ -27,7 +27,7 @@ export function PlayerChipView({
       <Link
         href="/rewards/status"
         data-testid="sidebar-player-chip"
-        className="flex flex-col gap-2 rounded-xl border border-(--surface-card-border) bg-(--surface-card-bg) px-3 py-2.5 transition-colors duration-(--duration-quick) outline-none hover:border-border-strong hover:bg-surface-2 focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        className="flex flex-col gap-1.5 rounded-xl border border-(--surface-card-border) bg-(--surface-card-bg) px-3 py-2 transition-colors duration-(--duration-quick) outline-none hover:border-border-strong hover:bg-surface-2 focus-visible:ring-[3px] focus-visible:ring-ring/50"
       >
         <span className="flex items-center gap-2.5">
           <span className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-progress-xp/40 bg-primary-soft type-caption font-semibold text-progress-xp money">

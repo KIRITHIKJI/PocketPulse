@@ -227,7 +227,7 @@ export async function assignCategory(_prev: FormState, formData: FormData): Prom
   });
   if (!outcome.ok) return fail(outcome.message);
   // Sorting the queue moves the "clear the uncategorised queue" mission; after the answer.
-  after(() => syncRewards().catch(() => undefined));
+  after(() => syncRewards({ revoke: false }).catch(() => undefined));
 
   const remember = text(formData, "rememberText").trim();
   if (flag(formData, "remember") && normalizeText(remember) !== "") {

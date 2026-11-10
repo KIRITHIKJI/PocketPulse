@@ -57,6 +57,9 @@ export function dbErrorMessage(error: DbError | null | undefined, uniqueMessage?
     return "A wallet, category or expense it uses doesn’t exist any more. Reload and try again.";
   if (error.code === "23514")
     return "One of the values isn’t allowed. Check the form and try again.";
+  // Unrecognised, so worth knowing about. The code only; without one it was the connection, and
+  // its message is the transport's ("fetch failed"), never database text about a row.
+  console.error("Unexpected database error", error.code || `no code: ${error.message ?? ""}`);
   return "Something went wrong saving that. Try again.";
 }
 

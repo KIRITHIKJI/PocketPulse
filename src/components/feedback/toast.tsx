@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { usePathname } from "next/navigation";
 import {
   Award,
   CircleAlert,
@@ -85,6 +86,41 @@ const TONES: Record<ToastTone, { icon: LucideIcon; iconClass: string; edge?: str
 
 type State = QueueState<ActionToast, RewardNotice>;
 
+const CARRY_KEY = "pocketpulse:toast-on-arrival";
+/** A carried message older than this is from a navigation that never happened; it's dropped. */
+const CARRY_MS = 30_000;
+
+/**
+ * Keeps a confirmation for the screen at `path` even if getting there reloads the page. Offline,
+ * a screen whose data can't be fetched opens as a full page load of its saved copy, which wipes a
+ * toast held in memory. Shown once on arrival after a reload; a soft navigation keeps the toast
+ * that's already showing and only clears this.
+ */
+export function carryToast(path: string, message: string) {
+  try {
+    window.sessionStorage.setItem(CARRY_KEY, JSON.stringify({ path, message, at: Date.now() }));
+  } catch {
+    // Without storage, a soft navigation still keeps the toast; only a reload loses it.
+  }
+}
+
+function takeCarried(path: string): string | null {
+  try {
+    const carried = JSON.parse(window.sessionStorage.getItem(CARRY_KEY) ?? "null") as {
+      path?: string;
+      message?: string;
+      at?: number;
+    } | null;
+    if (!carried) return null;
+    const stale = Date.now() - Number(carried.at) > CARRY_MS;
+    if (carried.path !== path && !stale) return null;
+    window.sessionStorage.removeItem(CARRY_KEY);
+    return carried.path === path && !stale ? (carried.message ?? null) : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * One pop-up at a time (`lib/feedback-queue.ts`), announced politely to screen readers, above
  * the mobile bottom bar. It lives in the app layout, so an Undo offered on one screen survives
@@ -98,6 +134,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const nextId = React.useRef(0);
   const routineTimes = React.useRef<number[]>([]);
   const id = () => (nextId.current += 1);
+  const pathname = usePathname();
+  const loaded = React.useRef(false);
 
   const dismiss = React.useCallback(() => setState((s) => dismissItem(s)), []);
   const show = React.useCallback<ToastContextValue["show"]>(({ sourceId = null, ...next }) => {
@@ -145,6 +183,15 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     (sourceId: string) => setState((s) => cancelSource(s, sourceId)),
     [],
   );
+
+  // A confirmation carried across a reload shows on the page it was meant for, once.
+  React.useEffect(() => {
+    if (!pathname) return;
+    const message = takeCarried(pathname);
+    const fresh = !loaded.current;
+    loaded.current = true;
+    if (message && fresh) show({ tone: "success", message });
+  }, [pathname, show]);
 
   const current = state.current;
   React.useEffect(() => {

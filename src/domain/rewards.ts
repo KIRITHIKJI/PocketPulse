@@ -81,6 +81,8 @@ export interface QuestProgress {
   progress: number;
   target: number;
   complete: boolean;
+  /** Entries still to sort this week: a hint beside a completed "sort" mission, never lost progress. */
+  toSort?: number;
 }
 
 /** How far along an achievement is, worked out from the same rule that unlocks it. */
@@ -99,6 +101,11 @@ interface RewardFacts {
   /** Distinct insights whose entries were opened. */
   insightsExplored: number;
   optedOutQuests: readonly string[];
+  /**
+   * Awards already earned and not taken back. A sorting award stays earned once its week was
+   * fully sorted: logging more afterwards must never cost XP (spec: don't punish expenses).
+   */
+  keptKeys?: ReadonlySet<string>;
 }
 
 export interface RewardInput extends RewardFacts {
@@ -273,8 +280,11 @@ export function calculateRewards(input: RewardInput): RewardResult {
   for (const day of days) add("logged_day", XP.loggedDay, `logged_day:${day}`);
 
   const weeks = expensesByWeek(input);
+  const sorted = (key: string, w: { unassigned: number }) =>
+    w.unassigned === 0 || Boolean(input.keptKeys?.has(key));
   const cleanWeeks = [...weeks].filter(
-    ([week, w]) => week < thisWeek && w.total >= MIN_EXPENSES_CLEAN_WEEK && w.unassigned === 0,
+    ([week, w]) =>
+      week < thisWeek && w.total >= MIN_EXPENSES_CLEAN_WEEK && sorted(`clean_week:${week}`, w),
   );
   for (const [week] of cleanWeeks) add("clean_week", XP.cleanWeek, `clean_week:${week}`);
 
@@ -315,12 +325,13 @@ export function calculateRewards(input: RewardInput): RewardResult {
 
   // Missions. Each is a step of the job (log, look, sort, set aside); none asks for an amount.
   const week = weeks.get(thisWeek);
-  const facts: Record<string, { periodKey: string; progress: number }> = {
+  const facts: Record<string, { periodKey: string; progress: number; toSort?: number }> = {
     log_today: { periodKey: today, progress: days.includes(today) ? 1 : 0 },
     review_today: { periodKey: today, progress: input.reviewedDays.includes(today) ? 1 : 0 },
     categorise_week: {
       periodKey: thisWeek,
-      progress: week && week.total > 0 && week.unassigned === 0 ? 1 : 0,
+      progress: week && week.total > 0 && sorted(`quest:categorise_week:${thisWeek}`, week) ? 1 : 0,
+      toSort: week?.unassigned ?? 0,
     },
     weekly_review: {
       periodKey: thisWeek,
@@ -342,6 +353,7 @@ export function calculateRewards(input: RewardInput): RewardResult {
       complete,
       periodKey: fact.periodKey,
       progress: Math.min(fact.progress, quest.target),
+      ...(fact.toSort ? { toSort: fact.toSort } : {}),
     });
     if (complete) add("quest", quest.xp, `quest:${quest.code}:${fact.periodKey}`);
   }

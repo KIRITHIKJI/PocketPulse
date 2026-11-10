@@ -59,7 +59,7 @@ const keysAfter = (state: RewardState, prefix: string) =>
 
 export type RewardData = Omit<
   RewardInput,
-  "reviewedWeeks" | "reviewedDays" | "insightsExplored" | "optedOutQuests"
+  "reviewedWeeks" | "reviewedDays" | "insightsExplored" | "optedOutQuests" | "keptKeys"
 >;
 
 /** Facts already stored, which the ledger alone can't show. */
@@ -71,6 +71,7 @@ export function factsFrom(state: RewardState) {
     optedOutQuests: state.quests
       .filter((q) => q.periodKey === OPT_OUT_PERIOD && q.optedOutAt !== null)
       .map((q) => q.questCode),
+    keptKeys: new Set(state.events.filter((e) => e.revokedAt === null).map((e) => e.sourceKey)),
   };
 }
 
@@ -104,14 +105,35 @@ const LEDGER_KINDS = new Set(["logged_day", "clean_week", "saved_week", "budget_
  * has to be read back afterwards. Keys decide everything, so the totals match a fresh read.
  *
  * Daily awards and mission progress follow the entries that exist now. Undoing (or deleting) the
- * entry behind one revokes it; earning it again clears the revocation on the same row. Mission
- * awards are reconciled only for the current period, the only one worked out again.
+ * entry behind one revokes it; earning it again clears the revocation on the same row. Only a
+ * sync that follows a delete, an Undo or an edit (`revoke`) takes anything back: logging a new
+ * entry never costs XP, and a mission done for its day or week stays done (spec: don't punish
+ * expenses). Sorting awards stay earned once their week was sorted (`keptKeys`). Mission awards
+ * are reconciled only for the current period, the only one worked out again.
  * Achievements are the exception: each is unique and can't be farmed, so once earned it stays
  * unlocked, with its XP, whatever happens to the entries later.
  * An award that isn't about entries (a weekly review, an explored insight) is never touched.
  */
-export function planRewardSync(before: RewardState, data: RewardData): RewardPlan {
-  const result = calculateRewards({ ...data, ...factsFrom(before) });
+export function planRewardSync(
+  before: RewardState,
+  data: RewardData,
+  { revoke }: { revoke: boolean },
+): RewardPlan {
+  const calculated = calculateRewards({ ...data, ...factsFrom(before) });
+  // Unless something behind an award may be gone, a mission done for its day or week stays done.
+  const doneBefore = new Set(
+    before.quests.filter((q) => q.completedAt).map((q) => `${q.questCode}:${q.periodKey}`),
+  );
+  const result: RewardResult = revoke
+    ? calculated
+    : {
+        ...calculated,
+        quests: calculated.quests.map((q) =>
+          !q.complete && doneBefore.has(`${q.code}:${q.periodKey}`)
+            ? { ...q, complete: true, progress: q.target }
+            : q,
+        ),
+      };
   const at = new Date(data.now).toISOString();
   const earnedKeys = new Set(result.events.map((e) => e.sourceKey));
   const questKey = (code: string, periodKey: string) => `${code}:${periodKey}`;
@@ -123,9 +145,11 @@ export function planRewardSync(before: RewardState, data: RewardData): RewardPla
 
   const known = new Set(before.events.map((e) => e.sourceKey));
   const newEvents = result.events.filter((e) => !known.has(e.sourceKey));
-  const revokedKeys = before.events
-    .filter((e) => e.revokedAt === null && reconciled(e) && !earnedKeys.has(e.sourceKey))
-    .map((e) => e.sourceKey);
+  const revokedKeys = revoke
+    ? before.events
+        .filter((e) => e.revokedAt === null && reconciled(e) && !earnedKeys.has(e.sourceKey))
+        .map((e) => e.sourceKey)
+    : [];
   const restoredKeys = before.events
     .filter((e) => e.revokedAt !== null && earnedKeys.has(e.sourceKey))
     .map((e) => e.sourceKey);
@@ -223,8 +247,12 @@ export async function saveRewardPlan(store: RewardStore, plan: RewardPlan): Prom
 }
 
 /** Brings the stored rewards in line with the data. Running it again changes nothing. */
-export async function syncRewardsWith(store: RewardStore, data: RewardData): Promise<SyncOutcome> {
-  return saveRewardPlan(store, planRewardSync(await store.read(), data));
+export async function syncRewardsWith(
+  store: RewardStore,
+  data: RewardData,
+  options: { revoke: boolean },
+): Promise<SyncOutcome> {
+  return saveRewardPlan(store, planRewardSync(await store.read(), data, options));
 }
 
 /** A ledger row as it is now, for checking whether the ledger moved during a sync. */
@@ -249,6 +277,21 @@ export function ledgerChanged(snapshot: readonly Transaction[], stamps: readonly
   });
 }
 
+/**
+ * True when a row in `snapshot` was deleted or edited since: a delete, an Undo or an edit landed
+ * during the sync. A brand-new row isn't: logging more never takes anything back.
+ */
+export function ledgerRewritten(snapshot: readonly Transaction[], stamps: readonly LedgerStamp[]) {
+  const byId = new Map(snapshot.map((tx) => [tx.id, tx]));
+  return stamps.some((row) => {
+    const seen = byId.get(row.id);
+    return (
+      seen !== undefined &&
+      (row.deletedAt !== null || parseInstant(seen.updatedAt) !== parseInstant(row.updatedAt))
+    );
+  });
+}
+
 /** How far a settle may go: the ledger rarely moves twice in one sync, so 3 passes is plenty. */
 const MAX_PASSES = 3;
 
@@ -256,22 +299,27 @@ const MAX_PASSES = 3;
  * A sync that can't leave a stale award behind. If the ledger moved while it ran (an Undo landing
  * during the save's own sync), what it saved may be out of date, so it runs again from a fresh
  * read until a pass finds nothing new. Returns the state from before the first pass too, so the
- * caller can say what changed overall.
+ * caller can say what changed overall. A delete, Undo or edit that landed meanwhile lets the
+ * next pass take back what it earned, even when this sync followed a save.
  */
 export async function settleRewardSync(
   store: RewardStore,
   load: (pass: number) => Promise<RewardData>,
   changesSince: (startedAt: string) => Promise<LedgerStamp[]>,
+  options: { revoke: boolean },
 ): Promise<{ before: RewardState; outcome: SyncOutcome; passes: number }> {
   let first: RewardState | null = null;
+  let { revoke } = options;
   for (let pass = 1; ; pass += 1) {
     // A second early, so a row written just before the read can't be missed by clock skew.
     const startedAt = new Date(Date.now() - 1_000).toISOString();
     const [before, data] = await Promise.all([store.read(), load(pass)]);
     first ??= before;
-    const outcome = await saveRewardPlan(store, planRewardSync(before, data));
-    if (pass >= MAX_PASSES || !ledgerChanged(data.ledger, await changesSince(startedAt))) {
+    const outcome = await saveRewardPlan(store, planRewardSync(before, data, { revoke }));
+    const stamps = await changesSince(startedAt);
+    if (pass >= MAX_PASSES || !ledgerChanged(data.ledger, stamps)) {
       return { before: first, outcome, passes: pass };
     }
+    revoke ||= ledgerRewritten(data.ledger, stamps);
   }
 }

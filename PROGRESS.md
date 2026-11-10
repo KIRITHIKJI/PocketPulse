@@ -3,7 +3,7 @@
 Durable project state. Update before a context reset or at the end of each work session.
 Source of truth for requirements: `PROJECT_SPEC.md`.
 
-_Last updated: 2026-11-07 — Design 4 of 4, the last design phase (every remaining screen, sidebar groups, full QA; see "Design 4"). No migration. Before that, Design 3 of 4 (Player status, Missions, Achievements, Rewards hub, the feedback ladder, permanent achievements, Safe to Spend on Home; see "Design 3"). Migration `20261106000200_missions` is applied on the hosted project (you ran `db push` on 2026-11-07). Before that, Design 2 of 4 (Home, Quick Add, mobile bar, rewards that follow Undo; see "Design 2"). Before that, Design 1 (audit, `doc/DESIGN_PLAN.md`, foundation). Before that, Code tidy (no behaviour change). Before that, Speed fixes 2. Migrations 0100–1000, 20261105000100 (ledger keyset index) and 20261106000100 (`wallet_balances`) are applied on the hosted project (you ran `db push`; `migration list` confirmed). The app is not deployed yet, so nothing has been tried on a real phone._
+_Last updated: 2026-11-10 — Design 4 final check, **partial**: sidebar fits 768 px, reward and offline fixes, but no complete e2e run has passed yet (see "Design 4 final check"). Before that, 2026-11-07 — Design 4 of 4, the last design phase (every remaining screen, sidebar groups, full QA; see "Design 4"). No migration. Before that, Design 3 of 4 (Player status, Missions, Achievements, Rewards hub, the feedback ladder, permanent achievements, Safe to Spend on Home; see "Design 3"). Migration `20261106000200_missions` is applied on the hosted project (you ran `db push` on 2026-11-07). Before that, Design 2 of 4 (Home, Quick Add, mobile bar, rewards that follow Undo; see "Design 2"). Before that, Design 1 (audit, `doc/DESIGN_PLAN.md`, foundation). Before that, Code tidy (no behaviour change). Before that, Speed fixes 2. Migrations 0100–1000, 20261105000100 (ledger keyset index) and 20261106000100 (`wallet_balances`) are applied on the hosted project (you ran `db push`; `migration list` confirmed). The app is not deployed yet, so nothing has been tried on a real phone._
 
 ## Build stages
 
@@ -570,6 +570,46 @@ The money arrives no later. The figure arrives after it, and before the player c
 | After your push | `e2e/rewards.spec.ts` on ledger-desktop, live with the 8 missions: **6 passed** |
 | E2E (hosted project, fresh build; migration NOT pushed, so the hosted catalog has the 4 old missions) | Run 1, `rewards` + `shell` on desktop, mobile, ledger-desktop, ledger-mobile (the ledger projects ran all their specs): **117 passed, 1 failed**. The failure was `motion.spec.ts` "an achievement bursts", which tested the removed confetti. It now checks that the milestone ring, the level-up rise and the dim animate (≤ 280 ms) with motion allowed and don't move under OS or in-app reduced motion. Run 2, ledger-desktop + ledger-mobile (rewards, motion, Journey A–G specs): **76 passed, 0 failed**. The spec's new tests: XP daily follows entries while achievements stay, at most 1 pop-up sampled 15 times after a save, the mission skip/bring back, Home chip → `/rewards/status`, Safe to Spend labelled an estimate |
 
+## Design 4 final check (2026-11-10) — partial: no full e2e run has passed yet
+
+A short final check that grew: each full e2e run surfaced a different real bug. All of them below are fixed and verified by targeted runs, unit and DB tests. **No single run of the complete e2e suite (407 tests) has passed yet**; the counts of every run are below. No database change.
+
+**What changed**
+
+- **Desktop sidebar fits without scrolling** (`components/layout/app-sidebar.tsx`, `lib/navigation.ts`, compact player chip). Every group is a two-column grid of 32 px links (44 px on touch), Home leads without a label, Record keeps bordered entry buttons, a long label ("Income & recurring") wraps instead of clipping, sidebar 272 px. Measured on the production build in dark and light: with progress features on, the last link ends at 733 px, so it fits 1366 × 768 and 1440 × 900 with no scroll and nothing clipped; with them off it ends at 571 px. `doc/DESIGN_PLAN.md` §5 updated.
+- **Sidebar prefetching (found by run 4).** With every link on screen, Next prefetched all 21 routes on every page load (the old scrolling sidebar only prefetched the ~10 in view), each a server render with session and profile reads. Pages took 3–4.5 s and run 4 took 39 min. Sidebar links now prefetch on hover or focus (Next's documented `prefetch={wanted ? null : false}` pattern): 21 → 7 prefetches per load (the 7 are in-page links), `/home` 0.9–1.1 s (was 1.7–4.0 s), `/budgets` 1.5 s (was 4.6 s); hovering "Money leaks" prefetches it and the click lands in 378 ms.
+- **Journey E cleanup.** The test clicked "Cancel bill" and polled 10 s for the row, a window that also had to cover the server round trip under load, and a refused action was invisible. `confirmInDialog` in `e2e/plan.spec.ts` now waits for the action's own response (matched by path and `Next-Action` header) and for the dialog to close, so a refusal fails with its message. Traces showed the row goes as soon as the answer arrives (0.2–0.8 s). Two dead ends on the way, both fixed: matching on the multipart body (Chromium doesn't always expose it) and `response.finished()` (not always reported for the streamed action response).
+- **Writes after a dropped connection (found by run 1).** Reopening a goal answered "Something went wrong saving that" in 73 ms: the single `UPDATE` failed in transit (the request was valid; nothing in the schema can refuse it). With your approval, `lib/supabase/retrying-fetch.ts` now also retries `PATCH` and `DELETE` after a network-level failure: every one in the app sets an absolute state, so a repeat changes nothing. Inserts, RPCs and HTTP errors are still never repeated. Tests: updates and deletes retried, give up after three, HTTP errors returned as-is, inserts/RPCs/upserts never repeated.
+- **Unexpected database errors are logged** (`lib/data/errors.ts`): the code only, or the transport message when there is no code; never row data. It fired 0 times in runs 4–5.
+- **Offline edit confirmation (found by run 3).** After an offline edit the app navigates to Sync; offline that is a full page load from the service worker, which wiped the "Change saved on this device" toast (the test only passed when it caught the toast in the ~40 ms before the reload). `carryToast` in `components/feedback/toast.tsx` keeps the message in sessionStorage for the target page: shown once after a reload, cleared without a duplicate after a soft navigation, dropped after 30 s. 3 unit tests.
+- **Logging an expense could cost XP (found by run 3).** An uncategorised entry "un-completed" this week's Clear Uncategorized mission and its 20 XP was revoked (seen in `xp_events`: `quest:categorise_week:2026-11-09`, revoked during the rewards test's save), against spec §236. With your decision: only a sync after a delete, an Undo or an edit (`revoke: true`) takes anything back; a new entry never does. A mission done for its day or week keeps showing **Completed**, and a week once fully sorted keeps its sorting XP (`keptKeys`) even after a later, unrelated delete; uncategorised entries logged afterwards show as a separate "N new entries to sort" link. Edits still revoke, so moving a date can't farm XP. The settle loop takes back an award when a delete or edit lands mid-sync. Existing reward tests run with `revoke: true` (the old behaviour) and assert exactly what they did; 8 new progression tests and 3 mission-card tests; a mutation (no sticky rule, always revoke) fails 4 of them. Plan §1 XP rule updated.
+- **"Are you sure?" kept** for destructive actions, as you asked and PROJECT_SPEC §149 requires. Plan rule 9 said the opposite; it now says destructive actions confirm first, routine ones use Undo.
+
+**Full e2e runs (all 407 tests, every project, one run each)**
+
+When a ledger-desktop test fails, ledger-mobile (which depends on it) doesn't run, so "didn't run" is mostly the mobile ledger specs.
+
+| Run | Code under test | Passed | Failed | Skipped | Didn't run | Time | Failures |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | sidebar + Journey E wait | 332 | 1 | 4 | 70 | 10.1 min | motion: "Reopen" goal, write failed in transit |
+| 2 | + write retry | 335 | 1 | 4 | 67 | 14.1 min | Journey C: deleting an entry answered the generic error (an RPC, not retried by design); not seen again |
+| 3 | + DB error logging | 328 | 2 | 4 | 73 | 11.2 min | offline edit toast lost on reload; rewards XP fell 330 → 310 |
+| 4 | + carried toast, reward rule | 308 | 17 | 4 | 78 | 39.4 min | pages 3–7 s, timeouts and sign-in bounces across specs: the sidebar prefetching all routes |
+| 5 | + intent prefetch | 277 | 8 | 4 | 118 | 13.2 min | every desktop and mobile test passed; in 8 ledger spec files the first test was sent to sign-in or couldn't load the profile |
+
+**Open: run 5's session failures.** The request carried a valid, unexpired session cookie, yet the proxy's `getClaims()` treated it as signed out (307 → `/login`), and the server logged 11 "Couldn't load your profile" errors with no database code. Only the first test of each ledger spec file failed; the rest of each file passed. A probe of pooled connections after 5–60 s idle showed no resets. Next: test-only logging of the status/code of failed session and profile reads, then checking (1) several workers refreshing the one shared saved login at once, (2) Supabase auth rate limits; fix the cause in the test setup, then one complete run.
+
+**Checks (2026-11-10, final code)**
+
+| Check | Result |
+| --- | --- |
+| lint / typecheck / format | ✅ |
+| `npm test` | ✅ 36 files / **916** tests |
+| `npm run test:db` (throwaway PostgreSQL 18 on 54329, stopped after) | ✅ 14 files, **129** passed + 13 placeholders |
+| `npm run build` | ✅ |
+| Full e2e | ❌ not yet green: see the table above |
+
+
 ## Design 4 (2026-11-07)
 
 The last design phase: every remaining screen on the Design 1 components, the desktop sidebar groups, then QA of the whole app. Visual changes only: no money logic, query, action or migration changed. Skills applied: design-elevation (one accent, grey for what isn't the finding, finding-first chart titles, tabular figures), design-systems (shared parts changed once, screens consume them) and ux-research (heuristic review below). Five subagents restyled separate screen groups in parallel; only the lead edited shared components, tokens, navigation and layout, and every subagent's diff was checked against `doc/DESIGN_PLAN.md` §6 before it was accepted.
@@ -874,7 +914,9 @@ Note: because of the `(app)` loading boundary, Next.js streams `notFound()` page
 
 ## Next concrete tasks
 
-**The redesign is done (Design 1–4).** Open design items, from the Design 4 review: Undo instead of "Are you sure?" for removing a budget, deleting an entry, archiving a goal and cancelling a bill (behaviour, needs its own change); the sidebar scrolling at 900 px; the Leaks side panel, Categories two-pane view and Recurring segmented control on phones.
+**Next:** find why the shared e2e session is intermittently rejected (Design 4 final check, "Open"), fix it in the test setup, and get one complete e2e run green.
+
+**The redesign is done (Design 1–4).** Open design items: the Leaks side panel, Categories two-pane view and Recurring segmented control on phones.
 
 All 10 build phases are done. What's left is yours, because it needs accounts or a phone:
 

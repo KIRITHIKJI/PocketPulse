@@ -71,7 +71,7 @@ Every screen is ranked by how much it serves this job. Logging and "where did it
 
 | Element | What it rewards | How it serves the job | Guard rail |
 | --- | --- | --- | --- |
-| XP | Logging, categorising, reviewing, setting aside on purpose | Makes the boring habit feel noticed | Never for spending less or saving more. Server-awarded only. Daily XP and mission progress follow the entries that exist: undoing or deleting the entry behind an award revokes it, and earning it again restores the same row (Design 2). Achievements are unique and can't be farmed, so they stay unlocked with their XP (Design 3) |
+| XP | Logging, categorising, reviewing, setting aside on purpose | Makes the boring habit feel noticed | Never for spending less or saving more. Server-awarded only. Daily XP and mission progress follow the entries that exist: undoing, deleting or editing the entry behind an award revokes it, and earning it again restores the same row (Design 2). **Logging a new entry never costs XP**: a mission done for its day or week stays Completed, and a week once fully sorted keeps its sorting XP; uncategorised entries logged afterwards show as a separate "N new entries to sort" hint, not lost progress (Design 4 final check). Achievements are unique and can't be farmed, so they stay unlocked with their XP (Design 3) |
 | Level and rank | Total XP over time | A long-term sense of consistency | Rank names are plain words, no letter grades, no fantasy titles |
 | Streak (days, weeks) | Days and weeks with something logged | Shows the habit, the North Star in disguise | Only a count. No "lost", "broken" or "at risk" wording, no reminders about it |
 | Missions | Daily: log today, look at today. Weekly: clear Uncategorized, weekly review, move money to a goal | Each mission is a step of the job: record, then understand | Optional, skippable, no penalty. Never "buy" or "save X" |
@@ -344,7 +344,7 @@ Empty state = what a brand-new user (no entries, no budgets, no goals) sees.
 
 1. **Header:** the logo, then the **PlayerChip** (compact: level ring, rank, XP bar), which opens Player Status. Hidden when progress features are off.
 2. **Add expense** (the one primary button). The header's duplicate Add button is removed on desktop.
-3. Groups (labels in `caption`, 8 px above each group):
+3. Groups (labels in `caption`; Home leads without a label), each as a two-column grid:
 
 | Group | Items |
 | --- | --- |
@@ -356,7 +356,7 @@ Empty state = what a brand-new user (no entries, no budgets, no goals) sees.
 | Progress | Player status · Missions · Achievements · Rewards |
 | You | Parent report · Reminders · Settings |
 
-Items are 40 px tall (44 px on touch laptops). The 2 × 2 Record grid and tighter group spacing shorten the list, but with progress features on it doesn't fit 900 px: the groups scroll under a fixed logo, chip and Add button (Design 4, measured).
+Items are 32 px tall with a mouse (44 px on touch), in `caption` type, two to a row; Record's are bordered so they read as actions, the rest are plain links. A label too long for half the width ("Income & recurring") wraps to two lines rather than clipping. The sidebar is 272 px wide. Measured on the production build (Design 4 final check): with progress features on, the last link ends at 733 px, so the whole sidebar fits 1366 × 768 and 1440 × 900 without scrolling; with them off it ends at 571 px. The nav can still scroll as a fallback on shorter windows or with 44 px touch rows.
 
 ### Mobile
 
@@ -377,7 +377,7 @@ Items are 40 px tall (44 px on touch laptops). The 2 × 2 Record grid and tighte
 6. **Colours only from layer 2 or 3 tokens.** Spending is neutral text, never red.
 7. **Every money figure uses `.money`** (tabular numerals), including inside sentences.
 8. **Real data only.** No hardcoded numbers, no sample values in real views, no fake progress. Empty means a StatePanel.
-9. **Undo instead of "Are you sure?"** for every reversible action (soft delete, archive, skip, hide). A confirmation is only for irreversible actions (account deletion) or when Undo is impossible (an expense with refunds explains why it can't be deleted).
+9. **Destructive actions confirm first, then offer Undo where it exists.** `PROJECT_SPEC.md` §149 requires confirmation for destructive actions (delete an entry, remove a budget, archive a goal or recurring item, cancel a bill), so those keep their "Are you sure?" dialog, which says what will change. Routine, non-destructive actions (skip, hide, pause) act at once with Undo. (Changed in the Design 4 final check: this rule used to say Undo instead of a confirmation, which conflicted with the spec.)
 10. **Motion:** under 300 ms per element; never blocks a tap (no awaiting an animation before acting; decorative layers have `pointer-events: none`); reduced motion respected through `MotionConfig` and the CSS overrides.
 11. **Feedback gets quieter for routine actions:** routine toasts compact after repetition; celebrations only for milestones.
 12. **Every gesture has a visible button** (long-press, swipe, drag).

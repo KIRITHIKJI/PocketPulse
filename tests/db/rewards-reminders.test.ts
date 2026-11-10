@@ -78,20 +78,20 @@ describe.skipIf(!ADMIN_URL)("Phase 9: rewards, reminders and ownership", () => {
     );
 
     const store = serverStore(A);
-    const first = await syncRewardsWith(store, await data(A));
+    const first = await syncRewardsWith(store, await data(A), { revoke: true });
     expect(first.state.events.length).toBeGreaterThan(0);
     const xp = totalXp(first.state.events);
 
     const again = await Promise.all([
-      syncRewardsWith(store, await data(A)),
-      syncRewardsWith(store, await data(A)),
+      syncRewardsWith(store, await data(A), { revoke: true }),
+      syncRewardsWith(store, await data(A), { revoke: true }),
     ]);
     expect(again.every((o) => totalXp(o.state.events) === xp)).toBe(true);
 
     await db.client.query("update public.transactions set deleted_at = now() where id = $1", [
       tid(1),
     ]);
-    const after = await syncRewardsWith(store, await data(A));
+    const after = await syncRewardsWith(store, await data(A), { revoke: true });
     expect(totalXp(after.state.events)).toBe(0);
     // Revoked, not deleted: the row (and its key) stays, so earning it again can't add a second.
     const rows = async () =>
@@ -101,7 +101,7 @@ describe.skipIf(!ADMIN_URL)("Phase 9: rewards, reminders and ownership", () => {
     await db.client.query("update public.transactions set deleted_at = null where id = $1", [
       tid(1),
     ]);
-    const back = await syncRewardsWith(store, await data(A));
+    const back = await syncRewardsWith(store, await data(A), { revoke: true });
     expect(totalXp(back.state.events)).toBe(xp);
     expect(await rows()).toHaveLength(first.state.events.length);
   });

@@ -29,6 +29,26 @@ async function paise(page: Page, path: string, testId: string): Promise<number> 
 const homeBalance = (page: Page) => paise(page, "/home", "home-balance");
 const flexible = (page: Page) => paise(page, "/safe-to-spend", "flexible");
 
+/**
+ * Confirms a dialog's server action and waits for that action's own answer, instead of polling
+ * the screen for a fixed time that also has to cover the request under load. The dialog closes
+ * only on success, so a refused action fails here with its message still on screen.
+ */
+async function confirmInDialog(page: Page, name: string) {
+  const path = new URL(page.url()).pathname;
+  // A server action posts to the page it runs on and names itself in the Next-Action header.
+  const answer = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      response.request().headers()["next-action"] !== undefined &&
+      new URL(response.url()).pathname === path,
+  );
+  await dialog(page).getByRole("button", { name }).click();
+  // Next sends the answer's headers once the action has run; the new screen streams after.
+  await answer;
+  await expect(dialog(page)).toBeHidden();
+}
+
 async function savePlanning(page: Page, date: string, reserve = "") {
   await page.goto("/safe-to-spend");
   await main(page).getByLabel("Next income date").fill(date);
@@ -307,7 +327,7 @@ test("Journey E: the limits follow the saved date, and a paid bill counts once",
     .filter({ hasText: RENT })
     .getByRole("button", { name: "Archive" })
     .click();
-  await dialog(page).getByRole("button", { name: "Archive" }).click();
+  await confirmInDialog(page, "Archive");
   await expect(main(page).getByTestId("recurring-template").filter({ hasText: RENT })).toHaveCount(
     0,
   );
@@ -315,7 +335,7 @@ test("Journey E: the limits follow the saved date, and a paid bill counts once",
   // The bill is unpaid again now its payment is gone; cancel it.
   const unpaid = main(page).getByTestId("due-item").filter({ hasText: BILL });
   await unpaid.getByRole("button", { name: "Cancel bill" }).click();
-  await dialog(page).getByRole("button", { name: "Cancel bill" }).click();
+  await confirmInDialog(page, "Cancel bill");
   await expect(unpaid).toHaveCount(0);
   expect(await flexible(page)).toBe(before);
 });

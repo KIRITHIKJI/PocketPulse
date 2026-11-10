@@ -6,6 +6,7 @@ import {
   type RewardData,
   type RewardState,
   ledgerChanged,
+  ledgerRewritten,
   settleRewardSync,
   syncRewardsWith,
 } from "@/lib/rewards/engine";
@@ -25,7 +26,7 @@ const catalog = { achievements: ACHIEVEMENTS, quests: MISSIONS };
 /** A sync as the client sees it: the feedback for the state before and after. */
 async function syncAndTell(store: ReturnType<typeof memoryStore>, d: RewardData) {
   const before = structuredClone(store.state);
-  const outcome = await syncRewardsWith(store, d);
+  const outcome = await syncRewardsWith(store, d, { revoke: true });
   return rewardFeedback(before, outcome.state, outcome.result, catalog, 0, d.now);
 }
 
@@ -89,9 +90,9 @@ describe("mission progress", () => {
     const days = Array.from({ length: 20 }, (_, i) =>
       logged(ist(`2026-10-${String(i + 1).padStart(2, "0")}`)),
     );
-    await syncRewardsWith(store, data(days, all()));
+    await syncRewardsWith(store, data(days, all()), { revoke: true });
     expect(store.state.events.some((e) => e.sourceKey === "quest:steady_logging:once")).toBe(true);
-    const back = await syncRewardsWith(store, data(days.slice(1), all()));
+    const back = await syncRewardsWith(store, data(days.slice(1), all()), { revoke: true });
     const award = back.state.events.find((e) => e.sourceKey === "quest:steady_logging:once");
     expect(award?.revokedAt).not.toBeNull();
     expect(back.state.quests.find((q) => q.questCode === "steady_logging")).toMatchObject({
@@ -205,8 +206,8 @@ describe("feedback after a save", () => {
   it("an award earned and taken back within one comparison shows nothing", async () => {
     const store = memoryStore();
     const before = structuredClone(store.state);
-    await syncRewardsWith(store, data([logged(day(11))], all()));
-    const outcome = await syncRewardsWith(store, data([], all()));
+    await syncRewardsWith(store, data([logged(day(11))], all()), { revoke: true });
+    const outcome = await syncRewardsWith(store, data([], all()), { revoke: true });
     const f = rewardFeedback(before, outcome.state, outcome.result, catalog, 0, 0);
     expect(f.routineXp).toBe(0);
     expect(f.missionsCompleted).toEqual([]);
@@ -227,9 +228,9 @@ describe("no duplicate XP", () => {
 
   it("on retry: the same sync twice awards once", async () => {
     const store = memoryStore();
-    await syncRewardsWith(store, data([entry], all()));
+    await syncRewardsWith(store, data([entry], all()), { revoke: true });
     const xp = totalXp(store.state.events);
-    await syncRewardsWith(store, data([entry], all()));
+    await syncRewardsWith(store, data([entry], all()), { revoke: true });
     expect(totalXp(store.state.events)).toBe(xp);
     expect(new Set(store.state.events.map((e) => e.sourceKey)).size).toBe(
       store.state.events.length,
@@ -238,7 +239,7 @@ describe("no duplicate XP", () => {
 
   it("on edit: a new amount, description or date earns nothing new", async () => {
     const store = memoryStore();
-    await syncRewardsWith(store, data([entry], all()));
+    await syncRewardsWith(store, data([entry], all()), { revoke: true });
     const xp = totalXp(store.state.events);
     const edited = {
       ...entry,
@@ -246,11 +247,11 @@ describe("no duplicate XP", () => {
       description: "Chai",
       updatedAt: day(11, "13:00"),
     };
-    await syncRewardsWith(store, data([edited], all()));
+    await syncRewardsWith(store, data([edited], all()), { revoke: true });
     expect(totalXp(store.state.events)).toBe(xp);
     // Moving the date back and forth can't earn a week twice either.
     for (const occurredAt of [day(3), day(10), day(3), day(10)]) {
-      await syncRewardsWith(store, data([{ ...edited, occurredAt }], all()));
+      await syncRewardsWith(store, data([{ ...edited, occurredAt }], all()), { revoke: true });
       expect(totalXp(store.state.events)).toBeLessThanOrEqual(xp);
     }
     expect(totalXp(store.state.events)).toBe(xp);
@@ -261,13 +262,13 @@ describe("no duplicate XP", () => {
 
   it("on delete and undo, over and over: never more than the first time", async () => {
     const store = memoryStore();
-    await syncRewardsWith(store, data([entry], all()));
+    await syncRewardsWith(store, data([entry], all()), { revoke: true });
     const xp = totalXp(store.state.events);
     const rows = store.state.events.length;
     for (let i = 0; i < 4; i += 1) {
-      await syncRewardsWith(store, data([], all()));
+      await syncRewardsWith(store, data([], all()), { revoke: true });
       expect(totalXp(store.state.events)).toBe(0);
-      await syncRewardsWith(store, data([logged(day(11))], all()));
+      await syncRewardsWith(store, data([logged(day(11))], all()), { revoke: true });
       expect(totalXp(store.state.events)).toBe(xp);
     }
     expect(store.state.events).toHaveLength(rows);
@@ -301,6 +302,7 @@ describe("a sync that an Undo lands in the middle of", () => {
       store,
       async (pass) => data(ledgers[Math.min(pass, 2) - 1]!, all()),
       async () => [stamp(tea.id, day(11, "12:01"), day(11, "12:01"))],
+      { revoke: true },
     );
     expect(result.passes).toBe(2);
     expect(totalXp(store.state.events)).toBe(0);
@@ -326,13 +328,16 @@ describe("a sync that an Undo lands in the middle of", () => {
         const d = data([tea], all());
         // The Undo happens here, while the save's sync is still working.
         deleted = true;
-        await syncRewardsWith(store, data([], all()));
+        await syncRewardsWith(store, data([], all()), { revoke: true });
         return d;
       }
       return data(deleted ? [] : [tea], all());
     };
-    const result = await settleRewardSync(store, load, async () =>
-      deleted ? [stamp(tea.id, day(11, "12:01"), day(11, "12:01"))] : [],
+    const result = await settleRewardSync(
+      store,
+      load,
+      async () => (deleted ? [stamp(tea.id, day(11, "12:01"), day(11, "12:01"))] : []),
+      { revoke: true },
     );
     expect(result.passes).toBe(2);
     expect(totalXp(store.state.events)).toBe(0);
@@ -345,6 +350,7 @@ describe("a sync that an Undo lands in the middle of", () => {
       store,
       async () => data([], all()),
       async () => [stamp("x", day(11))],
+      { revoke: true },
     );
     expect(result.passes).toBe(3);
   });
@@ -356,8 +362,123 @@ describe("a sync that an Undo lands in the middle of", () => {
       store,
       async () => data([logged(day(11))], all()),
       async () => [],
+      { revoke: true },
     );
     expect(result.passes).toBe(1);
     expect(result.before).toEqual(state);
+  });
+});
+
+describe("logging never costs XP (spec: don't punish expenses)", () => {
+  const sortedTea = logged(day(10));
+  const mystery = () => logged(day(11), { categoryId: null });
+  const sortKey = `quest:categorise_week:2026-11-09`;
+  const sortMission = (store: ReturnType<typeof memoryStore>) =>
+    store.state.quests.find((q) => q.questCode === "categorise_week");
+
+  it("an uncategorised entry after the week was sorted keeps the mission done, with a hint", async () => {
+    const store = memoryStore();
+    await syncRewardsWith(store, data([sortedTea], all()), { revoke: false });
+    const xp = totalXp(store.state.events);
+    expect(store.state.events.some((e) => e.sourceKey === sortKey)).toBe(true);
+
+    const outcome = await syncRewardsWith(store, data([sortedTea, mystery()], all()), {
+      revoke: false,
+    });
+    expect(totalXp(store.state.events)).toBeGreaterThanOrEqual(xp);
+    expect(store.state.events.find((e) => e.sourceKey === sortKey)?.revokedAt).toBeNull();
+    expect(sortMission(store)?.completedAt).not.toBeNull();
+    expect(outcome.result.quests.find((q) => q.code === "categorise_week")).toMatchObject({
+      complete: true,
+      toSort: 1,
+    });
+  });
+
+  it("a later, unrelated delete doesn't take the sorted week back either", async () => {
+    const store = memoryStore();
+    const other = logged(day(9));
+    await syncRewardsWith(store, data([sortedTea, other], all()), { revoke: false });
+    await syncRewardsWith(store, data([sortedTea, other, mystery()], all()), { revoke: false });
+    await syncRewardsWith(store, data([sortedTea, mystery()], all()), { revoke: true });
+    const award = store.state.events.find((e) => e.sourceKey === sortKey);
+    expect(award?.revokedAt).toBeNull();
+    expect(sortMission(store)?.completedAt).not.toBeNull();
+  });
+
+  it("a week that was never sorted isn't counted as sorted", () => {
+    const r = calculateRewards({
+      ...data([mystery()], all()),
+      ...facts,
+      keptKeys: new Set(),
+    });
+    expect(mission(r, "categorise_week")).toMatchObject({ complete: false, toSort: 1 });
+  });
+
+  it("a past sorted week keeps its bonus when an uncategorised entry is backdated into it", async () => {
+    const week = Array.from({ length: 5 }, (_, i) => logged(day(2 + i)));
+    const store = memoryStore();
+    await syncRewardsWith(store, data(week, all()), { revoke: false });
+    const key = "clean_week:2026-11-02";
+    expect(store.state.events.some((e) => e.sourceKey === key)).toBe(true);
+    const late = logged(day(11), { categoryId: null, occurredAt: day(4) });
+    await syncRewardsWith(store, data([...week, late], all()), { revoke: true });
+    expect(store.state.events.find((e) => e.sourceKey === key)?.revokedAt).toBeNull();
+  });
+
+  it("a sync after a save takes nothing back, so XP can only go up", async () => {
+    const store = memoryStore();
+    await syncRewardsWith(store, data([logged(day(11))], all()), { revoke: false });
+    const xp = totalXp(store.state.events);
+    const plan = await syncRewardsWith(store, data([], all()), { revoke: false });
+    expect(totalXp(plan.state.events)).toBe(xp);
+    expect(store.state.quests.find((q) => q.questCode === "log_today")?.completedAt).not.toBeNull();
+  });
+
+  it("an edit that moves the entry off its day still takes that day back (no farming)", async () => {
+    const store = memoryStore();
+    const entry = logged(day(11));
+    await syncRewardsWith(store, data([entry], all()), { revoke: false });
+    const xp = totalXp(store.state.events);
+    for (const occurredAt of [day(3), day(10), day(3)]) {
+      await syncRewardsWith(store, data([{ ...entry, occurredAt }], all()), { revoke: true });
+      expect(totalXp(store.state.events)).toBeLessThanOrEqual(xp);
+    }
+  });
+
+  it("knows a new row from a rewritten one", () => {
+    const tea = logged(day(11, "10:00"));
+    const stamp = (id: string, updatedAt: string, deletedAt: string | null = null) => ({
+      id,
+      updatedAt,
+      deletedAt,
+    });
+    expect(ledgerRewritten([tea], [stamp("new", day(11, "10:05"))])).toBe(false);
+    expect(ledgerRewritten([tea], [stamp(tea.id, tea.updatedAt)])).toBe(false);
+    expect(ledgerRewritten([tea], [stamp(tea.id, day(11, "10:05"))])).toBe(true);
+    expect(ledgerRewritten([tea], [stamp(tea.id, day(11, "10:05"), day(11, "10:05"))])).toBe(true);
+  });
+
+  it("a save's sync that an Undo lands in still takes the award back on its next pass", async () => {
+    const store = memoryStore();
+    const tea = logged(day(11));
+    let deleted = false;
+    const load = async (pass: number): Promise<RewardData> => {
+      if (pass === 1) {
+        const d = data([tea], all());
+        deleted = true;
+        await syncRewardsWith(store, data([], all()), { revoke: true });
+        return d;
+      }
+      return data(deleted ? [] : [tea], all());
+    };
+    const result = await settleRewardSync(
+      store,
+      load,
+      async () =>
+        deleted ? [{ id: tea.id, updatedAt: day(11, "12:01"), deletedAt: day(11, "12:01") }] : [],
+      { revoke: false },
+    );
+    expect(result.passes).toBe(2);
+    expect(totalXp(store.state.events)).toBe(0);
   });
 });

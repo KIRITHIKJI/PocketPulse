@@ -1,5 +1,6 @@
 "use server";
 
+import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -44,7 +45,7 @@ const REMOVES = new Set<LedgerCommand["kind"]>(["delete", "undo_batch"]);
 async function rewardsAfterRemoval(command: LedgerCommand): Promise<PlayerStatus | undefined> {
   if (!REMOVES.has(command.kind)) return undefined;
   try {
-    const { state, streaks } = await syncRewards();
+    const { state, streaks } = await syncRewards({ revoke: true });
     return playerStatus(totalXp(state.events), streaks.currentDaily, Date.now());
   } catch {
     // The next sync (any save, or opening Rewards) catches up; the delete itself is done.
@@ -57,6 +58,9 @@ async function run(command: LedgerCommand): Promise<CommandResult> {
   const outcome = await executeLedgerCommand(supabase, command);
   if (!outcome.ok) return { ok: false, status: outcome.status, message: outcome.message };
   const rewards = await rewardsAfterRemoval(command);
+  // An edit can move an entry off the day or week an award was for, so its sync may take that
+  // back (a new entry's sync never does). After the answer, so editing stays quick.
+  if (command.kind === "update") after(() => syncRewards({ revoke: true }).catch(() => undefined));
   refreshViews();
   return {
     ok: true,

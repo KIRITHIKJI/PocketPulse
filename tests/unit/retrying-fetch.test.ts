@@ -36,12 +36,32 @@ describe("retrying dropped reads", () => {
   });
 
   it.each([
+    ["a table update", `${REST}/savings_goals?id=eq.1`, "PATCH"],
+    ["a delete", `${REST}/category_rules?id=eq.1`, "DELETE"],
+  ])("repeats %s, which sets an absolute state and is safe twice", async (_, url, method) => {
+    const { base, fetcher } = setup(reset(), ok());
+    expect((await fetcher(url, { method, body: "{}" })).status).toBe(200);
+    expect(base).toHaveBeenCalledTimes(2);
+  });
+
+  it("gives up on an update after three tries and reports the failure", async () => {
+    const { base, fetcher } = setup(reset(), reset(), reset());
+    await expect(fetcher(`${REST}/profiles`, { method: "PATCH" })).rejects.toThrow("fetch failed");
+    expect(base).toHaveBeenCalledTimes(3);
+  });
+
+  it("returns an update's HTTP error as it is", async () => {
+    const { base, fetcher } = setup(new Response("{}", { status: 503 }), ok());
+    expect((await fetcher(`${REST}/profiles`, { method: "PATCH" })).status).toBe(503);
+    expect(base).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
     ["saving an entry", `${REST}/rpc/create_transaction`, "POST"],
     ["a batch", `${REST}/rpc/log_transactions_batch`, "POST"],
     ["a table insert", `${REST}/budgets`, "POST"],
-    ["a table update", `${REST}/profiles`, "PATCH"],
-    ["a delete", `${REST}/notifications`, "DELETE"],
-  ])("never repeats a write: %s", async (_, url, method) => {
+    ["an upsert", `${REST}/commitments?on_conflict=id`, "POST"],
+  ])("never repeats an insert or RPC: %s", async (_, url, method) => {
     const { base, fetcher } = setup(reset(), ok());
     await expect(fetcher(url, { method })).rejects.toThrow("fetch failed");
     expect(base).toHaveBeenCalledTimes(1);

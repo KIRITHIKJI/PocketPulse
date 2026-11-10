@@ -133,6 +133,7 @@ describe.skipIf(!ADMIN_URL)("Missions, the progress switch and a settled sync", 
                 deletedAt: r.deleted_at ? new Date(r.deleted_at as string).toISOString() : null,
               }),
             ),
+          { revoke: true },
         ),
       );
       expect(result.passes).toBe(2);
@@ -154,14 +155,18 @@ describe.skipIf(!ADMIN_URL)("Missions, the progress switch and a settled sync", 
       const sync = async () => {
         const rows = await ledger(s);
         return asServer(s, () =>
-          syncRewardsWith(store, {
-            ledger: rows,
-            goals: [],
-            budgets: [],
-            ...catalog,
-            now: Date.now(),
-            settings,
-          }),
+          syncRewardsWith(
+            store,
+            {
+              ledger: rows,
+              goals: [],
+              budgets: [],
+              ...catalog,
+              now: Date.now(),
+              settings,
+            },
+            { revoke: true },
+          ),
         );
       };
       const undos: LedgerCommand[] = [];

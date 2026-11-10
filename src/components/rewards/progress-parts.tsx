@@ -203,9 +203,17 @@ export function MissionRow({ mission }: { mission: MissionView }) {
       )}
       <div className="flex flex-wrap items-center gap-1 pl-9">
         <span className="mr-auto type-caption text-muted-foreground">
-          {mission.complete ? "Done" : RESETS[mission.cadence]}
+          {mission.complete ? "Completed" : RESETS[mission.cadence]}
           {multi && !mission.complete ? ` · ${mission.progress} of ${mission.target}` : ""}
         </span>
+        {mission.complete && mission.toSort > 0 && (
+          <Button size="sm" variant="ghost" asChild>
+            <Link href={MISSION_LINKS.categorise_week!.href} data-testid="mission-to-sort">
+              <span className="money">{mission.toSort}</span> new{" "}
+              {mission.toSort === 1 ? "entry" : "entries"} to sort
+            </Link>
+          </Button>
+        )}
         {!mission.complete && mission.code === "weekly_review" && <ReviewWeekButton />}
         {!mission.complete && link && (
           <Button size="sm" variant="ghost" asChild>

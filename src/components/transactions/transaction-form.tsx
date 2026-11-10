@@ -4,7 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 
 import { ActionForm, FormMessage, SubmitButton } from "@/components/forms/form-parts";
-import { useToast } from "@/components/feedback/toast";
+import { carryToast, useToast } from "@/components/feedback/toast";
 import { useRewardFeedback } from "@/components/feedback/reward-feedback";
 import { useLedger, withSaveTimeout } from "@/components/transactions/use-ledger";
 import { type EntryFormState, saveEntryForm } from "@/lib/actions/transactions";
@@ -17,6 +17,8 @@ import {
   type RefundableExpense,
   EntryFields,
 } from "@/components/transactions/entry-fields";
+
+const EDIT_QUEUED = "Change saved on this device. It’ll sync when you’re back online.";
 
 /**
  * Full entry form. Only the amount and (for spending/income) the category are needed; the
@@ -51,9 +53,7 @@ export function TransactionForm({
     if (!parsed.success) return invalid(parsed.error);
     const result = await queue(
       commandFromForm(parsed.data, kit.currency),
-      mode === "edit"
-        ? { message: "Change saved on this device. It’ll sync when you’re back online." }
-        : {},
+      mode === "edit" ? { message: EDIT_QUEUED } : {},
     );
     if (!result.ok) return { status: "error", message: result.message, result };
     return { status: "success", savedAt: Date.now(), result };
@@ -77,6 +77,8 @@ export function TransactionForm({
           setFormKey((k) => k + 1);
         } else {
           // The entry's own page may not be saved offline. This one is, and shows the change.
+          // Offline, getting there can be a full page load, so the confirmation is carried.
+          carryToast("/settings/sync", EDIT_QUEUED);
           router.push("/settings/sync");
         }
         return next;

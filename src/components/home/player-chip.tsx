@@ -55,7 +55,7 @@ export function SidebarPlayerChipSkeleton() {
   return (
     <div
       aria-hidden="true"
-      className="flex h-15 flex-col justify-center gap-2 rounded-xl border px-3"
+      className="flex h-14 flex-col justify-center gap-1.5 rounded-xl border px-3"
     >
       <Skeleton className="h-3 w-28" />
       <Skeleton className="h-2 w-full rounded-full" />
