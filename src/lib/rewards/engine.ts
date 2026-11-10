@@ -106,7 +106,7 @@ const LEDGER_KINDS = new Set(["logged_day", "clean_week", "saved_week", "budget_
  *
  * Daily awards and mission progress follow the entries that exist now. Undoing (or deleting) the
  * entry behind one revokes it; earning it again clears the revocation on the same row. Only a
- * sync that follows a delete, an Undo or an edit (`revoke`) takes anything back: logging a new
+ * sync that follows a delete or an Undo (`revoke`, see `revokesRewards`) takes anything back: logging a new
  * entry never costs XP, and a mission done for its day or week stays done (spec: don't punish
  * expenses). Sorting awards stay earned once their week was sorted (`keptKeys`). Mission awards
  * are reconciled only for the current period, the only one worked out again.
@@ -278,18 +278,19 @@ export function ledgerChanged(snapshot: readonly Transaction[], stamps: readonly
 }
 
 /**
- * True when a row in `snapshot` was deleted or edited since: a delete, an Undo or an edit landed
- * during the sync. A brand-new row isn't: logging more never takes anything back.
+ * Which ledger commands may take XP back: only a delete or an Undo, when the entry behind an
+ * award is gone. Saving never does, and neither does any edit: day awards count when an entry was
+ * logged, which no edit changes, and a category, amount, note or merchant change must never cost
+ * XP (Design 4 final check).
  */
-export function ledgerRewritten(snapshot: readonly Transaction[], stamps: readonly LedgerStamp[]) {
-  const byId = new Map(snapshot.map((tx) => [tx.id, tx]));
-  return stamps.some((row) => {
-    const seen = byId.get(row.id);
-    return (
-      seen !== undefined &&
-      (row.deletedAt !== null || parseInstant(seen.updatedAt) !== parseInstant(row.updatedAt))
-    );
-  });
+export function revokesRewards(kind: string): boolean {
+  return kind === "delete" || kind === "undo_batch";
+}
+
+/** True when a row in `snapshot` was deleted since: a delete or an Undo landed during the sync. */
+export function ledgerRemoved(snapshot: readonly Transaction[], stamps: readonly LedgerStamp[]) {
+  const ids = new Set(snapshot.map((tx) => tx.id));
+  return stamps.some((row) => row.deletedAt !== null && ids.has(row.id));
 }
 
 /** How far a settle may go: the ledger rarely moves twice in one sync, so 3 passes is plenty. */
@@ -299,8 +300,8 @@ const MAX_PASSES = 3;
  * A sync that can't leave a stale award behind. If the ledger moved while it ran (an Undo landing
  * during the save's own sync), what it saved may be out of date, so it runs again from a fresh
  * read until a pass finds nothing new. Returns the state from before the first pass too, so the
- * caller can say what changed overall. A delete, Undo or edit that landed meanwhile lets the
- * next pass take back what it earned, even when this sync followed a save.
+ * caller can say what changed overall. A delete or Undo that landed meanwhile lets the next pass
+ * take back what it earned, even when this sync followed a save.
  */
 export async function settleRewardSync(
   store: RewardStore,
@@ -320,6 +321,6 @@ export async function settleRewardSync(
     if (pass >= MAX_PASSES || !ledgerChanged(data.ledger, stamps)) {
       return { before: first, outcome, passes: pass };
     }
-    revoke ||= ledgerRewritten(data.ledger, stamps);
+    revoke ||= ledgerRemoved(data.ledger, stamps);
   }
 }

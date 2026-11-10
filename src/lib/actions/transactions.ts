@@ -1,6 +1,5 @@
 "use server";
 
-import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -12,6 +11,7 @@ import { type LedgerCommand, ledgerCommandSchema } from "@/lib/ledger/commands";
 import { executeLedgerCommand } from "@/lib/ledger/execute";
 import { commandEntryId } from "@/lib/offline/ops";
 import { type PlayerStatus, playerStatus } from "@/lib/rewards/feedback";
+import { revokesRewards } from "@/lib/rewards/engine";
 import { syncRewards } from "@/lib/rewards/sync";
 import { commandFromForm, entryFormSchema, entryFormValues } from "@/lib/validation/transactions";
 
@@ -34,7 +34,6 @@ function refreshViews() {
 }
 
 /** Commands that can only take rewards away: their sync runs before the answer goes back. */
-const REMOVES = new Set<LedgerCommand["kind"]>(["delete", "undo_batch"]);
 
 /**
  * A delete (Undo of a save, or a delete from History) syncs rewards after the delete finishes and
@@ -43,7 +42,7 @@ const REMOVES = new Set<LedgerCommand["kind"]>(["delete", "undo_batch"]);
  * which is also the sync, so rewards never slow down recording an expense.
  */
 async function rewardsAfterRemoval(command: LedgerCommand): Promise<PlayerStatus | undefined> {
-  if (!REMOVES.has(command.kind)) return undefined;
+  if (!revokesRewards(command.kind)) return undefined;
   try {
     const { state, streaks } = await syncRewards({ revoke: true });
     return playerStatus(totalXp(state.events), streaks.currentDaily, Date.now());
@@ -58,9 +57,6 @@ async function run(command: LedgerCommand): Promise<CommandResult> {
   const outcome = await executeLedgerCommand(supabase, command);
   if (!outcome.ok) return { ok: false, status: outcome.status, message: outcome.message };
   const rewards = await rewardsAfterRemoval(command);
-  // An edit can move an entry off the day or week an award was for, so its sync may take that
-  // back (a new entry's sync never does). After the answer, so editing stays quick.
-  if (command.kind === "update") after(() => syncRewards({ revoke: true }).catch(() => undefined));
   refreshViews();
   return {
     ok: true,

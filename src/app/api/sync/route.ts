@@ -7,6 +7,7 @@ import { ledgerCommandSchema } from "@/lib/ledger/commands";
 import { executeLedgerCommand } from "@/lib/ledger/execute";
 import { commandEntryId } from "@/lib/offline/ops";
 import type { SyncResponse } from "@/lib/offline/transport";
+import { revokesRewards } from "@/lib/rewards/engine";
 import { syncRewards } from "@/lib/rewards/sync";
 
 const bodySchema = z.object({
@@ -60,9 +61,8 @@ export async function POST(request: Request) {
       .eq("id", remember.presetId);
   }
   revalidatePath("/", "layout");
-  // A replayed delete, Undo or edit may take awards back; a new entry never does.
-  const revoke = ["delete", "undo_batch", "update"].includes(command.kind);
-  after(() => syncRewards({ revoke }).catch(() => undefined));
+  // A replayed delete or Undo may take awards back; a new entry or an edit never does.
+  after(() => syncRewards({ revoke: revokesRewards(command.kind) }).catch(() => undefined));
   return json({
     ok: true,
     status: outcome.status,

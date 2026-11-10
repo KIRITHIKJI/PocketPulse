@@ -1,18 +1,19 @@
 import { describe, expect, it } from "vitest";
 
-import { XP, calculateRewards, totalXp } from "@/domain";
+import { XP, budgetSchema, calculateRewards, loggedDays, totalXp } from "@/domain";
 import {
   type LedgerStamp,
   type RewardData,
   type RewardState,
   ledgerChanged,
-  ledgerRewritten,
+  ledgerRemoved,
+  revokesRewards,
   settleRewardSync,
   syncRewardsWith,
 } from "@/lib/rewards/engine";
 import { hasFeedback, rewardFeedback } from "@/lib/rewards/feedback";
 
-import { LAPTOP_GOAL, allocate, ist } from "./domain/fixtures";
+import { LAPTOP_GOAL, OWNER, allocate, id, ist } from "./domain/fixtures";
 import { ACHIEVEMENTS, MISSIONS, TODAY, data, day, logged, memoryStore } from "./reward-fixtures";
 
 // Design 3: missions, achievement progress, and the feedback the ladder shows after a save.
@@ -445,17 +446,16 @@ describe("logging never costs XP (spec: don't punish expenses)", () => {
     }
   });
 
-  it("knows a new row from a rewritten one", () => {
+  it("an edit landing mid-sync never lets it take anything back; a delete does", () => {
     const tea = logged(day(11, "10:00"));
     const stamp = (id: string, updatedAt: string, deletedAt: string | null = null) => ({
       id,
       updatedAt,
       deletedAt,
     });
-    expect(ledgerRewritten([tea], [stamp("new", day(11, "10:05"))])).toBe(false);
-    expect(ledgerRewritten([tea], [stamp(tea.id, tea.updatedAt)])).toBe(false);
-    expect(ledgerRewritten([tea], [stamp(tea.id, day(11, "10:05"))])).toBe(true);
-    expect(ledgerRewritten([tea], [stamp(tea.id, day(11, "10:05"), day(11, "10:05"))])).toBe(true);
+    expect(ledgerRemoved([tea], [stamp("new", day(11, "10:05"))])).toBe(false);
+    expect(ledgerRemoved([tea], [stamp(tea.id, day(11, "10:05"))])).toBe(false);
+    expect(ledgerRemoved([tea], [stamp(tea.id, day(11, "10:05"), day(11, "10:05"))])).toBe(true);
   });
 
   it("a save's sync that an Undo lands in still takes the award back on its next pass", async () => {
@@ -480,5 +480,50 @@ describe("logging never costs XP (spec: don't punish expenses)", () => {
     );
     expect(result.passes).toBe(2);
     expect(totalXp(store.state.events)).toBe(0);
+  });
+});
+
+describe("edits never cost XP; only a delete or an Undo does", () => {
+  it("only a delete or an Undo may take XP back", () => {
+    for (const kind of ["create", "batch", "update", "restore", "goal_move", "pay_commitment"])
+      expect(revokesRewards(kind)).toBe(false);
+    expect(revokesRewards("delete")).toBe(true);
+    expect(revokesRewards("undo_batch")).toBe(true);
+  });
+
+  it("changing category, amount, note, merchant or date keeps every award, a budget month too", async () => {
+    const october = Array.from({ length: 5 }, (_, i) =>
+      logged(ist(`2026-10-${String(i + 12)}`), {}, 1_000),
+    );
+    const budget = {
+      ...budgetSchema.parse({ id: id(700), ownerId: OWNER, limitPaise: 10_000 }),
+      createdAt: ist("2026-10-01"),
+    };
+    const withBudget = (rows: typeof october) => data(rows, all({ budgets: [budget] }));
+    const store = memoryStore();
+    await syncRewardsWith(store, withBudget(october), { revoke: false });
+    const monthKey = "budget_month:2026-10";
+    expect(store.state.events.some((e) => e.sourceKey === monthKey)).toBe(true);
+    const xp = totalXp(store.state.events);
+    const days = loggedDays(october, "Asia/Kolkata");
+
+    const [first, ...rest] = october;
+    const edits = [
+      { categoryId: null },
+      { amountPaise: 50_000 }, // now well over the month's budget
+      { note: "late lunch" },
+      { merchant: "Canteen" },
+      { occurredAt: ist("2026-10-01") },
+    ];
+    for (const patch of edits) {
+      const edited = { ...first!, ...patch, updatedAt: day(11, "15:00") };
+      await syncRewardsWith(store, withBudget([edited, ...rest]), {
+        revoke: revokesRewards("update"),
+      });
+      expect(totalXp(store.state.events)).toBe(xp);
+      expect(store.state.events.find((e) => e.sourceKey === monthKey)?.revokedAt).toBeNull();
+      // A day is counted by when the entry was logged, which no edit changes.
+      expect(loggedDays([edited, ...rest], "Asia/Kolkata")).toEqual(days);
+    }
   });
 });

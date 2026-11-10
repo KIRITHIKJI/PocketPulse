@@ -179,8 +179,8 @@ async function settle(session: Session, options: SyncOptions) {
 }
 
 /**
- * `revoke`: the sync follows a delete, an Undo or an edit, so something behind an award may be
- * gone and it may be taken back. Logging something new never costs XP.
+ * `revoke`: the sync follows a delete or an Undo, so the entry behind an award may be gone and
+ * it may be taken back. Saving or editing never costs XP (`revokesRewards`).
  */
 export type SyncOptions = { revoke: boolean };
 
