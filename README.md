@@ -1,256 +1,235 @@
 # PocketPulse
 
-**Track. Understand. Save.** A responsive, installable personal-finance web app for a college
-student: record ₹10 purchases in seconds, see honest spending insights, and save on purpose.
+**Track. Understand. Save.**
 
-Product requirements live in [`PROJECT_SPEC.md`](PROJECT_SPEC.md). Build status, decisions and
-next steps live in [`PROGRESS.md`](PROGRESS.md).
+PocketPulse is a personal-finance web app for college students. It makes recording small, everyday
+expenses (a ₹20 chai, a ₹15 bus ride) take a couple of seconds, shows clearly where the money goes,
+and helps students plan, stay within budget and save on purpose. When a student wants to, it can
+also produce a clean spending report to share with parents.
 
-## Stack
+It runs in the browser on laptops and phones, installs to the home screen as a PWA, keeps working
+offline for entries, and syncs everything to the student's private account.
 
-Next.js 16 (App Router, Turbopack) · React 19 · TypeScript 6 (strict) · Tailwind CSS 4 ·
-shadcn-style components on Radix UI · lucide icons · Motion (Framer Motion) · next-themes ·
-Vitest + Testing Library · Playwright · Supabase (Auth + Postgres + RLS) · Dexie (IndexedDB) and
-a service worker for offline use.
+**Live demo:** [pocket-pulse-delta.vercel.app](https://pocket-pulse-delta.vercel.app)
 
-## Requirements
+## Key features
 
-- Node.js ≥ 20.9 (developed on Node 24) and npm.
-- A Supabase project for accounts and cloud data (see Setup).
-- Optional: a local PostgreSQL 15+ for `npm run test:db`.
+**Fast recording**
 
-## Setup
+- **Quick add:** a grid of customisable tiles with usual amounts, "repeat last" and frequent
+  shortcuts. Every save shows an Undo toast.
+- **Type it:** write several entries in plain words ("chai 20, bus 15 yesterday"). PocketPulse
+  turns them into drafts for you to review, then saves them all together or none at all. It
+  understands Hindi day words ("aaj", "kal", "parso") and Devanagari.
+- **Say it:** dictate entries with the browser's speech recognition. They go through the same
+  review step.
+- **Full form:** expense, income, refund or transfer, with wallet, category, subcategory, date,
+  note and merchant. Category suggestions come from your own rules and history, computed on the
+  device.
 
-### 1. Install and configure
+**Understanding spending**
+
+- **Transactions:** history with search and filters by type, wallet, category, period and amount.
+- **Insights:** totals, a trend chart, category breakdown, comparison with the previous period,
+  and frequent, unusual and recurring spending. Every figure links to the entries behind it.
+- **Money leaks:** finds repeated small purchases ("Bus 4 times for ₹20 each") and shows what
+  cutting back would save.
+- **Wallets and categories:** several wallets with opening balances, plus a category hierarchy
+  with icons, colours, merge, archive and auto-categorisation rules.
+
+**Planning and saving**
+
+- **Budgets:** total and per-category; monthly, weekly or custom. Includes suggested limits, alert
+  thresholds and a pace projection.
+- **Savings goals:** progress, a suggested amount and a forecast. You can set money aside, release
+  it, or record "I bought it".
+- **Safe to spend:** how much you can spend per day and per week until your next income, with
+  every input explained.
+- **Survival mode:** a tighter day-by-day view for the end of the month.
+- **Income and recurring:** recurring templates and one-off bills, which you confirm, skip, pay
+  or cancel.
+
+**Staying on track**
+
+- **Rewards:** levels, XP, daily and weekly streaks, optional missions and achievements. XP never
+  depends on how much you spend, and awards are calculated on the server.
+- **Reminders:** a notification centre with a schedule and optional browser notifications. They
+  are checked while the app is open.
+
+**Parent report**
+
+- Choose a period and what to include, preview it, then download a PDF or CSV or copy it as text.
+  Nothing is shared automatically.
+
+**Trust and privacy**
+
+- Money is stored as integer paise, never as floating-point numbers. Amounts use INR and Indian
+  digit grouping, and dates use Asia/Kolkata by default (all configurable).
+- Each user's data is private and protected by Postgres row-level security.
+- Offline entries are queued on the device with stable IDs, so a retry can't create a duplicate.
+  The sync centre shows what is still pending and lets you resolve conflicts.
+- You can export your data as JSON or CSV and permanently delete your account.
+- Light and dark themes, a responsive layout (sidebar on laptops, bottom navigation on phones)
+  and a reduced-motion setting.
+
+## Screenshots
+
+<!--
+Add images to docs/screenshots/ and uncomment:
+
+| Home | Quick add | Insights |
+| --- | --- | --- |
+| ![Home](docs/screenshots/home.png) | ![Quick add](docs/screenshots/quick-add.png) | ![Insights](docs/screenshots/insights.png) |
+-->
+
+You can see the app running at the [live demo](https://pocket-pulse-delta.vercel.app).
+
+## Tech stack
+
+| Area | Tools |
+| --- | --- |
+| Framework | Next.js 16 (App Router), React 19, TypeScript (strict) |
+| Styling and UI | Tailwind CSS 4, Radix UI primitives, lucide-react icons, Motion, next-themes, Geist font |
+| Backend | Supabase: Auth, Postgres, row-level security and SQL RPCs |
+| Validation | Zod |
+| Charts and exports | Recharts, pdf-lib |
+| Offline | Service worker and IndexedDB (Dexie) |
+| Testing | Vitest and Testing Library, Playwright with axe-core, PostgreSQL integration tests |
+| Hosting | Vercel |
+
+## Getting started
+
+### Prerequisites
+
+- Node.js 20.9 or newer, and npm
+- A [Supabase](https://supabase.com) project
+- Optional: a local PostgreSQL 15+ for the database test suite
+
+### 1. Install
 
 ```bash
+git clone https://github.com/KIRITHIKJI/PocketPulse.git
+cd PocketPulse
 npm install
-cp .env.example .env.local   # then fill in real values (see the table)
 ```
 
-| Variable | Where it's used | Notes |
+### 2. Configure environment variables
+
+Copy the example file and fill in your own values:
+
+```bash
+cp .env.example .env.local
+```
+
+| Variable | Required | Purpose |
 | --- | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | browser + server | `https://<project-ref>.supabase.co` |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | browser + server | `sb_publishable_…`. Legacy `NEXT_PUBLIC_SUPABASE_ANON_KEY` is accepted as a fallback. Safe in the browser: every private row is protected by RLS. |
-| `SUPABASE_SECRET_KEY` | server only | `sb_secret_…`. Bypasses RLS. Never prefix with `NEXT_PUBLIC_`. Only `src/lib/supabase/admin.ts` (marked `server-only`) reads it. |
-| `NEXT_PUBLIC_SITE_URL` | auth email links | `http://localhost:3000` locally, your production URL when deployed. |
+| `NEXT_PUBLIC_SUPABASE_URL` | Yes | Your Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Yes | Supabase publishable key. It is safe in the browser because row-level security protects the data. `NEXT_PUBLIC_SUPABASE_ANON_KEY` is accepted as a fallback. |
+| `SUPABASE_SECRET_KEY` | Recommended | Server-only key used to award rewards and delete accounts. Never give it a `NEXT_PUBLIC_` prefix. |
+| `NEXT_PUBLIC_SITE_URL` | Yes | The app's base URL, used in auth email links (`http://localhost:3000` locally) |
 
-Find the keys in Supabase Dashboard → Project Settings → API Keys. `.env.local` is gitignored;
-`.env.example` contains placeholders only.
+These variables are only needed for testing. Put them in `.env.e2e.local`:
 
-### 2. Create the Supabase project
+| Variable | Purpose |
+| --- | --- |
+| `E2E_EMAIL`, `E2E_PASSWORD` | Test account for the signed-in Playwright suite |
+| `E2E_USER_B_EMAIL`, `E2E_USER_B_PASSWORD` | Second test account for the cross-user checks |
+| `POCKETPULSE_TEST_DB_URL` | Admin connection to a local PostgreSQL for `npm run test:db` |
 
-1. Create a project at [supabase.com/dashboard](https://supabase.com/dashboard) (a region close
-   to your users, e.g. Mumbai). Copy the URL and keys into `.env.local`.
-2. **Authentication → Sign In / Providers → Email:** keep Email enabled. Leaving "Confirm email"
-   on is recommended (new users get a link that signs them in and opens setup). With it off,
-   sign-up signs in immediately.
-3. **Authentication → URL Configuration:**
-   - Site URL: your production URL (or `http://localhost:3000` while developing).
-   - Redirect URLs: add `http://localhost:3000/**` and `https://<your-domain>/**`. Email links
-     land on `/auth/confirm`, which must be allowed here.
-4. **Authentication → Emails (templates), recommended:** the default templates work, but they use
-   the PKCE flow, which only completes in the browser that started it. To let someone open the
-   link on another device, change the links to the token-hash form:
+`.env.local` and `.env.e2e.local` are gitignored. Never commit real keys.
+
+### 3. Set up Supabase
+
+1. Create a project in the [Supabase dashboard](https://supabase.com/dashboard) and copy its URL
+   and keys into `.env.local`.
+2. Under **Authentication → URL Configuration**, set the Site URL to your app URL and add
+   `http://localhost:3000/**` (and your production URL followed by `/**`) to the Redirect URLs.
+   Email links land on `/auth/confirm`.
+3. Apply the database migrations in `supabase/migrations/`:
+
+   ```bash
+   npx supabase@2.120.0 login
+   npx supabase@2.120.0 link --project-ref <your-project-ref>
+   npx supabase@2.120.0 db push
+   ```
+
+   You can also run each file, in filename order, in the dashboard's SQL Editor. New sign-ups get
+   their profile, default categories and quick-add tiles from a database trigger.
+
+4. Optional: to let users open email links on a different device, change the auth email templates
+   to the token-hash form:
    - Confirm signup:
      `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email&next=/onboarding`
    - Reset password:
      `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery&next=/reset-password`
 
-### 3. Apply the database migrations
-
-Migrations live in `supabase/migrations/`: schema, integrity triggers, RLS policies, RPCs and
-per-user defaults, the defaults backfill, and the onboarding/wallet/category RPCs. Apply them with the Supabase CLI (no global install needed):
-
-```bash
-npx supabase@2.120.0 init          # once: creates supabase/config.toml, keeps the migrations
-npx supabase@2.120.0 login         # opens the browser to authorise the CLI
-npx supabase@2.120.0 link --project-ref <project-ref>
-npx supabase@2.120.0 db push       # applies every migration not yet applied
-```
-
-Or paste each file, in filename order, into Dashboard → SQL Editor. New sign-ups get their
-profile, default categories (spec §9) and quick-add tiles from the `on_auth_user_created`
-trigger. Users created before the migrations can call the `ensure_my_defaults()` RPC.
-
-### Server key
-
-`SUPABASE_SECRET_KEY` is required on the server for two things. Rewards are written with it,
-because clients can't write to the reward tables, and account deletion uses it to remove the auth
-user. It's read at call time, is never prefixed `NEXT_PUBLIC_`, and can't reach a browser bundle.
-Without it, the app still works and `/rewards` says rewards aren't available; deleting an account
-reports that nothing was changed.
-
 ### 4. Run
 
 ```bash
-npm run dev                  # http://localhost:3000
+npm run dev
 ```
 
-Without the Supabase variables the app still builds and runs: public pages work, app routes
-redirect to sign-in, and the auth pages say which variables are missing.
+Open [http://localhost:3000](http://localhost:3000). If the Supabase variables are missing, the app
+still builds and runs: public pages work, and the sign-in pages say which variables are missing.
 
-### Database tests
+### Deploying
 
-`npm run test:db` runs the schema, RLS, idempotency and atomicity tests against a **real
-PostgreSQL** (15+). It creates a temporary database, applies `tests/db/supabase-shim.sql` (a
-minimal stand-in for Supabase's `auth` schema and API roles) plus every migration, runs the
-tests as the `authenticated` and `anon` roles, and drops the database. Point it at an admin
-connection, **never at your hosted Supabase project**:
+The app deploys to Vercel (or any Next.js host) with the same environment variables. Set
+`NEXT_PUBLIC_SITE_URL` to the deployed `https://` address and add it to the Supabase Redirect
+URLs. `vercel.json` runs server code in Mumbai (`bom1`); change it if your Supabase project is in
+another region. Installing the app on a phone, using offline mode and using voice entry all need
+HTTPS.
 
-```bash
-# Any local Postgres, e.g. a throwaway cluster (no Docker needed):
-initdb -D ./.pgtest -U postgres --auth=trust -E UTF8 --locale=C
-pg_ctl -D ./.pgtest -o "-p 54329" -l ./.pgtest.log start
-POCKETPULSE_TEST_DB_URL=postgres://postgres@127.0.0.1:54329/postgres npm run test:db
+## Available scripts
 
-# Or the Postgres inside a local Supabase stack (needs Docker):
-npx supabase@2.120.0 start
-POCKETPULSE_TEST_DB_URL=postgres://postgres:postgres@127.0.0.1:54322/postgres npm run test:db
-```
-
-Without `POCKETPULSE_TEST_DB_URL` the database tests are reported as skipped, not passed.
-
-### Live project checks
-
-`npm run test:live` checks the configured project with the **publishable key only**: that each
-of two real accounts has its defaults, and that RLS stops one from reading or changing the other's
-rows. It uses the same two accounts as the browser tests: `E2E_EMAIL`, `E2E_PASSWORD`,
-`E2E_USER_B_EMAIL` and `E2E_USER_B_PASSWORD` in the gitignored `.env.e2e.local`. It writes an
-archived test wallet and one soft-deleted expense to the first account per run, so use test
-accounts. Without them it is skipped.
-
-### Cleaning up the test accounts
-
-`npm run clean:e2e` lists the archived test wallets, goals and categories that test runs have left
-in those two accounts and changes nothing. `npm run clean:e2e -- --apply` removes them. It signs in
-as each account, so it can't touch anyone else's data. It never removes an entry: anything with an
-entry linked to it, deleted entries included, stays.
-
-### Signed-in browser tests
-
-`npm run test:e2e` always runs the signed-out suite (redirects, auth forms, validation). The
-signed-in shell suite needs a real test account in a project with the migrations applied. Put
-`E2E_EMAIL=…` and `E2E_PASSWORD=…` (plain values, no quotes or brackets) in `.env.e2e.local`;
-the Playwright config loads it. The suite signs in once and reuses the session
-(`e2e/.auth/`, gitignored) to stay under Supabase's sign-in rate limits, and runs at most 4
-workers for the same reason. Tests that change the test profile (theme, motion, onboarding,
-wallets) run on the desktop project only and restore defaults; runs leave archived "E2E …"
-wallets/categories in the test account. Without the credentials it is skipped.
-
-`e2e/transactions.spec.ts`, `e2e/transactions-batch.spec.ts`, `e2e/insights.spec.ts`,
-`e2e/plan.spec.ts`, `e2e/motion.spec.ts`, `e2e/report.spec.ts` and `e2e/rewards.spec.ts` record real money entries and assert exact balance
-changes, so they run in their own projects (`ledger-desktop`, then
-`ledger-mobile`), one worker each, never in parallel with each other. Every entry they create is
-undone or deleted again (soft delete, like a user delete), so the account's totals end where they
-started; if a run is interrupted mid-test, an entry can be left behind. `ledger-mobile` depends on
-`ledger-desktop` and `-g` doesn't filter dependency projects, so filtering these specs still
-records money unless you add `--no-deps`. Wallets created by the
-Phase 4 test start tracking tomorrow, so they never shift today's totals. A goal with history
-can't be deleted, so the plan and motion specs reuse one archived goal each between runs, and the
-plan spec leaves cancelled bills and archived recurring items behind. `e2e/rewards.spec.ts` tests account
-deletion only on a throwaway `pp-delete-…@example.test` user it creates with the admin API, so it
-needs `SUPABASE_SECRET_KEY`; it never touches the two accounts in `.env.e2e.local`. Voice tests use a
-stand-in for the browser's speech recognition, so they don't exercise a real microphone or speech
-service. The cross-user 404 check also needs a second account:
-add `E2E_USER_B_EMAIL` / `E2E_USER_B_PASSWORD` (the same variables `test:live` uses); without
-them that one test is skipped.
-
-`e2e/offline.spec.ts` is the only spec that runs with the real service worker; every other spec
-blocks it, so a saved page can never decide a result. `e2e/a11y.spec.ts` checks every screen in both
-themes at 375 and 1440 px with axe. Set `SHOTS_DIR` to a folder to also get a screenshot of each.
-
-## Scripts
-
-| Command | What it does |
+| Command | Description |
 | --- | --- |
-| `npm run dev` | Development server |
-| `npm run build` / `npm start` | Production build / serve it |
-| `npm run lint` | ESLint (Next core-web-vitals + TypeScript rules, Prettier-compatible) |
-| `npm run typecheck` | Generates Next route types, then `tsc --noEmit` |
-| `npm test` | Vitest unit/integration tests (jsdom) |
-| `npm run test:db` | Schema/RLS/RPC tests on a real Postgres (needs `POCKETPULSE_TEST_DB_URL`) |
-| `npm run test:live` | Defaults + cross-user RLS against the configured Supabase project (needs two test accounts) |
-| `npm run clean:e2e` | Lists leftover test data in the two test accounts; add `-- --apply` to remove it |
-| `npm run test:e2e` | Playwright on desktop Chrome + Pixel 7 viewports (builds and serves on port 3100) |
-| `npm run format` | Prettier (with Tailwind class sorting) |
-| `npm run check` | lint + typecheck + test + build |
+| `npm run dev` | Start the development server |
+| `npm run build` | Create a production build |
+| `npm start` | Serve the production build |
+| `npm run lint` | Run ESLint |
+| `npm run typecheck` | Generate Next.js route types and run `tsc --noEmit` |
+| `npm test` | Run the Vitest unit and integration tests |
+| `npm run test:watch` | Run Vitest in watch mode |
+| `npm run test:db` | Run the schema, RLS, idempotency and atomicity tests on a real PostgreSQL (needs `POCKETPULSE_TEST_DB_URL`) |
+| `npm run test:live` | Check per-user defaults and cross-user isolation against the configured Supabase project (needs two test accounts) |
+| `npm run test:e2e` | Run the Playwright tests at desktop and mobile viewport sizes |
+| `npm run clean:e2e` | List the data that test runs left in the test accounts; add `-- --apply` to remove it |
+| `npm run format` / `format:check` | Format with Prettier, or check the formatting |
+| `npm run check` | Run lint, typecheck, tests and build in one go |
 
-First Playwright run needs a browser: `npx playwright install chromium`.
+The first Playwright run needs a browser: `npx playwright install chromium`.
 
-## Using it on a phone
-
-The app has to be on a public `https://` address: phones only install web apps, run service workers
-and allow the microphone over https.
-
-1. Deploy to any Next.js host (for example Vercel) with the four variables from the table in
-   Setup. Set `NEXT_PUBLIC_SITE_URL` to the deployed address. On Vercel, `vercel.json` runs the
-   server code in Mumbai (`bom1`), next to the Supabase project. If your project is in another
-   region, change it to the nearest one, since every screen makes several database calls.
-2. In Supabase, Authentication → URL Configuration: set Site URL to that address and add
-   `https://<your-domain>/**` to Redirect URLs.
-3. Open the address on the phone and sign in. Android Chrome: menu → Add to Home screen. iPhone
-   Safari: Share → Add to Home Screen. Settings → Sync shows an Install button where the browser
-   offers one.
-4. Open the app once with a connection before relying on it offline: that's when the core screens
-   are saved to the device.
-
-## Offline
-
-- **Works offline:** opening the app; quick add, typed entry, the full form, repeat; editing and
-  deleting entries; goal money, bill and recurring confirmations from a screen that's already open.
-  They wait in IndexedDB (`src/lib/offline/queue.ts`) with their ids, and go to `POST /api/sync`
-  in order.
-- **Needs a connection:** voice entry; changing budgets, goals, wallets, categories and settings;
-  signing in and out; reports. Those forms say so and keep what was typed.
-- **Syncing happens while the app is open.** Entries saved offline go up when it reconnects, or the
-  next time it's opened. There's no background sync.
-- **A retry can't duplicate.** Each operation keeps its ids, so the database answers `duplicate`. An
-  edit or delete that meets a newer change becomes a conflict on Settings → Sync, showing both
-  versions, and nothing changes until the user chooses.
-- **Figures don't include what's still on the device.** Home and Transactions list those entries
-  and say so, rather than adjusting a total.
-- **Saved screens hold the user's figures.** They're network-first, labelled with their age when
-  shown offline, and cleared on sign-out. Unsynced entries stay on the device across a sign-out and
-  sync when the same account signs in again; another account can't see or send them.
-
-## Project layout
+## Project structure
 
 ```
 src/
   app/
-    (public)/     welcome, login, register, forgot/reset password, onboarding
-    (app)/        signed-in shell: home, add, transactions, insights, budgets, goals, …
-  components/
-    ui/           accessible primitives (button, card, sheet, dropdown, segmented control…)
-    layout/       sidebar, header, bottom nav, section tabs, offline banner
-    states/       shared empty / error / offline / permission-denied / loading states
-    offline/      sync provider and screens, install prompt, service worker registration
-    preferences/  theme + motion controls
-    providers/    theme and motion providers
-  lib/            navigation config, env detection, preferences, utilities
-    supabase/     server, browser and server-only admin clients
-    auth/         route rules, form schemas, server actions, error copy
-    data/         database row → domain record mappers
-    ledger/       the one mutation layer: commands, executor, Supabase adapter
-    offline/      IndexedDB queue, conflict choices, transport to /api/sync, saved pages
-  proxy.ts        session refresh + route protection (Next 16 "proxy", formerly middleware)
-  domain/         pure financial domain layer: paise money, IST periods, ledger, balances,
-                  aggregation, budgets, savings, safe-to-spend, recurring schedules, survival
-                  mode (used by every screen/report)
+    (public)/       welcome, sign-in, registration, password reset, onboarding
+    (app)/          signed-in app: home, add, transactions, insights, budgets, goals,
+                    safe to spend, survival, recurring, reports, rewards, reminders, settings
+    api/sync/       endpoint that receives entries queued offline
+    auth/confirm/   email confirmation and password-recovery callback
+  components/       UI grouped by feature, plus shared primitives (ui/), layout and states
+  domain/           pure financial logic: paise money, periods, ledger, balances, budgets,
+                    savings, safe to spend, insights, money leaks, rewards, report model,
+                    text-entry parser
+  lib/
+    supabase/       browser, server and server-only admin clients
+    ledger/         the single mutation layer for money entries
+    offline/        IndexedDB queue, sync transport, conflict handling
+    actions/        server actions
+    reports/        report loading and PDF rendering
+  proxy.ts          session refresh and route protection
 supabase/
-  migrations/     schema, integrity triggers, RLS, RPCs, per-user defaults
-tests/            Vitest tests (tests/unit/domain: financial invariants)
-  db/             PostgreSQL tests: RLS, idempotency, atomicity, domain rules
-e2e/              Playwright tests
-public/           service worker (sw.js) and app icons
-scripts/          app icon generator, test-account cleanup
+  migrations/       schema, integrity triggers, RLS policies, RPCs, per-user defaults
+tests/
+  unit/             Vitest tests, including financial invariants
+  db/               PostgreSQL tests for RLS, idempotency and atomicity
+  live/             checks against a real Supabase project
+e2e/                Playwright end-to-end and accessibility tests
+public/             service worker and app icons
+scripts/            icon generator, test-data cleanup
+doc/                product, feature and design notes
+PROJECT_SPEC.md     product requirements
 ```
-
-## Design system
-
-Tokens are defined once in `src/app/globals.css` as CSS variables and exposed to Tailwind via
-`@theme inline`. Midnight/charcoal dark is the default; `.light` provides the light theme.
-Violet (`primary`) is the accent; lime/green (`positive`) is reserved for positive progress.
-Motion follows the OS `prefers-reduced-motion` setting, with an in-app override in Settings
-(applied before first paint, and to both CSS and Motion animations).
